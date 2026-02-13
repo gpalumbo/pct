@@ -63,6 +63,11 @@ class SerializationMode(str, Enum):
     """Whether tasks in a feature can execute in parallel."""
     PARALLEL = "parallel"   # mergeable outputs, concurrent execution allowed
     SERIAL = "serial"       # non-mergeable outputs, one task at a time
+
+class AuthProvider(str, Enum):
+    """How a user authenticated."""
+    LOCAL = "local"         # email + password
+    GOOGLE = "google"       # Google OAuth
 ```
 
 ---
@@ -199,6 +204,32 @@ class AgentConfig(BaseModel):
     model_path: str | None = None              # for local LLM (path to weights)
     context_length: int | None = None          # model's max context window
 ```
+
+### User
+
+A registered PCT user. Persisted as a JSON file. Passwords are bcrypt-hashed; Google OAuth users have no password.
+
+```python
+class User(BaseModel):
+    """Persisted in ~/.pct/users/users.json (keyed by email).
+    Location is configurable via PCT_USER_DATA_DIR env var."""
+    email: str
+    hashed_password: str                       # bcrypt hash, empty string for OAuth users
+    auth_provider: AuthProvider                # "local" or "google"
+    created_at: datetime
+
+class TokenResponse(BaseModel):
+    """Returned by auth endpoints."""
+    access_token: str                          # JWT (HS256), contains {"sub": email, "exp": ...}
+    token_type: str = "bearer"
+```
+
+**Storage:** `~/.pct/users/users.json` — a flat JSON dict keyed by email. Lives outside the project repo since users are global to the PCT installation. Configurable via `PCT_USER_DATA_DIR`.
+
+**Auth flow:**
+- **Local:** Register/login with email + password. Password is bcrypt-hashed before storage. Server returns a JWT.
+- **Google:** Frontend obtains a Google ID token, backend verifies it via `google-auth`, creates user if new, returns a JWT.
+- **JWT:** HS256-signed, contains `sub` (email) and `exp` (expiry). Validated on protected endpoints via `Authorization: Bearer <token>` header.
 
 ---
 
@@ -886,6 +917,12 @@ flowchart LR
 | RAG: task index | `rag/tasks.lance/` | Lance columnar |
 | RAG: spec index | `rag/specs.lance/` | Lance columnar |
 | Kanban snapshots | `kanban_snapshots/` | YAML |
+
+### User data (`~/.pct/users/`, configurable via `PCT_USER_DATA_DIR`)
+
+| Model | File | Format |
+|-------|------|--------|
+| User (all users) | `users.json` | JSON (dict keyed by email) |
 
 ### Global curation (`~/.pct/curation/`)
 
