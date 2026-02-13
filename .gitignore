@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Environment
+.env
+frontend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# PCT state (external, not in repo)
+.pct/
