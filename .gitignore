@@ -32,5 +32,9 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 
+# LLM models (large binary files)
+*.gguf
+models/
+
 # PCT state (external, not in repo)
 .pct/

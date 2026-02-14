@@ -23,10 +23,13 @@ dependencies = [
     "pyjwt",
     "bcrypt",
     "google-auth",
+    "llama-cpp-python",
 ]
 
 [project.optional-dependencies]
-local-llm = ["llama-cpp-python"]
+local-llm = [
+    "huggingface-hub"
+    ]
 dev = [
     "ruff",
     "pytest",
