@@ -124,6 +124,42 @@ class TestMessageEndpoints:
         )
         assert resp.status_code == 404
 
+    async def test_delete_message(self, client, auth_headers):
+        from pct.chat.models import PlanningMessage
+        from pct.chat import service
+
+        service.create_session("Test")
+        msg = PlanningMessage(role="user", content="To delete")
+        service.append_message("planning-001", msg)
+
+        resp = await client.delete(
+            f"/api/chat/sessions/planning-001/messages/{msg.id}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+
+        resp = await client.get(
+            "/api/chat/sessions/planning-001/messages", headers=auth_headers,
+        )
+        assert resp.json() == []
+
+    async def test_delete_message_not_found(self, client, auth_headers):
+        from pct.chat import service
+        service.create_session("Test")
+
+        resp = await client.delete(
+            "/api/chat/sessions/planning-001/messages/nonexistent",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_delete_message_session_not_found(self, client, auth_headers):
+        resp = await client.delete(
+            "/api/chat/sessions/nonexistent/messages/abc",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
 
 class TestSendEndpoint:
     async def test_send_no_agent_configured(self, client, auth_headers):

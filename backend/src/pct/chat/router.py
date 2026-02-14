@@ -73,6 +73,22 @@ async def update_message(
     return msg
 
 
+@router.delete(
+    "/sessions/{session_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_message(
+    session_id: str,
+    message_id: str,
+    _user: dict = Depends(get_current_user),
+):
+    session = service.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not service.delete_message(session_id, message_id):
+        raise HTTPException(status_code=404, detail="Message not found")
+
+
 # ---------------------------------------------------------------------------
 # Streaming chat endpoint (SSE)
 # ---------------------------------------------------------------------------

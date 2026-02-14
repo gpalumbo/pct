@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Spin, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatStore } from '../../stores/chatStore';
-import { useDefaultSession, useMessages, useUpdateMessage } from '../../hooks/useChatQueries';
+import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage } from '../../hooks/useChatQueries';
 import { sendMessageStream } from '../../api/chatApi';
 import type { PlanningMessage } from '../../types/chat';
 import MessageList from './MessageList';
@@ -20,6 +20,7 @@ export default function PlanningChat() {
     setMessages,
     addMessage,
     updateMessage: updateStoreMessage,
+    removeMessage: removeStoreMessage,
     startStreaming,
     appendToken,
     finishStreaming,
@@ -48,8 +49,9 @@ export default function PlanningChat() {
     }
   }, [fetchedMessages, setMessages]);
 
-  // 3. Message update mutation
+  // 3. Message update/delete mutations
   const updateMutation = useUpdateMessage(activeSessionId);
+  const deleteMutation = useDeleteMessage(activeSessionId);
 
   const handleUpdateMessage = (id: string, updates: { role?: string; content?: string; included?: boolean }) => {
     if (!activeSessionId) return;
@@ -59,6 +61,12 @@ export default function PlanningChat() {
         onSuccess: (updated) => updateStoreMessage(id, updated),
       },
     );
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    if (!activeSessionId) return;
+    removeStoreMessage(id);
+    deleteMutation.mutate(id);
   };
 
   // 4. Send message with streaming
@@ -128,6 +136,7 @@ export default function PlanningChat() {
         streamingContent={streamingContent}
         isStreaming={isStreaming}
         onUpdateMessage={handleUpdateMessage}
+        onDeleteMessage={handleDeleteMessage}
       />
       <ChatInput isStreaming={isStreaming} onSend={handleSend} onStop={cancelStreaming} />
     </div>

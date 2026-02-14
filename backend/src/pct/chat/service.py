@@ -166,5 +166,19 @@ def update_message(
     return target
 
 
+def delete_message(session_id: str, message_id: str) -> bool:
+    """Delete a message by rewriting the JSONL file without it."""
+    messages = load_messages(session_id)
+    new_messages = [m for m in messages if m.id != message_id]
+    if len(new_messages) == len(messages):
+        return False
+    path = _messages_path(session_id)
+    with open(path, "w") as f:
+        for m in new_messages:
+            f.write(m.model_dump_json() + "\n")
+    _update_session_metadata(session_id)
+    return True
+
+
 def get_included_messages(session_id: str) -> list[PlanningMessage]:
     return [m for m in load_messages(session_id) if m.included]

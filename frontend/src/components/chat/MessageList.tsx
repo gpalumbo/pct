@@ -9,9 +9,10 @@ interface Props {
   streamingContent: string;
   isStreaming: boolean;
   onUpdateMessage?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
+  onDeleteMessage?: (id: string) => void;
 }
 
-export default function MessageList({ messages, streamingContent, isStreaming, onUpdateMessage }: Props) {
+export default function MessageList({ messages, streamingContent, isStreaming, onUpdateMessage, onDeleteMessage }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export default function MessageList({ messages, streamingContent, isStreaming, o
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 0' }}>
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} onUpdate={onUpdateMessage} />
+        <MessageBubble key={msg.id} message={msg} onUpdate={onUpdateMessage} onDelete={onDeleteMessage} />
       ))}
 
       {/* Streaming indicator: temporary assistant bubble */}

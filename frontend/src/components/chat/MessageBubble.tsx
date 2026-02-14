@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Checkbox, Input, Select, Space, Tag, Typography } from 'antd';
-import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { PlanningMessage } from '../../types/chat';
 
@@ -15,9 +15,10 @@ const ROLE_COLORS: Record<string, string> = {
 interface Props {
   message: PlanningMessage;
   onUpdate?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
+  onDelete?: (id: string) => void;
 }
 
-export default function MessageBubble({ message, onUpdate }: Props) {
+export default function MessageBubble({ message, onUpdate, onDelete }: Props) {
   const [editing, setEditing] = useState(false);
   const [editRole, setEditRole] = useState(message.role);
   const [editContent, setEditContent] = useState(message.content);
@@ -117,6 +118,12 @@ export default function MessageBubble({ message, onUpdate }: Props) {
             onClick={() => setEditing(true)}
             style={{ cursor: 'pointer', fontSize: 12, color: '#8c8c8c' }}
           />
+          {onDelete && (
+            <DeleteOutlined
+              onClick={() => onDelete(message.id)}
+              style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
+            />
+          )}
         </Space>
       )}
     </div>

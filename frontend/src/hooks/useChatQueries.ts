@@ -22,3 +22,11 @@ export function useUpdateMessage(sessionId: string | null) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
   });
 }
+
+export function useDeleteMessage(sessionId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => api.deleteMessage(sessionId!, messageId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
+  });
+}

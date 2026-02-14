@@ -152,6 +152,36 @@ class TestMessages:
         assert len(included) == 1
         assert included[0].content == "A"
 
+    def test_delete_message(self):
+        service.create_session("Test")
+        m1 = PlanningMessage(role="user", content="A")
+        m2 = PlanningMessage(role="assistant", content="B")
+        service.append_message("planning-001", m1)
+        service.append_message("planning-001", m2)
+
+        assert service.delete_message("planning-001", m1.id) is True
+
+        msgs = service.load_messages("planning-001")
+        assert len(msgs) == 1
+        assert msgs[0].content == "B"
+
+    def test_delete_message_not_found(self):
+        service.create_session("Test")
+        assert service.delete_message("planning-001", "nonexistent") is False
+
+    def test_delete_message_updates_session_count(self):
+        service.create_session("Test")
+        m1 = PlanningMessage(role="user", content="A")
+        m2 = PlanningMessage(role="assistant", content="B")
+        service.append_message("planning-001", m1)
+        service.append_message("planning-001", m2)
+
+        service.delete_message("planning-001", m1.id)
+
+        session = service.get_session("planning-001")
+        assert session is not None
+        assert session.message_count == 1
+
     def test_session_message_count_updated(self):
         service.create_session("Test")
         service.append_message("planning-001", PlanningMessage(role="user", content="A"))

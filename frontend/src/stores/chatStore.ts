@@ -12,6 +12,7 @@ interface ChatState {
   setMessages: (messages: PlanningMessage[]) => void;
   addMessage: (message: PlanningMessage) => void;
   updateMessage: (id: string, updates: Partial<PlanningMessage>) => void;
+  removeMessage: (id: string) => void;
   startStreaming: (controller: AbortController) => void;
   appendToken: (token: string) => void;
   finishStreaming: (message: PlanningMessage) => void;
@@ -34,6 +35,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   updateMessage: (id, updates) =>
     set((s) => ({
       messages: s.messages.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+    })),
+
+  removeMessage: (id) =>
+    set((s) => ({
+      messages: s.messages.filter((m) => m.id !== id),
     })),
 
   startStreaming: (controller) =>
