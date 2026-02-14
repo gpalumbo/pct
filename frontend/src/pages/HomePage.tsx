@@ -2,6 +2,7 @@ import { Button, Layout, Space, Typography } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import PlanningChat from '../components/chat/PlanningChat';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -16,7 +17,7 @@ export default function HomePage() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh' }}>
       <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={4} style={{ color: 'white', margin: 0 }}>
           PCT
@@ -26,9 +27,8 @@ export default function HomePage() {
           <Button onClick={handleLogout}>Logout</Button>
         </Space>
       </Header>
-      <Content style={{ padding: 24 }}>
-        <Title level={3}>Welcome to PCT</Title>
-        <p>Project Curation Tool is ready.</p>
+      <Content style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <PlanningChat />
       </Content>
     </Layout>
   );
