@@ -124,6 +124,11 @@ export default function AgentsTab() {
           <Form.Item name="context_length" label="Context Length Override">
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
+          {providerType !== 'user' && (
+            <Form.Item name="temperature" label="Temperature">
+              <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} placeholder="Model default" />
+            </Form.Item>
+          )}
           {providerType === 'remote' && (
             <Form.Item name="cli_command" label="CLI Command">
               <Input />

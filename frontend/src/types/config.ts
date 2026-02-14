@@ -65,6 +65,7 @@ export interface AgentConfig {
   lora?: string | null;
   cli_command?: string | null;
   context_length?: number | null;
+  temperature?: number | null;
 }
 
 export interface WorkflowStageConfig {

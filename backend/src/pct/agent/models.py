@@ -117,6 +117,7 @@ class AgentConfig(BaseModel):
     lora: str | None = None
     cli_command: str | None = None
     context_length: int | None = None
+    temperature: float | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -88,3 +88,4 @@ class TestAgentConfig:
         assert config.lora is None
         assert config.prompt_template is None
         assert config.context_length is None
+        assert config.temperature is None
