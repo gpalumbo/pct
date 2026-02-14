@@ -239,6 +239,7 @@ class AgentConfig(BaseModel):
     # Provider-specific config
     cli_command: str | None = None             # for remote API (e.g., "claude")
     context_length: int | None = None          # override model's default context window
+    temperature: float | None = None           # sampling temperature (0.0–2.0), None = model default
 ```
 
 ### User
@@ -770,6 +771,7 @@ classDiagram
         +str lora
         +str cli_command
         +int context_length
+        +float temperature
     }
 
     class AgentJob {

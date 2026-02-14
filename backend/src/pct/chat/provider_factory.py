@@ -29,6 +29,7 @@ def resolve_provider(agent_id: str) -> AgentProvider:
         return LocalLLMProvider(
             model_path=model_entry.model_path,
             context_length=agent_cfg.context_length or model_entry.context_length,
+            temperature=agent_cfg.temperature,
         )
 
     if agent_cfg.provider_type == ProviderType.REMOTE_API:

@@ -83,6 +83,7 @@ class LocalLLMProvider:
         model_path: str | None = None,
         context_length: int | None = None,
         n_gpu_layers: int | None = None,
+        temperature: float | None = None,
     ) -> None:
         if backend is not None:
             self._backend = backend
@@ -99,6 +100,7 @@ class LocalLLMProvider:
         else:
             raise ValueError("Either backend or model_path must be provided")
 
+        self._temperature = temperature
         self._interrupted = False
 
     async def execute(
@@ -133,6 +135,8 @@ class LocalLLMProvider:
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = tools
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
         response = await loop.run_in_executor(
             None,
             lambda: self._backend.create_chat_completion(
@@ -179,7 +183,12 @@ class LocalLLMProvider:
 
         def _run_stream() -> None:
             try:
-                chunks = self._backend.create_chat_completion(messages, stream=True)
+                stream_kwargs: dict[str, Any] = {}
+                if self._temperature is not None:
+                    stream_kwargs["temperature"] = self._temperature
+                chunks = self._backend.create_chat_completion(
+                    messages, stream=True, **stream_kwargs
+                )
                 for chunk in chunks:
                     if self._interrupted:
                         break
