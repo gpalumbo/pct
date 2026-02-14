@@ -116,7 +116,6 @@ class AgentConfig(BaseModel):
     prompt_template: str | None = None
     lora: str | None = None
     cli_command: str | None = None
-    model_path: str | None = None
     context_length: int | None = None
 
 

@@ -1,4 +1,5 @@
-import { Button, Layout, Typography } from 'antd';
+import { Button, Layout, Space, Typography } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,7 +21,10 @@ export default function HomePage() {
         <Title level={4} style={{ color: 'white', margin: 0 }}>
           PCT
         </Title>
-        <Button onClick={handleLogout}>Logout</Button>
+        <Space>
+          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>Settings</Button>
+          <Button onClick={handleLogout}>Logout</Button>
+        </Space>
       </Header>
       <Content style={{ padding: 24 }}>
         <Title level={3}>Welcome to PCT</Title>

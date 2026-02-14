@@ -8,6 +8,7 @@ from loguru import logger
 
 from pct import config
 from pct.auth.router import router as auth_router
+from pct.settings.router import router as config_router
 
 
 @asynccontextmanager
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(config_router, prefix="/api/config", tags=["config"])
 
 
 @app.get("/api/health")

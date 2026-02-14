@@ -100,11 +100,19 @@ class ProjectConfig(BaseModel):
     project_id: str
     project_name: str
     project_type: str
-    workflow_stages: list[TaskStatus]           # ordered list of active stages
-    default_agent: str                         # agent ID for unassigned stages
+    agents: list[AgentConfig]                  # named agents defined for this project
+    workflow_stages: list[WorkflowStageConfig] # ordered list of active stages with agent assignments
+    planning_agent: str                        # agent ID for the planning chat
+    default_agent: str                         # agent ID fallback for unassigned stages
     auto_advance: dict[str, bool]              # stage -> auto-advance flag
     concurrency: ConcurrencyConfig
     context: ContextConfig
+
+class WorkflowStageConfig(BaseModel):
+    """Configuration for a single workflow stage."""
+    stage: TaskStatus                          # which stage
+    enabled: bool = True                       # whether this stage is active
+    agent: str | None = None                   # agent ID assigned to this stage (falls back to default_agent)
 
 class ConcurrencyConfig(BaseModel):
     remote_api_limit: int = 2
@@ -185,24 +193,52 @@ class Task(BaseModel):
         ...
 ```
 
+### Model Registry
+
+Global catalog of available models. Shared across all projects.
+
+```python
+class ModelRegistryEntry(BaseModel):
+    """Persisted in ~/.pct/registries/models.yaml (list of entries)."""
+    id: str                                    # e.g., "claude-sonnet-4-5", "llama-3-8b"
+    provider_type: ProviderType                # remote or local
+    model_id: str                              # provider-specific identifier (API model ID or local filename)
+    context_length: int                        # max tokens
+    model_path: str | None = None              # for local models: path to weights file
+    api_base: str | None = None                # for remote models: API endpoint base URL
+```
+
+### LoRA Registry
+
+Global catalog of available LoRA adapters. Shared across all projects.
+
+```python
+class LoRARegistryEntry(BaseModel):
+    """Persisted in ~/.pct/registries/loras.yaml (list of entries)."""
+    id: str                                    # e.g., "code-review-v2", "summarizer-v1"
+    base_model: str                            # model registry ID — enforces compatibility
+    path: str                                  # path to LoRA adapter weights
+    description: str = ""
+    created: datetime
+```
+
 ### Agent
 
-Configurable executor for a task at a given workflow stage.
+Standalone, named configuration that defines an executor. Agents are defined per-project and reference the global Model and LoRA registries.
 
 ```python
 class AgentConfig(BaseModel):
-    """Persisted as ~/.pct/curation/agent_configs/<agent-id>.yaml"""
-    id: str                                    # e.g., "claude-code", "local-llama"
+    """Persisted in .pct/pct.yaml under the agents list."""
+    id: str                                    # e.g., "claude-code", "local-reviewer"
     agent_type: AgentType
     provider_type: ProviderType
-    model: str                                 # model identifier
+    model: str                                 # model registry ID (from ModelRegistryEntry.id)
     prompt_template: str | None = None         # prompt template name (resolved from curation)
-    lora: str | None = None                    # LoRA name (resolved from curation)
+    lora: str | None = None                    # LoRA registry ID (from LoRARegistryEntry.id)
 
     # Provider-specific config
     cli_command: str | None = None             # for remote API (e.g., "claude")
-    model_path: str | None = None              # for local LLM (path to weights)
-    context_length: int | None = None          # model's max context window
+    context_length: int | None = None          # override model's default context window
 ```
 
 ### User
@@ -524,11 +560,36 @@ classDiagram
         +str project_id
         +str project_name
         +str project_type
-        +list~TaskStatus~ workflow_stages
+        +list~AgentConfig~ agents
+        +list~WorkflowStageConfig~ workflow_stages
+        +str planning_agent
         +str default_agent
         +dict auto_advance
         +ConcurrencyConfig concurrency
         +ContextConfig context
+    }
+
+    class WorkflowStageConfig {
+        +TaskStatus stage
+        +bool enabled
+        +str agent
+    }
+
+    class ModelRegistryEntry {
+        +str id
+        +ProviderType provider_type
+        +str model_id
+        +int context_length
+        +str model_path
+        +str api_base
+    }
+
+    class LoRARegistryEntry {
+        +str id
+        +str base_model
+        +str path
+        +str description
+        +datetime created
     }
 
     class ConcurrencyConfig {
@@ -648,8 +709,15 @@ classDiagram
     Project "1" *-- "1" ProjectConfig
     Project "1" *-- "*" Feature
     Project "1" *-- "*" BacklogFeature
+    ProjectConfig "1" *-- "*" AgentConfig
+    ProjectConfig "1" *-- "*" WorkflowStageConfig
     ProjectConfig "1" *-- "1" ConcurrencyConfig
     ProjectConfig "1" *-- "1" ContextConfig
+    AgentConfig ..> ModelRegistryEntry : model (by ID)
+    AgentConfig ..> LoRARegistryEntry : lora (by ID)
+    LoRARegistryEntry ..> ModelRegistryEntry : base_model (by ID)
+    WorkflowStageConfig ..> AgentConfig : agent (by ID)
+    WorkflowStageConfig --> TaskStatus
     Feature "1" *-- "1" FeatureMetadata
     Feature "1" *-- "*" Task
     Task "1" *-- "*" AttemptRecord
@@ -701,7 +769,6 @@ classDiagram
         +str prompt_template
         +str lora
         +str cli_command
-        +str model_path
         +int context_length
     }
 
@@ -895,6 +962,8 @@ flowchart LR
 | Model | File | Format |
 |-------|------|--------|
 | ProjectConfig | `.pct/pct.yaml` | YAML |
+| AgentConfig (list) | `.pct/pct.yaml` (under `agents` key) | YAML |
+| WorkflowStageConfig (list) | `.pct/pct.yaml` (under `workflow_stages` key) | YAML |
 | Project link | `.pct/link.yaml` | YAML |
 | Project spec | `.pct/project_spec.md` | Markdown |
 | Feature spec | `.pct/active-features/<id>/feature_spec.md` | Markdown |
@@ -924,11 +993,17 @@ flowchart LR
 |-------|------|--------|
 | User (all users) | `users.json` | JSON (dict keyed by email) |
 
+### Global registries (`~/.pct/registries/`)
+
+| Model | File | Format |
+|-------|------|--------|
+| ModelRegistryEntry | `models.yaml` | YAML (list of entries) |
+| LoRARegistryEntry | `loras.yaml` | YAML (list of entries) |
+
 ### Global curation (`~/.pct/curation/`)
 
 | Model | File | Format |
 |-------|------|--------|
-| AgentConfig | `agent_configs/<agent-id>.yaml` | YAML |
 | Prompt templates | `prompt_templates/v<N>/<stage>.md` | Markdown |
 | Training data | `training_data/{positive,negative}/` | Mixed |
 | LoRA weights | `loras/<name>/` | Model files |

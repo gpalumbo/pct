@@ -46,12 +46,20 @@ Tasks support **explicit dependencies** — both within a feature and across fea
 Tasks can be added mid-flight to an active swimlane — by the user manually, or by agents (e.g., the refactoring-check agent or integration test failures spawning new tasks). New tasks always enter at the Refine Spec workflow stage.
 
 ### Agent
-The executor of a task at a given workflow stage. An agent can be:
+A standalone, named configuration that defines an executor. An agent can be:
 - **LLM Agent** — an AI model (local or remote) with a configured prompt template, model, and optional LoRA
 - **User Agent** — the human does the work manually
 - **Tool Agent** — a custom tool or script (future)
 
-The agent is configurable **per task type and per workflow stage**. A task might use Claude Code for implementation but a local LLM for code review.
+Agents are **defined in the Project Configuration page (F10)** by combining a model (from the Model Registry), an optional LoRA adapter (from the LoRA Registry), a prompt template, and provider-specific settings. Once defined, an agent is a reusable, named entity available throughout the project — workflow stages, features, tasks, and the planning chat all reference agents by ID.
+
+The agent assigned to a task is configurable **per workflow stage, per feature, and per task**. A task might use Claude Code for implementation but a local LLM for code review.
+
+### Model Registry
+A global catalog of available models — both local (e.g., Llama 3 weights on disk) and remote (e.g., Claude Sonnet via API). Each entry records the model identifier, provider type, context length, and provider-specific details (file path for local, API endpoint for remote). The registry provides **dropdown population** in the agent configuration UI. Models are registered once and shared across all projects.
+
+### LoRA Registry
+A global catalog of available LoRA adapters. Each entry records the adapter name, compatible base model, file path, and description. LoRA entries reference a Model Registry entry to enforce compatibility — the agent configuration UI only shows LoRAs compatible with the selected base model. Like the Model Registry, this is global and provides **dropdown population** in the agent configuration UI.
 
 ### Workflow Stage (Kanban Column)
 The stages a task passes through. The Kanban columns **are** the workflow stages:
@@ -103,7 +111,10 @@ The planning chat is also used when:
 - A swimlane is suspended for re-planning
 - The user wants to revise the project or feature spec mid-flight
 
-The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks.
+The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks. It acts like a chat session allowing back and forth.
+Capabilities:
+ - User should have the ability to change the model between prompts. 
+ - User can curate context either by selecting messages to be included/excluded or editing message role and content.
 
 ### F2: Kanban Board with Swimlanes
 The primary project view once planning is complete. Displays:
@@ -185,12 +196,15 @@ Controls for parallel workstream management:
 ### F10: Project Configuration Page
 Dedicated settings page for managing project-level configuration:
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
-- **Workflow stage configuration** — which stages are active for this project, stage ordering, auto-advance rules per stage
-- **Default agent assignments** — which agent handles each workflow stage by default (overridable per feature or task)
+- **Model registry management** — view, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, provider type (local/remote), model identifier, context length, and provider-specific details (model file path for local, API base URL for remote). The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
+- **LoRA registry management** — view, add, edit, and remove entries in the global LoRA Registry. Each entry specifies an adapter name, the compatible base model (selected from the Model Registry), file path to weights, and a description. The UI enforces base-model compatibility — only LoRAs matching the selected model appear in dropdowns.
+- **Agent configuration** — define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an agent type (LLM / User / Tool), a prompt template, and provider-specific settings. Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, duplicating, and deleting agents.
+- **Workflow stage configuration** — which stages are active for this project, stage ordering, auto-advance rules per stage. Each stage has an **assigned agent** (dropdown from the project's configured agents) that serves as the default executor for tasks entering that stage. Agent assignments are overridable per feature or per task.
+- **Planning agent** — select which configured agent handles the planning chat (F1). Defaults to the first remote LLM agent defined.
 - **Project metadata** — project name, project type, description
 - **Feature serialization** — per-feature toggle for serial vs. parallel task execution. Features producing non-mergeable artifacts (images, video, binary formats) must use serial execution since outputs cannot be git-merged.
 
-All settings persist to `pct.yaml` in the project repo.
+All project-level settings persist to `pct.yaml` in the project repo. The Model Registry and LoRA Registry persist globally to `~/.pct/registries/`.
 
 ---
 
@@ -351,7 +365,7 @@ All future agent invocations inherit this updated instruction. The user also sel
 | Swimlane suspended | Grayed swimlane + scoped planning chat opens |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
 | Feedback/training | Dedicated view: example browser, prompt editor, training controls |
-| Project configuration | Settings page: concurrency limits, workflow stages, agent defaults, feature serialization |
+| Project configuration | Settings page: model registry, LoRA registry, agent configuration, workflow stages with agent assignments, concurrency limits, feature serialization |
 
 ---
 

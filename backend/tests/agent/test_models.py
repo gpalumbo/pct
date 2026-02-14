@@ -77,7 +77,7 @@ class TestEnums:
 
 class TestAgentConfig:
     def test_agent_config_optional_fields(self):
-        """cli_command, model_path, lora default to None."""
+        """cli_command, lora default to None."""
         config = AgentConfig(
             id="test-agent",
             agent_type=AgentType.LLM,
@@ -85,7 +85,6 @@ class TestAgentConfig:
             model="llama-7b",
         )
         assert config.cli_command is None
-        assert config.model_path is None
         assert config.lora is None
         assert config.prompt_template is None
         assert config.context_length is None
