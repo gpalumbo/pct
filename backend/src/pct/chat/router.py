@@ -9,9 +9,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from pct.auth.dependencies import get_current_user
-from pct.agent.models import AssembledContext
 from pct.agent.chat_loop import execute_chat_turn
+from pct.agent.models import AssembledContext
+from pct.agent.tools import ToolRegistry, create_global_registry
+from pct.auth.dependencies import get_current_user
 from pct.chat import service
 from pct.chat.models import (
     ChatSession,
@@ -19,11 +20,28 @@ from pct.chat.models import (
     SendMessageRequest,
     UpdateMessageRequest,
 )
-from pct.chat.provider_factory import resolve_provider, get_default_planning_agent_id
+from pct.chat.provider_factory import get_default_planning_agent_id, resolve_provider
+from pct.config import settings
+from pct.settings import service as settings_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_tool_registry: ToolRegistry | None = None
+
+
+def _get_tool_registry() -> ToolRegistry:
+    """Lazily create the global tool registry (singleton per process)."""
+    global _tool_registry
+    if _tool_registry is None:
+        from pathlib import Path
+
+        project_root = Path(settings.project_root) if settings.project_root else Path.cwd()
+        project_cfg = settings_service.get_project_config()
+        project_id = project_cfg.project_id if project_cfg else ""
+        _tool_registry = create_global_registry(project_root, project_id)
+    return _tool_registry
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +162,7 @@ async def send_message(
                     context=context,
                     system_prompt=agent_cfg.prompt_template,
                     on_token=on_token,
+                    tool_registry=_get_tool_registry(),
                 )
                 full_content = "".join(collected_tokens) or result.output
                 assistant_msg = PlanningMessage(
@@ -154,7 +173,7 @@ async def send_message(
                 )
                 service.append_message(session_id, assistant_msg)
                 return assistant_msg
-            except Exception as e:
+            except Exception:
                 logger.exception("Chat turn failed")
                 raise
             finally:

@@ -24,6 +24,9 @@ dependencies = [
     "bcrypt",
     "google-auth",
     "llama-cpp-python",
+    # Agent tools
+    "duckduckgo-search",
+    "httpx",
 ]
 
 [project.optional-dependencies]
