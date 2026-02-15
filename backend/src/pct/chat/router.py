@@ -138,10 +138,11 @@ async def send_message(
         # disconnects before the generator finishes.
         async def run_chat():
             try:
-                provider = resolve_provider(agent_id)
+                provider, agent_cfg = resolve_provider(agent_id)
                 result = await execute_chat_turn(
                     provider=provider,
                     context=context,
+                    system_prompt=agent_cfg.prompt_template,
                     on_token=on_token,
                 )
                 full_content = "".join(collected_tokens) or result.output

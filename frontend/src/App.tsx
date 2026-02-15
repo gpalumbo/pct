@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { useUIStore } from './stores/uiStore';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import SettingsPage from './pages/SettingsPage';
@@ -17,11 +18,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const fontSize = useUIStore((s) => s.fontSize);
 
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <QueryClientProvider client={queryClient}>
-        <ConfigProvider theme={{ algorithm: theme.compactAlgorithm }}>
+        <ConfigProvider theme={{ algorithm: theme.compactAlgorithm, token: { fontSize } }}>
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />

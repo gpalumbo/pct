@@ -13,8 +13,12 @@ from pct.settings import service as settings_service
 logger = logging.getLogger(__name__)
 
 
-def resolve_provider(agent_id: str) -> AgentProvider:
-    """Look up an AgentConfig and create the appropriate provider."""
+def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
+    """Look up an AgentConfig and create the appropriate provider.
+
+    Returns ``(provider, agent_config)`` so callers can access config fields
+    like ``prompt_template``.
+    """
     agent_cfg = settings_service.get_agent(agent_id)
     if agent_cfg is None:
         raise ValueError(f"Agent not found: {agent_id}")
@@ -30,10 +34,10 @@ def resolve_provider(agent_id: str) -> AgentProvider:
             model_path=model_entry.model_path,
             context_length=agent_cfg.context_length or model_entry.context_length,
             temperature=agent_cfg.temperature,
-        )
+        ), agent_cfg
 
     if agent_cfg.provider_type == ProviderType.REMOTE_API:
-        return ClaudeCodeProvider()
+        return ClaudeCodeProvider(), agent_cfg
 
     raise ValueError(f"Unsupported provider type: {agent_cfg.provider_type}")
 

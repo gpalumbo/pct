@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { Button, Divider, Form, Input, InputNumber, Select, Switch, message } from 'antd';
+import { Button, Divider, Form, Input, InputNumber, Select, Slider, Switch, Typography, message } from 'antd';
 import { useProjectConfig, useSaveProjectConfig, useAgents } from '../../hooks/useConfigQueries';
+import { useUIStore } from '../../stores/uiStore';
 import type { ProjectConfig } from '../../types/config';
 
 const DEFAULT_CONFIG: ProjectConfig = {
@@ -42,10 +43,20 @@ export default function GeneralTab() {
     message.success('Project config saved');
   };
 
+  const fontSize = useUIStore((s) => s.fontSize);
+  const setFontSize = useUIStore((s) => s.setFontSize);
+
   const agentOptions = agents.map((a) => ({ label: a.id, value: a.id }));
 
   return (
-    <Form form={form} layout="vertical" style={{ maxWidth: 600 }} initialValues={config ?? DEFAULT_CONFIG}>
+    <div style={{ maxWidth: 600 }}>
+      <Divider orientation="left">UI Preferences</Divider>
+      <div style={{ marginBottom: 24 }}>
+        <Typography.Text>Font Size: {fontSize}px</Typography.Text>
+        <Slider min={10} max={20} value={fontSize} onChange={setFontSize} />
+      </div>
+
+    <Form form={form} layout="vertical" initialValues={config ?? DEFAULT_CONFIG}>
       <Divider orientation="left">Project Metadata</Divider>
       <Form.Item name="project_id" label="Project ID">
         <Input />
@@ -90,5 +101,6 @@ export default function GeneralTab() {
         </Button>
       </Form.Item>
     </Form>
+    </div>
   );
 }
