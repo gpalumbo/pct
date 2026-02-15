@@ -76,7 +76,7 @@ async def execute_chat_turn(
                 result = await asyncio.wait_for(coro, timeout=timeout_seconds)
             else:
                 result = await coro
-            logger.error("LLM result: {}", result)
+            logger.debug("LLM result: {}", result)
 
             # No tool calls — final response
             if not result.tool_calls or tool_registry is None:

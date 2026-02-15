@@ -133,7 +133,9 @@ async def send_message(
             collected_tokens.append(token)
             await token_queue.put(token)
 
-        # Run the chat turn in background
+        # Run the chat turn in background and persist immediately on
+        # completion so the message is saved even if the SSE client
+        # disconnects before the generator finishes.
         async def run_chat():
             try:
                 provider = resolve_provider(agent_id)
@@ -142,10 +144,17 @@ async def send_message(
                     context=context,
                     on_token=on_token,
                 )
-                return result
+                full_content = "".join(collected_tokens) or result.output
+                assistant_msg = PlanningMessage(
+                    role="assistant",
+                    content=full_content,
+                    tokens=result.tokens_output or None,
+                    agent_id=agent_id,
+                )
+                service.append_message(session_id, assistant_msg)
+                return assistant_msg
             except Exception as e:
                 logger.exception("Chat turn failed")
-                await token_queue.put(None)
                 raise
             finally:
                 await token_queue.put(None)
@@ -159,17 +168,10 @@ async def send_message(
                 break
             yield _sse({"token": token})
 
-        # Get result and persist assistant message
+        # Message already persisted by run_chat(); send done event if
+        # the client is still connected.
         try:
-            result = await task
-            full_content = "".join(collected_tokens) or result.output
-            assistant_msg = PlanningMessage(
-                role="assistant",
-                content=full_content,
-                tokens=result.tokens_output or None,
-                agent_id=agent_id,
-            )
-            service.append_message(session_id, assistant_msg)
+            assistant_msg = await task
             yield _sse({
                 "done": True,
                 "message": json.loads(assistant_msg.model_dump_json()),
