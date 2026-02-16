@@ -1,13 +1,13 @@
 import { Button, Layout, Space, Typography } from 'antd';
-import { AppstoreOutlined, SettingOutlined } from '@ant-design/icons';
+import { HomeOutlined, SettingOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useNavigate } from 'react-router-dom';
-import PlanningChat from '../components/chat/PlanningChat';
+import KanbanBoard from '../components/board/KanbanBoard';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
 
-export default function HomePage() {
+export default function BoardPage() {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -20,16 +20,16 @@ export default function HomePage() {
     <Layout style={{ height: '100vh' }}>
       <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={4} style={{ color: 'white', margin: 0 }}>
-          PCT
+          PCT Board
         </Title>
         <Space>
-          <Button icon={<AppstoreOutlined />} onClick={() => navigate('/board')}>Board</Button>
+          <Button icon={<HomeOutlined />} onClick={() => navigate('/')}>Home</Button>
           <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>Settings</Button>
           <Button onClick={handleLogout}>Logout</Button>
         </Space>
       </Header>
       <Content style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <PlanningChat />
+        <KanbanBoard />
       </Content>
     </Layout>
   );
