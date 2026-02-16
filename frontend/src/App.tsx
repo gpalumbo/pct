@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/authStore';
 import { useUIStore } from './stores/uiStore';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
+import BoardPage from './pages/BoardPage';
 import SettingsPage from './pages/SettingsPage';
 
 const queryClient = new QueryClient();
@@ -32,6 +33,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <HomePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/board"
+                element={
+                  <ProtectedRoute>
+                    <BoardPage />
                   </ProtectedRoute>
                 }
               />
