@@ -180,5 +180,20 @@ def delete_message(session_id: str, message_id: str) -> bool:
     return True
 
 
+def truncate_from_message(session_id: str, message_id: str) -> bool:
+    """Delete a message and everything after it by rewriting the JSONL file."""
+    messages = load_messages(session_id)
+    idx = next((i for i, m in enumerate(messages) if m.id == message_id), None)
+    if idx is None:
+        return False
+    new_messages = messages[:idx]
+    path = _messages_path(session_id)
+    with open(path, "w") as f:
+        for m in new_messages:
+            f.write(m.model_dump_json() + "\n")
+    _update_session_metadata(session_id)
+    return True
+
+
 def get_included_messages(session_id: str) -> list[PlanningMessage]:
     return [m for m in load_messages(session_id) if m.included]

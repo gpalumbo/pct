@@ -28,6 +28,9 @@ export const updateMessage = (sessionId: string, messageId: string, data: Update
 export const deleteMessage = (sessionId: string, messageId: string) =>
   client.delete(`/api/chat/sessions/${sessionId}/messages/${messageId}`);
 
+export const truncateFromMessage = (sessionId: string, messageId: string) =>
+  client.delete(`/api/chat/sessions/${sessionId}/messages/${messageId}/truncate`);
+
 // SSE streaming (uses native fetch — Axios doesn't support ReadableStream)
 export function sendMessageStream(
   sessionId: string,

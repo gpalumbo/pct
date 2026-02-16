@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Spin, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatStore } from '../../stores/chatStore';
-import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage } from '../../hooks/useChatQueries';
+import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage, useTruncateFromMessage } from '../../hooks/useChatQueries';
 import { sendMessageStream } from '../../api/chatApi';
 import type { PlanningMessage } from '../../types/chat';
 import MessageList from './MessageList';
@@ -52,6 +52,7 @@ export default function PlanningChat() {
   // 3. Message update/delete mutations
   const updateMutation = useUpdateMessage(activeSessionId);
   const deleteMutation = useDeleteMessage(activeSessionId);
+  const truncateMutation = useTruncateFromMessage(activeSessionId);
 
   const handleUpdateMessage = (id: string, updates: { role?: string; content?: string; included?: boolean }) => {
     if (!activeSessionId) return;
@@ -67,6 +68,19 @@ export default function PlanningChat() {
     if (!activeSessionId) return;
     removeStoreMessage(id);
     deleteMutation.mutate(id);
+  };
+
+  // 4a. Replay / Truncate-and-replay handlers
+  const handleReplay = (msg: PlanningMessage) => {
+    handleSend(msg.content, null);
+  };
+
+  const handleTruncateAndReplay = async (msg: PlanningMessage) => {
+    if (!activeSessionId) return;
+    const content = msg.content;
+    useChatStore.getState().truncateFromMessage(msg.id);
+    await truncateMutation.mutateAsync(msg.id);
+    handleSend(content, null);
   };
 
   // 4. Send message with streaming
@@ -137,6 +151,8 @@ export default function PlanningChat() {
         isStreaming={isStreaming}
         onUpdateMessage={handleUpdateMessage}
         onDeleteMessage={handleDeleteMessage}
+        onReplay={handleReplay}
+        onTruncateAndReplay={handleTruncateAndReplay}
       />
       <ChatInput isStreaming={isStreaming} onSend={handleSend} onStop={cancelStreaming} />
     </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Checkbox, Input, Select, Space, Tag, Typography } from 'antd';
-import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Checkbox, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, RedoOutlined, ScissorOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { PlanningMessage } from '../../types/chat';
 
@@ -16,9 +16,12 @@ interface Props {
   message: PlanningMessage;
   onUpdate?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
   onDelete?: (id: string) => void;
+  onReplay?: (msg: PlanningMessage) => void;
+  onTruncateAndReplay?: (msg: PlanningMessage) => void;
+  isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message, onUpdate, onDelete }: Props) {
+export default function MessageBubble({ message, onUpdate, onDelete, onReplay, onTruncateAndReplay, isStreaming }: Props) {
   const [editing, setEditing] = useState(false);
   const [editRole, setEditRole] = useState(message.role);
   const [editContent, setEditContent] = useState(message.content);
@@ -123,6 +126,22 @@ export default function MessageBubble({ message, onUpdate, onDelete }: Props) {
               onClick={() => onDelete(message.id)}
               style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
             />
+          )}
+          {isUser && onReplay && (
+            <Tooltip title="Replay">
+              <RedoOutlined
+                onClick={() => !isStreaming && onReplay(message)}
+                style={{ cursor: isStreaming ? 'not-allowed' : 'pointer', fontSize: 12, color: isStreaming ? '#d9d9d9' : '#1677ff' }}
+              />
+            </Tooltip>
+          )}
+          {isUser && onTruncateAndReplay && (
+            <Tooltip title="Truncate & replay">
+              <ScissorOutlined
+                onClick={() => !isStreaming && onTruncateAndReplay(message)}
+                style={{ cursor: isStreaming ? 'not-allowed' : 'pointer', fontSize: 12, color: isStreaming ? '#d9d9d9' : '#fa8c16' }}
+              />
+            </Tooltip>
           )}
         </Space>
       )}

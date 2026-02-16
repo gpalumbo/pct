@@ -10,9 +10,11 @@ interface Props {
   isStreaming: boolean;
   onUpdateMessage?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
   onDeleteMessage?: (id: string) => void;
+  onReplay?: (msg: PlanningMessage) => void;
+  onTruncateAndReplay?: (msg: PlanningMessage) => void;
 }
 
-export default function MessageList({ messages, streamingContent, isStreaming, onUpdateMessage, onDeleteMessage }: Props) {
+export default function MessageList({ messages, streamingContent, isStreaming, onUpdateMessage, onDeleteMessage, onReplay, onTruncateAndReplay }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ export default function MessageList({ messages, streamingContent, isStreaming, o
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 0' }}>
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} onUpdate={onUpdateMessage} onDelete={onDeleteMessage} />
+        <MessageBubble key={msg.id} message={msg} onUpdate={onUpdateMessage} onDelete={onDeleteMessage} onReplay={onReplay} onTruncateAndReplay={onTruncateAndReplay} isStreaming={isStreaming} />
       ))}
 
       {/* Streaming indicator: temporary assistant bubble */}

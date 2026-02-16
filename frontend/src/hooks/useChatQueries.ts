@@ -30,3 +30,11 @@ export function useDeleteMessage(sessionId: string | null) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
   });
 }
+
+export function useTruncateFromMessage(sessionId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => api.truncateFromMessage(sessionId!, messageId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
+  });
+}
