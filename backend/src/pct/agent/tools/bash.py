@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from typing import Any
 
 
 class BashTool:
-    """Runs a shell command via asyncio.create_subprocess_shell."""
+    """Runs a shell command via subprocess in a thread."""
 
     def __init__(self, timeout: float = 30.0) -> None:
         self._timeout = timeout
@@ -41,21 +42,25 @@ class BashTool:
         parsed = json.loads(arguments)
         command = parsed["command"]
 
+        loop = asyncio.get_running_loop()
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=self._timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, self._run, command),
+                timeout=self._timeout,
             )
         except TimeoutError:
-            proc.kill()
-            await proc.communicate()
             return f"[error] Command timed out after {self._timeout}s"
 
-        output = stdout.decode()
-        if stderr:
-            output += stderr.decode()
+        return result
+
+    def _run(self, command: str) -> str:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            timeout=self._timeout,
+        )
+        output = proc.stdout.decode()
+        if proc.stderr:
+            output += proc.stderr.decode()
         return output

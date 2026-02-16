@@ -105,6 +105,7 @@ async def execute_chat_turn(
 
             # Execute each tool and append results
             for tc in result.tool_calls:
+                logger.info("Tool call: {}({})", tc.function_name, tc.arguments)
                 try:
                     output = await tool_registry.execute(
                         tc.function_name, tc.arguments
@@ -115,6 +116,11 @@ async def execute_chat_turn(
                     error = str(exc)
 
                 content = error if error else output
+                if error:
+                    logger.warning("Tool error [{}]: {}", tc.function_name, error)
+                else:
+                    preview = output[:200] + ("…" if len(output) > 200 else "")
+                    logger.info("Tool result [{}]: {}", tc.function_name, preview)
                 messages.append(
                     {
                         "role": "tool",

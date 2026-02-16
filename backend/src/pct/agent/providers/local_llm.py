@@ -121,7 +121,7 @@ class LocalLLMProvider:
             }
             if n_gpu_layers is not None:
                 kwargs["n_gpu_layers"] = n_gpu_layers
-            self._backend = Llama(model_path=model_path, verbose=True, **kwargs)
+            self._backend = Llama(model_path=model_path, verbose=False, **kwargs)
 
             # Install after Llama() — verbose=False sets a no-op callback
             # internally, so we override it to keep perf context lines.

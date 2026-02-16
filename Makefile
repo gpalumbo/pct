@@ -52,10 +52,10 @@ build-frontend:
 
 # Dev servers
 dev-backend:
-	python -m uvicorn pct.main:app --reload --host 127.0.0.1 --port 8000
+	exec python -m uvicorn pct.main:app --reload --host 127.0.0.1 --port 8000
 
 dev-frontend:
-	cd frontend && npm run dev
+	cd frontend && exec npm run dev
 
 # Tests
 test: test-backend test-frontend
