@@ -121,8 +121,8 @@ export default function AgentsTab() {
           <Form.Item name="prompt_template" label="Prompt Template">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="context_length" label="Context Length Override">
-            <InputNumber min={1} style={{ width: '100%' }} />
+          <Form.Item name="context_length" label="Context Length Override" tooltip="0 = use model's training context length">
+            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           {providerType !== 'user' && (
             <Form.Item name="temperature" label="Temperature">

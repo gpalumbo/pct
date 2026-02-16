@@ -23,6 +23,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+from pct.agent.tools.registry_factory import create_global_registry
+
 # Ensure the backend package is importable when running from backend/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -35,16 +37,14 @@ DEFAULT_MODEL = "./models/qwen2.5-7b-instruct-q4_k_m.gguf"
 
 
 def build_registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(BashTool(timeout=10.0))
-    return registry
+    return create_global_registry(sys.path[0], "test_project")
 
 
 async def run(model_path: str, prompt: str, use_tools: bool) -> None:
     print(f"Loading model: {model_path}")
     provider = LocalLLMProvider(
         model_path=model_path,
-        context_length=8192,
+        context_length=128000,  # 128k context for better perf on long conversations
         n_gpu_layers=-1,
     )
 

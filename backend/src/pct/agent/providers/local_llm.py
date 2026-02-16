@@ -15,6 +15,30 @@ from pct.agent.models import AgentResult, TaskOutcome, ToolCall
 from pct.agent.protocols import CompletionBackend
 
 
+def _suppress_llama_logs() -> None:
+    """Install a log callback that only passes through perf context lines."""
+    try:
+        import ctypes
+
+        import llama_cpp
+
+        if getattr(_suppress_llama_logs, "_installed", False):
+            return
+
+        @llama_cpp.llama_log_callback  # type: ignore[misc]
+        def _log_callback(level, message, user_data):
+            text = message.decode("utf-8", errors="replace") if isinstance(message, bytes) else message
+            if "llama_perf_context_print" in text:
+                print(text, end="", flush=True)
+
+        # Keep a reference so the ctypes callback isn't garbage-collected
+        _suppress_llama_logs._cb = _log_callback  # type: ignore[attr-defined]
+        llama_cpp.llama_log_set(_log_callback, ctypes.c_void_p())
+        _suppress_llama_logs._installed = True  # type: ignore[attr-defined]
+    except Exception:
+        pass  # If anything fails, just use default logging
+
+
 def _parse_tool_calls_from_content(content: str) -> list[ToolCall]:
     """Extract tool calls from text content as a fallback.
 
@@ -91,12 +115,17 @@ class LocalLLMProvider:
             from pct.agent._llama_compat import require_llama
 
             Llama = require_llama()
-            kwargs: dict[str, Any] = {}
-            if context_length is not None:
-                kwargs["n_ctx"] = context_length
+            kwargs: dict[str, Any] = {
+                # n_ctx=0 tells llama.cpp to use the model's training context length
+                "n_ctx": context_length if context_length is not None else 0,
+            }
             if n_gpu_layers is not None:
                 kwargs["n_gpu_layers"] = n_gpu_layers
-            self._backend = Llama(model_path=model_path, **kwargs)
+            self._backend = Llama(model_path=model_path, verbose=True, **kwargs)
+
+            # Install after Llama() — verbose=False sets a no-op callback
+            # internally, so we override it to keep perf context lines.
+            _suppress_llama_logs()
         else:
             raise ValueError("Either backend or model_path must be provided")
 

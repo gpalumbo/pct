@@ -96,8 +96,8 @@ export default function ModelRegistryTab() {
           <Form.Item name="model_id" label="Model ID" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="context_length" label="Context Length" rules={[{ required: true }]}>
-            <InputNumber min={1} style={{ width: '100%' }} />
+          <Form.Item name="context_length" label="Context Length" initialValue={0} rules={[{ required: true }]} tooltip="0 = use model's training context length">
+            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           {providerType === 'local' && (
             <Form.Item
