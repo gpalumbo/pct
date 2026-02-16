@@ -9,15 +9,10 @@ from pct.agent.tools.registry_factory import create_global_registry
 
 EXPECTED_TOOLS = [
     "bash",
-    "file_read",
-    "file_write",
-    "file_edit",
-    "web_search",
-    "web_fetch",
-    "todo_read",
-    "todo_create",
-    "todo_edit",
-    "rag_search",
+    "file",
+    "read",
+    "search",
+    "todo",
 ]
 
 
@@ -30,7 +25,7 @@ class TestRegistryFactory:
         definitions = registry.get_definitions()
         names = [d["function"]["name"] for d in definitions]
 
-        assert len(definitions) == 10
+        assert len(definitions) == 5
         for expected in EXPECTED_TOOLS:
             assert expected in names, f"Missing tool: {expected}"
 
