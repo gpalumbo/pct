@@ -117,6 +117,13 @@ class TestToolCallContentFallback:
         assert calls[0].function_name == "bash"
         assert json.loads(calls[0].arguments) == {"command": "pwd"}
 
+    def test_parse_tool_call_tag_mismatched_braces(self):
+        """LLM emits double-open but single-close brace: {{"name": ...}"""
+        content = '<tool_call>\n{{"name": "read", "arguments": {"source": "https://wiki.factorio.com/Console#Kill_all_enemies"}}\n</tool_call>'
+        calls = _parse_tool_calls_from_content(content)
+        assert len(calls) == 1
+        assert calls[0].function_name == "read"
+
     def test_parse_multiple_tool_call_tags(self):
         content = (
             '<tool_call>{"name": "bash", "arguments": {"command": "ls"}}</tool_call>\n'

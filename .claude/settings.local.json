@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash"
+      "Bash",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

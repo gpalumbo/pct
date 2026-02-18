@@ -39,6 +39,19 @@ def _suppress_llama_logs() -> None:
         pass  # If anything fails, just use default logging
 
 
+def _brace_fix_candidates(raw: str):
+    """Yield the raw string, then variants with extra leading/trailing braces stripped."""
+    yield raw
+    has_extra_open = raw.startswith("{{")
+    has_extra_close = raw.endswith("}}")
+    if has_extra_open:
+        yield raw[1:]
+    if has_extra_close:
+        yield raw[:-1]
+    if has_extra_open and has_extra_close:
+        yield raw[1:-1]
+
+
 def _parse_tool_calls_from_content(content: str) -> list[ToolCall]:
     """Extract tool calls from text content as a fallback.
 
@@ -65,14 +78,16 @@ def _parse_tool_calls_from_content(content: str) -> list[ToolCall]:
             tag_matches = [stripped]
 
     for raw in tag_matches:
-        try:
-            if raw.startswith("{{") and raw.endswith("}}"):
-                # Some LLMs wrap JSON in extra braces: {{"name": ...}}
-                data = json.loads(raw[1:-1])
-            else:   
-                data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse tool call JSON")
+        # Some LLMs wrap JSON in extra braces, try increasingly aggressive fixes
+        data = None
+        for candidate in _brace_fix_candidates(raw):
+            try:
+                data = json.loads(candidate)
+                break
+            except json.JSONDecodeError:
+                continue
+        if data is None:
+            logger.warning("Failed to parse tool call JSON")
             continue
 
         if not isinstance(data, dict) or "name" not in data:
