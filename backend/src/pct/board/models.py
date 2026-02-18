@@ -64,6 +64,7 @@ class Task(BaseModel):
     tags: list[str] = Field(default_factory=list)
     priority: int = 0
     attempt: int = 0
+    artifact_path: str = ""
     created: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated: datetime = Field(default_factory=lambda: datetime.now(UTC))
     body: str = ""
@@ -129,6 +130,7 @@ class CreateTaskRequest(BaseModel):
     cross_depends_on: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     priority: int = 0
+    artifact_path: str | None = None
     body: str = ""
 
 
@@ -144,6 +146,7 @@ class UpdateTaskRequest(BaseModel):
     tags: list[str] | None = None
     priority: int | None = None
     attempt: int | None = None
+    artifact_path: str | None = None
     body: str | None = None
 
 

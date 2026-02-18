@@ -343,6 +343,11 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
         return None
 
     task_id = _next_task_id(feature_id)
+
+    # Auto-generate artifact path from feature/task slug if not provided
+    slug = re.sub(r"[^a-z0-9]+", "-", req.title.lower().strip()).strip("-")
+    artifact_path = req.artifact_path or f"artifacts/{feature_id}/{slug}.md"
+
     task = Task(
         id=task_id,
         title=req.title,
@@ -353,6 +358,7 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
         cross_depends_on=req.cross_depends_on,
         tags=req.tags,
         priority=req.priority,
+        artifact_path=artifact_path,
         body=req.body,
     )
     _save_task(feature_id, task)
@@ -381,6 +387,47 @@ def delete_task(feature_id: str, task_id: str) -> bool:
         return False
     path.unlink()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Artifact I/O
+# ---------------------------------------------------------------------------
+
+
+def read_artifact(feature_id: str, task_id: str) -> dict:
+    """Read a task's artifact file. Returns {path, content, exists}."""
+    task = get_task(feature_id, task_id)
+    if task is None:
+        return {"path": "", "content": "", "exists": False}
+
+    artifact_path = task.artifact_path
+    if not artifact_path:
+        return {"path": "", "content": "", "exists": False}
+
+    full_path = _project_root() / artifact_path
+    if full_path.exists():
+        return {
+            "path": artifact_path,
+            "content": full_path.read_text(encoding="utf-8"),
+            "exists": True,
+        }
+    return {"path": artifact_path, "content": "", "exists": False}
+
+
+def write_artifact(feature_id: str, task_id: str, content: str) -> dict:
+    """Write content to a task's artifact file. Returns {path, content, exists}."""
+    task = get_task(feature_id, task_id)
+    if task is None:
+        return {"path": "", "content": "", "exists": False}
+
+    artifact_path = task.artifact_path
+    if not artifact_path:
+        return {"path": "", "content": "", "exists": False}
+
+    full_path = _project_root() / artifact_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(content, encoding="utf-8")
+    return {"path": artifact_path, "content": content, "exists": True}
 
 
 # ---------------------------------------------------------------------------

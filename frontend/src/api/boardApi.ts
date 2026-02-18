@@ -50,3 +50,16 @@ export const moveTask = (featureId: string, taskId: string, data: MoveTaskReques
   client.post<Task>(`/api/board/features/${featureId}/tasks/${taskId}/move`, data).then((r) => r.data);
 export const deleteTask = (featureId: string, taskId: string) =>
   client.delete(`/api/board/features/${featureId}/tasks/${taskId}`);
+
+// Artifacts
+export interface ArtifactResponse {
+  path: string;
+  content: string;
+  exists: boolean;
+}
+
+export const fetchArtifact = (featureId: string, taskId: string) =>
+  client.get<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`).then((r) => r.data);
+
+export const saveArtifact = (featureId: string, taskId: string, content: string) =>
+  client.put<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`, { content }).then((r) => r.data);

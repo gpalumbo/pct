@@ -10,8 +10,11 @@ import type {
 export const fetchSessions = () =>
   client.get<ChatSession[]>('/api/chat/sessions').then((r) => r.data);
 
-export const createSession = (title: string = 'Planning') =>
-  client.post<ChatSession>('/api/chat/sessions', null, { params: { title } }).then((r) => r.data);
+export const createSession = (title: string = 'Planning', sessionId?: string) =>
+  client.post<ChatSession>('/api/chat/sessions', { title, session_id: sessionId ?? null }).then((r) => r.data);
+
+export const fetchSession = (sessionId: string) =>
+  client.get<ChatSession>(`/api/chat/sessions/${sessionId}`).then((r) => r.data);
 
 export const fetchDefaultSession = () =>
   client.get<ChatSession>('/api/chat/sessions/default').then((r) => r.data);
@@ -39,6 +42,7 @@ export function sendMessageStream(
   onToken: (token: string) => void,
   onDone: (message: PlanningMessage) => void,
   onError: (error: string) => void,
+  artifactPath?: string,
 ): AbortController {
   const controller = new AbortController();
   const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -46,6 +50,7 @@ export function sendMessageStream(
 
   const body: Record<string, unknown> = { content };
   if (agentId) body.agent_id = agentId;
+  if (artifactPath) body.artifact_path = artifactPath;
 
   fetch(`${baseURL}/api/chat/sessions/${sessionId}/send`, {
     method: 'POST',

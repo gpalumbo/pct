@@ -1,8 +1,10 @@
 import { Button, Layout, Space, Typography } from 'antd';
 import { HomeOutlined, SettingOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
+import { useBoardStore } from '../stores/boardStore';
 import { useNavigate } from 'react-router-dom';
 import KanbanBoard from '../components/board/KanbanBoard';
+import TaskDetailPanel from '../components/board/TaskDetailPanel';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -10,6 +12,8 @@ const { Title } = Typography;
 export default function BoardPage() {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const selectedTask = useBoardStore((s) => s.selectedTask);
+  const clearSelectedTask = useBoardStore((s) => s.clearSelectedTask);
 
   const handleLogout = () => {
     logout();
@@ -28,8 +32,13 @@ export default function BoardPage() {
           <Button onClick={handleLogout}>Logout</Button>
         </Space>
       </Header>
-      <Content style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <KanbanBoard />
+      <Content style={{ display: 'flex', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <KanbanBoard />
+        </div>
+        {selectedTask && (
+          <TaskDetailPanel selectedTask={selectedTask} onClose={clearSelectedTask} />
+        )}
       </Content>
     </Layout>
   );

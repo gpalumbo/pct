@@ -8,6 +8,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from pct.agent.chat_loop import execute_chat_turn
 from pct.agent.models import AssembledContext
@@ -54,17 +55,31 @@ async def list_sessions(_user: dict = Depends(get_current_user)):
     return service.list_sessions()
 
 
+class CreateSessionRequest(BaseModel):
+    title: str = "Planning"
+    session_id: str | None = None
+
+
 @router.post("/sessions", response_model=ChatSession, status_code=status.HTTP_201_CREATED)
 async def create_session(
-    title: str = "Planning",
+    req: CreateSessionRequest | None = None,
     _user: dict = Depends(get_current_user),
 ):
-    return service.create_session(title)
+    req = req or CreateSessionRequest()
+    return service.create_session(title=req.title, session_id=req.session_id)
 
 
 @router.get("/sessions/default", response_model=ChatSession)
 async def get_default_session(_user: dict = Depends(get_current_user)):
     return service.get_or_create_default_session()
+
+
+@router.get("/sessions/{session_id}", response_model=ChatSession)
+async def get_session(session_id: str, _user: dict = Depends(get_current_user)):
+    s = service.get_session(session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return s
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[PlanningMessage])
@@ -173,10 +188,18 @@ async def send_message(
         async def run_chat():
             try:
                 provider, agent_cfg = resolve_provider(agent_id)
+                system_prompt = agent_cfg.prompt_template
+                if req.artifact_path:
+                    system_prompt = (
+                        f"You are working on a kanban task. Write your final results "
+                        f"to the artifact file at: {req.artifact_path}\n"
+                        f'Use the file tool with action "write" to save your output there.\n\n'
+                        + system_prompt
+                    )
                 result = await execute_chat_turn(
                     provider=provider,
                     context=context,
-                    system_prompt=agent_cfg.prompt_template,
+                    system_prompt=system_prompt,
                     on_token=on_token,
                     tool_registry=_get_tool_registry(),
                 )

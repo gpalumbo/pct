@@ -1,6 +1,7 @@
 import { Card, Tag, Typography } from 'antd';
 import { Draggable } from '@hello-pangea/dnd';
 import type { Task } from '../../types/board';
+import { useBoardStore } from '../../stores/boardStore';
 
 const { Text } = Typography;
 
@@ -19,6 +20,14 @@ interface TaskCardProps {
 export default function TaskCard({ task, index, featureId }: TaskCardProps) {
   const isBlocked = task.depends_on.length > 0 || task.cross_depends_on.length > 0;
   const borderColor = task.agent ? (AGENT_COLORS[task.agent] || '#d9d9d9') : '#d9d9d9';
+  const setSelectedTask = useBoardStore((s) => s.setSelectedTask);
+  const selectedTask = useBoardStore((s) => s.selectedTask);
+  const isSelected = selectedTask?.taskId === task.id && selectedTask?.featureId === featureId;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTask({ featureId, taskId: task.id, task });
+  };
 
   return (
     <Draggable draggableId={`${featureId}:${task.id}`} index={index}>
@@ -27,8 +36,10 @@ export default function TaskCard({ task, index, featureId }: TaskCardProps) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
+          onClick={handleClick}
           style={{
             marginBottom: 4,
+            cursor: 'pointer',
             ...provided.draggableProps.style,
           }}
         >
@@ -37,7 +48,7 @@ export default function TaskCard({ task, index, featureId }: TaskCardProps) {
             style={{
               borderLeft: `3px solid ${borderColor}`,
               opacity: isBlocked ? 0.6 : 1,
-              background: snapshot.isDragging ? '#e6f7ff' : undefined,
+              background: snapshot.isDragging ? '#e6f7ff' : isSelected ? '#e6f7ff' : undefined,
             }}
             bodyStyle={{ padding: '6px 8px' }}
           >

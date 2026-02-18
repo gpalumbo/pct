@@ -6,6 +6,15 @@ export function useDefaultSession() {
   return useQuery({ queryKey: ['chat-session-default'], queryFn: api.fetchDefaultSession });
 }
 
+export function useSession(sessionId: string | null) {
+  return useQuery({
+    queryKey: ['chat-session', sessionId],
+    queryFn: () => api.fetchSession(sessionId!),
+    enabled: !!sessionId,
+    retry: false,
+  });
+}
+
 export function useMessages(sessionId: string | null) {
   return useQuery({
     queryKey: ['chat-messages', sessionId],

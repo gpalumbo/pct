@@ -72,24 +72,40 @@ def get_session(session_id: str) -> ChatSession | None:
     return None
 
 
-def create_session(title: str, agent_id: str | None = None) -> ChatSession:
+def create_session(
+    title: str,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+) -> ChatSession:
     sessions = _load_sessions()
-    # Derive next session number
-    existing_nums = []
-    for s in sessions:
-        sid = s.get("id", "")
-        if sid.startswith("planning-"):
-            try:
-                existing_nums.append(int(sid.split("-", 1)[1]))
-            except ValueError:
-                pass
-    next_num = max(existing_nums, default=0) + 1
-    session_id = f"planning-{next_num:03d}"
+
+    if session_id is None:
+        # Derive next session number
+        existing_nums = []
+        for s in sessions:
+            sid = s.get("id", "")
+            if sid.startswith("planning-"):
+                try:
+                    existing_nums.append(int(sid.split("-", 1)[1]))
+                except ValueError:
+                    pass
+        next_num = max(existing_nums, default=0) + 1
+        session_id = f"planning-{next_num:03d}"
 
     session = ChatSession(id=session_id, title=title, agent_id=agent_id)
     sessions.append(session.model_dump(mode="json"))
     _save_sessions(sessions)
     return session
+
+
+def get_or_create_session(
+    session_id: str, title: str = "", agent_id: str | None = None
+) -> ChatSession:
+    """Return an existing session or create one with the given ID."""
+    existing = get_session(session_id)
+    if existing is not None:
+        return existing
+    return create_session(title=title or session_id, agent_id=agent_id, session_id=session_id)
 
 
 def get_or_create_default_session() -> ChatSession:

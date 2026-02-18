@@ -33,6 +33,7 @@ export interface Task {
   tags: string[];
   priority: number;
   attempt: number;
+  artifact_path: string;
   created: string;
   updated: string;
   body: string;
@@ -84,6 +85,7 @@ export interface CreateTaskRequest {
   cross_depends_on?: string[];
   tags?: string[];
   priority?: number;
+  artifact_path?: string;
   body?: string;
 }
 
@@ -97,6 +99,7 @@ export interface UpdateTaskRequest {
   tags?: string[];
   priority?: number;
   attempt?: number;
+  artifact_path?: string;
   body?: string;
 }
 

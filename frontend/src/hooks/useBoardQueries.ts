@@ -132,3 +132,32 @@ export function useDeleteTask() {
     onSuccess: () => qc.invalidateQueries({ queryKey: BOARD_KEY }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Artifact queries
+// ---------------------------------------------------------------------------
+
+export function useArtifact(featureId: string | null, taskId: string | null) {
+  return useQuery({
+    queryKey: ['artifact', featureId, taskId],
+    queryFn: () => api.fetchArtifact(featureId!, taskId!),
+    enabled: !!featureId && !!taskId,
+  });
+}
+
+export function useSaveArtifact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      taskId,
+      content,
+    }: {
+      featureId: string;
+      taskId: string;
+      content: string;
+    }) => api.saveArtifact(featureId, taskId, content),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: ['artifact', vars.featureId, vars.taskId] }),
+  });
+}

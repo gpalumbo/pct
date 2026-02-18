@@ -21,6 +21,7 @@ export interface ChatSession {
 export interface SendMessageRequest {
   content: string;
   agent_id?: string | null;
+  artifact_path?: string | null;
 }
 
 export interface UpdateMessageRequest {

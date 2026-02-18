@@ -1,6 +1,7 @@
 """API routes for the Kanban board: features, tasks, backlog, and composite board."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from pct.auth.dependencies import get_current_user
 from pct.board import service
@@ -15,6 +16,10 @@ from pct.board.models import (
     UpdateFeatureMetadataRequest,
     UpdateTaskRequest,
 )
+
+
+class ArtifactWriteRequest(BaseModel):
+    content: str
 
 router = APIRouter()
 
@@ -183,3 +188,31 @@ async def delete_task(
 ):
     if not service.delete_task(feature_id, task_id):
         raise HTTPException(status_code=404, detail="Task not found")
+
+
+# ---------------------------------------------------------------------------
+# Artifacts
+# ---------------------------------------------------------------------------
+
+
+@router.get("/features/{feature_id}/tasks/{task_id}/artifact")
+async def get_artifact(
+    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
+):
+    task = service.get_task(feature_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return service.read_artifact(feature_id, task_id)
+
+
+@router.put("/features/{feature_id}/tasks/{task_id}/artifact")
+async def put_artifact(
+    feature_id: str,
+    task_id: str,
+    req: ArtifactWriteRequest,
+    _user: dict = Depends(get_current_user),
+):
+    task = service.get_task(feature_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return service.write_artifact(feature_id, task_id, req.content)

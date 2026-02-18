@@ -29,6 +29,7 @@ class ChatSession(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     agent_id: str | None = None
+    artifact_path: str | None = None
 
 
 class UpdateMessageRequest(BaseModel):
