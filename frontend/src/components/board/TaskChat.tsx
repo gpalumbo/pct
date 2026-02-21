@@ -5,6 +5,7 @@ import { createSession, fetchSession, fetchMessages, sendMessageStream } from '.
 import type { PlanningMessage } from '../../types/chat';
 import MessageList from '../chat/MessageList';
 import ChatInput from '../chat/ChatInput';
+import './sidebar.css';
 
 const { Text } = Typography;
 
@@ -115,8 +116,8 @@ export default function TaskChat({ sessionId, artifactPath }: TaskChatProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '4px 12px', borderBottom: '1px solid #f0f0f0' }}>
-        <Text style={{ fontSize: 11, color: '#333' }}>
+      <div className="task-sidebar-section-label" style={{ padding: '4px 12px' }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>
           Session: {sessionId}
         </Text>
       </div>

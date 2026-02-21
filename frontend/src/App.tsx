@@ -24,7 +24,7 @@ export default function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <QueryClientProvider client={queryClient}>
-        <ConfigProvider theme={{ algorithm: theme.compactAlgorithm, token: { fontSize } }}>
+        <ConfigProvider theme={{ algorithm: theme.compactAlgorithm, token: { fontSize, colorTextSecondary: '#3d4a5c' } }}>
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />

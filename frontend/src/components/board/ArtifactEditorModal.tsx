@@ -3,6 +3,7 @@ import { Modal } from 'antd';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import './sidebar.css';
 
 interface ArtifactEditorModalProps {
   open: boolean;
@@ -47,11 +48,10 @@ export default function ArtifactEditorModal({ open, content, onSave, onCancel }:
       <div className="artifact-editor">
         {/* Toolbar */}
         {editor && (
-          <div style={{
+          <div className="toolbar-row" style={{
             display: 'flex',
             gap: 2,
             padding: '6px 8px',
-            borderBottom: '1px solid #f0f0f0',
             flexWrap: 'wrap',
           }}>
             <ToolbarBtn
@@ -129,44 +129,6 @@ export default function ArtifactEditorModal({ open, content, onSave, onCancel }:
         </div>
       </div>
 
-      <style>{`
-        .artifact-editor .tiptap {
-          outline: none;
-          font-size: 14px;
-          line-height: 1.6;
-        }
-        .artifact-editor .tiptap h1 { font-size: 1.6em; font-weight: 600; margin: 0.6em 0 0.3em; }
-        .artifact-editor .tiptap h2 { font-size: 1.3em; font-weight: 600; margin: 0.5em 0 0.3em; }
-        .artifact-editor .tiptap h3 { font-size: 1.1em; font-weight: 600; margin: 0.4em 0 0.2em; }
-        .artifact-editor .tiptap p { margin: 0.4em 0; }
-        .artifact-editor .tiptap ul, .artifact-editor .tiptap ol { padding-left: 1.5em; }
-        .artifact-editor .tiptap blockquote {
-          border-left: 3px solid #d9d9d9;
-          padding-left: 12px;
-          color: #595959;
-          margin: 0.5em 0;
-        }
-        .artifact-editor .tiptap pre {
-          background: #f5f5f5;
-          border-radius: 4px;
-          padding: 12px;
-          font-family: monospace;
-          font-size: 13px;
-          overflow-x: auto;
-        }
-        .artifact-editor .tiptap code {
-          background: #f5f5f5;
-          border-radius: 2px;
-          padding: 1px 4px;
-          font-family: monospace;
-          font-size: 0.9em;
-        }
-        .artifact-editor .tiptap hr {
-          border: none;
-          border-top: 1px solid #d9d9d9;
-          margin: 1em 0;
-        }
-      `}</style>
     </Modal>
   );
 }
@@ -180,19 +142,9 @@ function ToolbarBtn({ label, active, onClick, style }: {
   return (
     <button
       type="button"
+      className={`toolbar-btn${active ? ' active' : ''}`}
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      style={{
-        padding: '2px 8px',
-        fontSize: 12,
-        border: '1px solid',
-        borderColor: active ? '#1890ff' : '#d9d9d9',
-        borderRadius: 3,
-        background: active ? '#e6f7ff' : '#fff',
-        color: active ? '#1890ff' : '#333',
-        cursor: 'pointer',
-        lineHeight: '20px',
-        ...style,
-      }}
+      style={style}
     >
       {label}
     </button>
@@ -200,5 +152,5 @@ function ToolbarBtn({ label, active, onClick, style }: {
 }
 
 function Separator() {
-  return <div style={{ width: 1, background: '#e8e8e8', margin: '0 4px', alignSelf: 'stretch' }} />;
+  return <div className="toolbar-separator" />;
 }

@@ -3,6 +3,7 @@ import { CloseOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
 import TaskChat from './TaskChat';
 import ArtifactPane from './ArtifactPane';
+import './sidebar.css';
 
 const { Text } = Typography;
 
@@ -17,23 +18,22 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
 
   return (
     <div
+      className="task-sidebar"
       style={{
         width: 480,
         minWidth: 480,
-        borderLeft: '1px solid #e8e8e8',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: '#fff',
       }}
     >
       {/* Header */}
       <div
+        className="task-sidebar-header"
         style={{
           display: 'flex',
           alignItems: 'center',
           padding: '8px 12px',
-          borderBottom: '1px solid #f0f0f0',
           gap: 8,
           flexShrink: 0,
         }}
@@ -41,7 +41,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
         <Text strong style={{ flex: 1, fontSize: 13 }} ellipsis>
           {task.title}
         </Text>
-        <Text style={{ fontSize: 11, flexShrink: 0, color: '#333' }}>
+        <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
           {featureId}/{taskId}
         </Text>
         <Button
@@ -58,12 +58,12 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '1px solid #e8e8e8', flexShrink: 0 }} />
+      <div className="task-sidebar-divider" style={{ flexShrink: 0 }} />
 
       {/* Artifact pane — bottom portion */}
       <div style={{ height: 240, minHeight: 200, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <div style={{ padding: '4px 12px', borderBottom: '1px solid #f0f0f0' }}>
-          <Text style={{ fontSize: 11, color: '#333' }}>Artifact</Text>
+        <div className="task-sidebar-section-label" style={{ padding: '4px 12px' }}>
+          <Text type="secondary" style={{ fontSize: 11 }}>Artifact</Text>
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <ArtifactPane featureId={featureId} taskId={taskId} />

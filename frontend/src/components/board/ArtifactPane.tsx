@@ -3,6 +3,7 @@ import { Button, Input, Spin, message } from 'antd';
 import { SaveOutlined, ReloadOutlined, EditOutlined } from '@ant-design/icons';
 import { useArtifact, useSaveArtifact, useUpdateTask } from '../../hooks/useBoardQueries';
 import ArtifactEditorModal from './ArtifactEditorModal';
+import './sidebar.css';
 
 interface ArtifactPaneProps {
   featureId: string;
@@ -74,7 +75,7 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
           onBlur={handlePathSave}
           onPressEnter={handlePathSave}
           placeholder="artifacts/feature/task.md"
-          style={{ flex: 1, fontSize: 11, fontFamily: 'monospace', color: '#333' }}
+          style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
         />
         <Button
           size="small"
