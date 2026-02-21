@@ -6,6 +6,7 @@ import type {
   CreateTaskRequest,
   Feature,
   MoveTaskRequest,
+  ReassignTaskRequest,
   Task,
   UpdateFeatureMetadataRequest,
   UpdateTaskRequest,
@@ -50,6 +51,8 @@ export const moveTask = (featureId: string, taskId: string, data: MoveTaskReques
   client.post<Task>(`/api/board/features/${featureId}/tasks/${taskId}/move`, data).then((r) => r.data);
 export const deleteTask = (featureId: string, taskId: string) =>
   client.delete(`/api/board/features/${featureId}/tasks/${taskId}`);
+export const reassignTask = (data: ReassignTaskRequest) =>
+  client.post<Task>('/api/board/tasks/reassign', data).then((r) => r.data);
 
 // Artifacts
 export interface ArtifactResponse {

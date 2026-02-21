@@ -12,6 +12,7 @@ from pct.board.models import (
     CreateTaskRequest,
     Feature,
     MoveTaskRequest,
+    ReassignTaskRequest,
     Task,
     UpdateFeatureMetadataRequest,
     UpdateTaskRequest,
@@ -188,6 +189,19 @@ async def delete_task(
 ):
     if not service.delete_task(feature_id, task_id):
         raise HTTPException(status_code=404, detail="Task not found")
+
+
+# ---------------------------------------------------------------------------
+# Task reassignment (cross-feature drag)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/tasks/reassign", response_model=Task)
+async def reassign_task(req: ReassignTaskRequest, _user: dict = Depends(get_current_user)):
+    try:
+        return service.reassign_task(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

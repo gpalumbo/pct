@@ -1,6 +1,6 @@
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { Spin, Typography } from 'antd';
-import { useBoard, useMoveTask } from '../../hooks/useBoardQueries';
+import { useBoard, useMoveTask, useReassignTask } from '../../hooks/useBoardQueries';
 import { useBoardStore } from '../../stores/boardStore';
 import type { Feature } from '../../types/board';
 import BoardHeader from './BoardHeader';
@@ -14,6 +14,7 @@ const { Text } = Typography;
 export default function KanbanBoard() {
   const { data: board, isLoading, refetch } = useBoard();
   const moveTask = useMoveTask();
+  const reassignTask = useReassignTask();
   const setPendingMove = useBoardStore((s) => s.setPendingMove);
   const setIsDragging = useBoardStore((s) => s.setIsDragging);
   const filterFeatureIds = useBoardStore((s) => s.filterFeatureIds);
@@ -56,13 +57,22 @@ export default function KanbanBoard() {
     const [, srcStage] = result.source.droppableId.split(':');
     const [destFeature, destStage] = result.destination.droppableId.split(':');
 
-    // Only handle same-feature moves for now
-    if (srcFeature !== destFeature) return;
-    if (srcStage === destStage) return;
+    if (srcStage === destStage && srcFeature === destFeature) return;
 
     const taskId = result.draggableId.split(':')[1];
 
-    // Check adjacency
+    // Cross-feature move: reassign task (skip adjacency check)
+    if (srcFeature !== destFeature) {
+      reassignTask.mutate({
+        src_feature_id: srcFeature,
+        task_id: taskId,
+        dest_feature_id: destFeature,
+        new_status: destStage,
+      });
+      return;
+    }
+
+    // Same-feature move: check adjacency
     const srcIdx = enabledStages.indexOf(srcStage);
     const destIdx = enabledStages.indexOf(destStage);
     const isAdjacent = Math.abs(destIdx - srcIdx) <= 1;

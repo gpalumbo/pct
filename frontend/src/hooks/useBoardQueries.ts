@@ -4,6 +4,7 @@ import type {
   CreateFeatureRequest,
   CreateTaskRequest,
   MoveTaskRequest,
+  ReassignTaskRequest,
   UpdateFeatureMetadataRequest,
   UpdateTaskRequest,
 } from '../types/board';
@@ -120,6 +121,14 @@ export function useMoveTask() {
       taskId: string;
       data: MoveTaskRequest;
     }) => api.moveTask(featureId, taskId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: BOARD_KEY }),
+  });
+}
+
+export function useReassignTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ReassignTaskRequest) => api.reassignTask(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: BOARD_KEY }),
   });
 }

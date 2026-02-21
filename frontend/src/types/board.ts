@@ -107,3 +107,10 @@ export interface MoveTaskRequest {
   new_status: string;
   confirm_skip?: boolean;
 }
+
+export interface ReassignTaskRequest {
+  src_feature_id: string;
+  task_id: string;
+  dest_feature_id: string;
+  new_status: string;
+}

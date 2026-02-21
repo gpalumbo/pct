@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Button, Select, Space, Switch, Typography } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useBoardStore } from '../../stores/boardStore';
+import { useCreateFeature } from '../../hooks/useBoardQueries';
 import type { Feature } from '../../types/board';
+import CreateFeatureModal from './CreateFeatureModal';
 
 const { Text } = Typography;
 
@@ -18,7 +21,17 @@ export default function BoardToolbar({ features, onRefresh }: BoardToolbarProps)
   const setShowSuspended = useBoardStore((s) => s.setShowSuspended);
   const setShowComplete = useBoardStore((s) => s.setShowComplete);
 
+  const [showCreateFeature, setShowCreateFeature] = useState(false);
+  const createFeature = useCreateFeature();
+
   const featureOptions = features.map((f) => ({ label: f.title, value: f.id }));
+
+  const handleCreateFeature = (id: string, title: string) => {
+    createFeature.mutate(
+      { id, title, specification: `# ${title}\n` },
+      { onSuccess: () => setShowCreateFeature(false) },
+    );
+  };
 
   return (
     <div
@@ -49,9 +62,18 @@ export default function BoardToolbar({ features, onRefresh }: BoardToolbarProps)
         <Switch size="small" checked={showComplete} onChange={setShowComplete} />
         <Text style={{ fontSize: 12 }}>Complete</Text>
       </Space>
+      <Button size="small" icon={<PlusOutlined />} onClick={() => setShowCreateFeature(true)}>
+        New Feature
+      </Button>
       <Button size="small" icon={<ReloadOutlined />} onClick={onRefresh}>
         Refresh
       </Button>
+      <CreateFeatureModal
+        open={showCreateFeature}
+        onCancel={() => setShowCreateFeature(false)}
+        onSubmit={handleCreateFeature}
+        loading={createFeature.isPending}
+      />
     </div>
   );
 }

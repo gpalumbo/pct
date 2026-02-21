@@ -19,6 +19,7 @@ from pct.board.models import (
     FeatureMetadata,
     FeatureStage,
     MoveTaskRequest,
+    ReassignTaskRequest,
     Task,
     UpdateFeatureMetadataRequest,
     UpdateTaskRequest,
@@ -468,6 +469,50 @@ def move_task(
             )
 
     return update_task(feature_id, task_id, UpdateTaskRequest(status=req.new_status))
+
+
+# ---------------------------------------------------------------------------
+# Reassign task across features
+# ---------------------------------------------------------------------------
+
+
+def reassign_task(req: ReassignTaskRequest) -> Task:
+    """Move a task from one feature to another.
+
+    Generates a new sequential ID in the destination feature, copies all
+    fields (clearing feature-local depends_on), deletes the source task file,
+    and returns the new task.
+    """
+    src_task = get_task(req.src_feature_id, req.task_id)
+    if src_task is None:
+        raise ValueError(f"Task '{req.task_id}' not found in feature '{req.src_feature_id}'")
+
+    if not _feature_dir(req.dest_feature_id).exists():
+        raise ValueError(f"Destination feature '{req.dest_feature_id}' not found")
+
+    new_id = _next_task_id(req.dest_feature_id)
+
+    new_task = Task(
+        id=new_id,
+        title=src_task.title,
+        feature=req.dest_feature_id,
+        status=req.new_status,
+        agent=src_task.agent,
+        branch=src_task.branch,
+        depends_on=[],  # cleared — depends_on is feature-local
+        cross_depends_on=src_task.cross_depends_on,
+        tags=src_task.tags,
+        priority=src_task.priority,
+        attempt=src_task.attempt,
+        artifact_path=src_task.artifact_path,
+        body=src_task.body,
+    )
+    _save_task(req.dest_feature_id, new_task)
+
+    # Delete the source task file
+    delete_task(req.src_feature_id, req.task_id)
+
+    return new_task
 
 
 # ---------------------------------------------------------------------------

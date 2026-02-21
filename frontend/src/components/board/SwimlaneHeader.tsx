@@ -4,6 +4,7 @@ import {
   CaretRightOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import type { Feature } from '../../types/board';
 
@@ -23,6 +24,7 @@ interface SwimlaneHeaderProps {
   onToggle: () => void;
   onSuspend: () => void;
   onResume: () => void;
+  onAddTask: () => void;
 }
 
 export default function SwimlaneHeader({
@@ -31,6 +33,7 @@ export default function SwimlaneHeader({
   onToggle,
   onSuspend,
   onResume,
+  onAddTask,
 }: SwimlaneHeaderProps) {
   const stage = feature.metadata.lifecycle_stage;
   const totalTasks = feature.tasks.length;
@@ -63,6 +66,14 @@ export default function SwimlaneHeader({
         </Text>
       )}
       <Space style={{ marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <Button
+          size="small"
+          type="text"
+          icon={<PlusOutlined />}
+          onClick={onAddTask}
+        >
+          Add Task
+        </Button>
         {stage !== 'suspended' ? (
           <Button
             size="small"

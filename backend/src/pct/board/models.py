@@ -157,6 +157,15 @@ class MoveTaskRequest(BaseModel):
     confirm_skip: bool = False
 
 
+class ReassignTaskRequest(BaseModel):
+    """Request body for moving a task from one feature to another."""
+
+    src_feature_id: str
+    task_id: str
+    dest_feature_id: str
+    new_status: str
+
+
 class BoardResponse(BaseModel):
     """Composite response containing the full board state."""
 
