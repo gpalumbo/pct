@@ -1,0 +1,38 @@
+project_id: ''
+project_name: ''
+project_type: ''
+agents:
+- id: qwen2.5-7b
+  agent_type: llm
+  provider_type: local
+  model: qwen2.5-7b
+  prompt_template: null
+  lora: null
+  cli_command: null
+  context_length: null
+  temperature: null
+- id: qwen2.5-7b-loose
+  agent_type: llm
+  provider_type: local
+  model: qwen2.5-7b
+  prompt_template: null
+  lora: null
+  cli_command: null
+  context_length: null
+  temperature: 0.9
+- id: User
+  agent_type: user
+  provider_type: user
+  model: qwen2.5-7b
+  prompt_template: null
+  lora: null
+  cli_command: null
+  context_length: null
+  temperature: null
+workflow_stages: []
+planning_agent: ''
+default_agent: ''
+auto_advance: true
+concurrency:
+  remote_api_limit: 2
+  local_gpu_limit: 1

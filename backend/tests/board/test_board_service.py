@@ -14,7 +14,7 @@ from pct.board.models import (
     UpdateTaskRequest,
 )
 from pct.board import service
-from pct.config_models import ProjectConfig, TaskStatus, WorkflowStageConfig
+from pct.config_models import ProjectConfig, WorkflowStageConfig
 from pct.settings import service as settings_service
 
 
@@ -36,10 +36,10 @@ def _setup_workflow_stages():
         project_id="test",
         project_name="Test",
         workflow_stages=[
-            WorkflowStageConfig(stage=TaskStatus.REFINE_SPEC, enabled=True),
-            WorkflowStageConfig(stage=TaskStatus.IMPLEMENT, enabled=True),
-            WorkflowStageConfig(stage=TaskStatus.CODE_REVIEW, enabled=True),
-            WorkflowStageConfig(stage=TaskStatus.DONE, enabled=True),
+            WorkflowStageConfig(stage="refine-spec", enabled=True),
+            WorkflowStageConfig(stage="implement", enabled=True),
+            WorkflowStageConfig(stage="code-review", enabled=True),
+            WorkflowStageConfig(stage="done", enabled=True),
         ],
     )
     settings_service.save_project_config(cfg)

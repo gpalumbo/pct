@@ -1,41 +1,3 @@
-export type TaskStatus =
-  | 'refine-spec'
-  | 'implement'
-  | 'feature-test'
-  | 'code-review'
-  | 'user-approval'
-  | 'merge'
-  | 'full-test'
-  | 'refactor-check'
-  | 'push'
-  | 'done';
-
-export const ALL_TASK_STATUSES: TaskStatus[] = [
-  'refine-spec',
-  'implement',
-  'feature-test',
-  'code-review',
-  'user-approval',
-  'merge',
-  'full-test',
-  'refactor-check',
-  'push',
-  'done',
-];
-
-export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  'refine-spec': 'Refine Spec',
-  'implement': 'Implement',
-  'feature-test': 'Feature Test',
-  'code-review': 'Code Review',
-  'user-approval': 'User Approval',
-  'merge': 'Merge',
-  'full-test': 'Full Test',
-  'refactor-check': 'Refactor Check',
-  'push': 'Push',
-  'done': 'Done',
-};
-
 export type AgentType = 'llm' | 'user' | 'tool';
 export type ProviderType = 'remote' | 'local' | 'user';
 
@@ -69,7 +31,8 @@ export interface AgentConfig {
 }
 
 export interface WorkflowStageConfig {
-  stage: TaskStatus;
+  stage: string;
+  label: string;
   enabled: boolean;
   agent?: string | null;
 }
@@ -79,20 +42,20 @@ export interface ConcurrencyConfig {
   local_gpu_limit: number;
 }
 
-export interface ContextConfig {
-  token_budget: number;
-  context_manager_model: string;
-}
-
 export interface ProjectConfig {
   project_id: string;
   project_name: string;
   project_type: string;
+  project_directory: string;
   agents: AgentConfig[];
   workflow_stages: WorkflowStageConfig[];
   planning_agent: string;
   default_agent: string;
   auto_advance: boolean;
   concurrency: ConcurrencyConfig;
-  context: ContextConfig;
+}
+
+export interface ProjectStatus {
+  initialized: boolean;
+  project_directory: string;
 }

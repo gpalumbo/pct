@@ -172,3 +172,4 @@ class BoardResponse(BaseModel):
     features: list[Feature] = Field(default_factory=list)
     backlog: list[BacklogFeature] = Field(default_factory=list)
     enabled_stages: list[str] = Field(default_factory=list)
+    stage_labels: dict[str, str] = Field(default_factory=dict)

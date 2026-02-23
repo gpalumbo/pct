@@ -66,7 +66,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
           <Text type="secondary" style={{ fontSize: 11 }}>Artifact</Text>
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <ArtifactPane featureId={featureId} taskId={taskId} />
+          <ArtifactPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
         </div>
       </div>
     </div>

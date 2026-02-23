@@ -9,6 +9,14 @@ import type {
 } from '../types/config';
 
 // ---------------------------------------------------------------------------
+// Project Status (initialization check)
+// ---------------------------------------------------------------------------
+
+export function useProjectStatus(enabled = true) {
+  return useQuery({ queryKey: ['project-status'], queryFn: api.fetchProjectStatus, enabled });
+}
+
+// ---------------------------------------------------------------------------
 // Model Registry
 // ---------------------------------------------------------------------------
 
@@ -137,6 +145,7 @@ export function useSaveProjectConfig() {
     mutationFn: (data: ProjectConfig) => api.saveProjectConfig(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project-config'] });
+      qc.invalidateQueries({ queryKey: ['project-status'] });
       qc.invalidateQueries({ queryKey: ['agents'] });
       qc.invalidateQueries({ queryKey: ['workflow-stages'] });
     },

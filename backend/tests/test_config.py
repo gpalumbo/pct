@@ -307,7 +307,6 @@ class TestProjectConfig:
             "project_type": "python",
             "auto_advance": False,
             "concurrency": {"remote_api_limit": 4, "local_gpu_limit": 2},
-            "context": {"token_budget": 16000, "context_manager_model": "gpt-3.5"},
         }
         resp = await client.put("/api/config/project", json=cfg, headers=auth_headers)
         assert resp.status_code == 200
@@ -318,4 +317,3 @@ class TestProjectConfig:
         assert data["project_name"] == "My Project"
         assert data["auto_advance"] is False
         assert data["concurrency"]["remote_api_limit"] == 4
-        assert data["context"]["token_budget"] == 16000

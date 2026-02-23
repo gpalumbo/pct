@@ -136,6 +136,22 @@ async def delete_lora(lora_id: str, _user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 
+class ProjectStatus(PydanticBaseModel):
+    initialized: bool
+    project_directory: str
+
+
+@router.get("/project/status", response_model=ProjectStatus)
+async def get_project_status(_user: dict = Depends(get_current_user)):
+    from pct import config
+    cfg = service.get_project_config()
+    root = config.settings.project_root
+    if cfg is None:
+        return ProjectStatus(initialized=False, project_directory=root)
+    initialized = bool(cfg.project_name and cfg.project_type)
+    return ProjectStatus(initialized=initialized, project_directory=root)
+
+
 @router.get("/project", response_model=ProjectConfig | None)
 async def get_project_config(_user: dict = Depends(get_current_user)):
     return service.get_project_config()

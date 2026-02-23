@@ -30,6 +30,7 @@ export default function KanbanBoard() {
   }
 
   const enabledStages = board.enabled_stages;
+  const stageLabels = board.stage_labels;
 
   // Filter features
   let visibleFeatures: Feature[] = board.features;
@@ -107,7 +108,7 @@ export default function KanbanBoard() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <BoardToolbar features={board.features} onRefresh={() => refetch()} />
       <div style={{ flex: 1, overflow: 'auto' }}>
-        <BoardHeader enabledStages={enabledStages} />
+        <BoardHeader enabledStages={enabledStages} stageLabels={stageLabels} />
         <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           {visibleFeatures.map((feature) => (
             <Swimlane

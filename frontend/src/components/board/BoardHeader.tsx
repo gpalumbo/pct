@@ -1,14 +1,13 @@
 import { Typography } from 'antd';
-import { TASK_STATUS_LABELS } from '../../types/config';
-import type { TaskStatus } from '../../types/config';
 
 const { Text } = Typography;
 
 interface BoardHeaderProps {
   enabledStages: string[];
+  stageLabels: Record<string, string>;
 }
 
-export default function BoardHeader({ enabledStages }: BoardHeaderProps) {
+export default function BoardHeader({ enabledStages, stageLabels }: BoardHeaderProps) {
   return (
     <div
       style={{
@@ -32,7 +31,7 @@ export default function BoardHeader({ enabledStages }: BoardHeaderProps) {
           }}
         >
           <Text strong style={{ fontSize: 12, textTransform: 'uppercase' }}>
-            {TASK_STATUS_LABELS[stage as TaskStatus] || stage}
+            {stageLabels[stage] || stage}
           </Text>
         </div>
       ))}

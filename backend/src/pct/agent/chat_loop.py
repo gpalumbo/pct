@@ -69,6 +69,7 @@ async def execute_chat_turn(
     start = time.monotonic()
     try:
         for _iteration in range(max_tool_iterations + 1):
+            logger.debug("Executing chat turn with {} messages and {} tools", len(messages), len(tool_definitions) if tool_definitions else 0)
             coro = provider.execute(
                 messages, on_token=_tracking_callback, tools=tool_definitions
             )

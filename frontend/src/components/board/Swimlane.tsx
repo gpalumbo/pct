@@ -36,8 +36,9 @@ export default function Swimlane({ feature, enabledStages }: SwimlaneProps) {
       setAddingTask(false);
       return;
     }
+    const firstStage = enabledStages[0] || 'todo';
     createTask.mutate(
-      { featureId: feature.id, data: { title, status: 'refine-spec' } },
+      { featureId: feature.id, data: { title, status: firstStage } },
       { onSuccess: () => { setAddingTask(false); setNewTaskTitle(''); } },
     );
   };

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Select, Switch, Table, message } from 'antd';
 import { useWorkflowStages, useSaveWorkflowStages, useAgents } from '../../hooks/useConfigQueries';
-import { ALL_TASK_STATUSES, TASK_STATUS_LABELS } from '../../types/config';
 import type { WorkflowStageConfig } from '../../types/config';
 
 export default function WorkflowTab() {
@@ -12,13 +11,7 @@ export default function WorkflowTab() {
   const [stages, setStages] = useState<WorkflowStageConfig[]>([]);
 
   useEffect(() => {
-    // Initialize from saved or create defaults for all statuses
-    const map = new Map(savedStages.map((s) => [s.stage, s]));
-    setStages(
-      ALL_TASK_STATUSES.map((status) =>
-        map.get(status) ?? { stage: status, enabled: true, agent: null }
-      )
-    );
+    setStages(savedStages);
   }, [savedStages]);
 
   const updateStage = (index: number, patch: Partial<WorkflowStageConfig>) => {
@@ -35,7 +28,7 @@ export default function WorkflowTab() {
       title: 'Stage',
       dataIndex: 'stage',
       key: 'stage',
-      render: (val: WorkflowStageConfig['stage']) => TASK_STATUS_LABELS[val],
+      render: (_: unknown, record: WorkflowStageConfig) => record.label || record.stage,
     },
     {
       title: 'Enabled',

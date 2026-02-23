@@ -8,14 +8,20 @@ const DEFAULT_CONFIG: ProjectConfig = {
   project_id: '',
   project_name: '',
   project_type: '',
+  project_directory: '',
   agents: [],
   workflow_stages: [],
   planning_agent: '',
   default_agent: '',
   auto_advance: true,
   concurrency: { remote_api_limit: 2, local_gpu_limit: 1 },
-  context: { token_budget: 8000, context_manager_model: '' },
 };
+
+const PROJECT_TYPE_OPTIONS = [
+  { label: 'Coding', value: 'coding' },
+  { label: 'Campaign Building', value: 'campaign-building' },
+  { label: 'Novel (w/ World Building)', value: 'novel' },
+];
 
 export default function GeneralTab() {
   const { data: config } = useProjectConfig();
@@ -37,7 +43,6 @@ export default function GeneralTab() {
       ...config,
       ...values,
       concurrency: { ...DEFAULT_CONFIG.concurrency, ...config?.concurrency, ...values.concurrency },
-      context: { ...DEFAULT_CONFIG.context, ...config?.context, ...values.context },
     };
     await saveConfig.mutateAsync(merged);
     message.success('Project config saved');
@@ -58,14 +63,23 @@ export default function GeneralTab() {
 
     <Form form={form} layout="vertical" initialValues={config ?? DEFAULT_CONFIG}>
       <Divider orientation="left">Project Metadata</Divider>
+      <Form.Item label="Project Directory">
+        <Input value={config?.project_directory ?? ''} disabled />
+      </Form.Item>
       <Form.Item name="project_id" label="Project ID">
         <Input />
       </Form.Item>
-      <Form.Item name="project_name" label="Project Name">
+      <Form.Item name="project_name" label="Project Name" rules={[{ required: true, message: 'Project name is required' }]}>
         <Input />
       </Form.Item>
-      <Form.Item name="project_type" label="Project Type">
-        <Input placeholder="e.g. python, typescript, rust" />
+      <Form.Item name="project_type" label="Project Type" rules={[{ required: true, message: 'Project type is required' }]}>
+        <Select
+          showSearch
+          allowClear
+          options={PROJECT_TYPE_OPTIONS}
+          placeholder="Select or type a project type"
+          mode={undefined}
+        />
       </Form.Item>
 
       <Divider orientation="left">Planning & Defaults</Divider>
@@ -85,14 +99,6 @@ export default function GeneralTab() {
       </Form.Item>
       <Form.Item name={['concurrency', 'local_gpu_limit']} label="Local GPU Limit">
         <InputNumber min={1} style={{ width: '100%' }} />
-      </Form.Item>
-
-      <Divider orientation="left">Context</Divider>
-      <Form.Item name={['context', 'token_budget']} label="Token Budget">
-        <InputNumber min={1} style={{ width: '100%' }} />
-      </Form.Item>
-      <Form.Item name={['context', 'context_manager_model']} label="Context Manager Model">
-        <Input placeholder="e.g. gpt-3.5-turbo" />
       </Form.Item>
 
       <Form.Item>

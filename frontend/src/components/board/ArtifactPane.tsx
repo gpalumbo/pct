@@ -5,12 +5,19 @@ import { useArtifact, useSaveArtifact, useUpdateTask } from '../../hooks/useBoar
 import ArtifactEditorModal from './ArtifactEditorModal';
 import './sidebar.css';
 
+function artifactSlug(text: string, maxWords = 3): string {
+  const words = text.toLowerCase().match(/[a-z0-9]+/g) || [];
+  const selected = words.length > maxWords ? words.slice(0, maxWords) : words;
+  return selected.join('_') || 'untitled';
+}
+
 interface ArtifactPaneProps {
   featureId: string;
   taskId: string;
+  taskTitle?: string;
 }
 
-export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
+export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactPaneProps) {
   const { data: artifact, isLoading, refetch } = useArtifact(featureId, taskId);
   const saveMutation = useSaveArtifact();
   const updateTask = useUpdateTask();
@@ -74,7 +81,7 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
           onChange={(e) => setPath(e.target.value)}
           onBlur={handlePathSave}
           onPressEnter={handlePathSave}
-          placeholder="artifacts/feature/task.md"
+          placeholder={`artifacts/${artifactSlug(featureId)}/${taskTitle ? artifactSlug(taskTitle) : 'task'}.md`}
           style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
         />
         <Button

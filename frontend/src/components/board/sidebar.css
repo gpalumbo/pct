@@ -1,0 +1,116 @@
+/* Sidebar color tokens – change values here to restyle the whole sidebar */
+:root {
+  --sidebar-bg: #fff;
+  --sidebar-border: #e8e8e8;
+  --sidebar-border-light: #f0f0f0;
+  --toolbar-btn-active-border: #1890ff;
+  --toolbar-btn-active-bg: #e6f7ff;
+  --toolbar-btn-active-color: #1890ff;
+  --toolbar-btn-border: #d9d9d9;
+  --toolbar-btn-bg: #fff;
+  --toolbar-btn-color: #333;
+  --toolbar-separator-bg: #e8e8e8;
+  --editor-blockquote-border: #d9d9d9;
+  --editor-blockquote-color: #595959;
+  --editor-code-bg: #f5f5f5;
+  --editor-hr-color: #d9d9d9;
+}
+
+/* Outer sidebar panel */
+.task-sidebar {
+  background: var(--sidebar-bg);
+  border-left: 1px solid var(--sidebar-border);
+}
+
+/* Header row */
+.task-sidebar-header {
+  border-bottom: 1px solid var(--sidebar-border-light);
+}
+
+/* Section labels (Artifact, Session) */
+.task-sidebar-section-label {
+  border-bottom: 1px solid var(--sidebar-border-light);
+}
+
+/* Horizontal divider between panes */
+.task-sidebar-divider {
+  border-top: 1px solid var(--sidebar-border);
+}
+
+/* Toolbar row inside artifact editor */
+.artifact-editor .toolbar-row {
+  border-bottom: 1px solid var(--sidebar-border-light);
+}
+
+/* Toolbar buttons */
+.toolbar-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid var(--toolbar-btn-border);
+  border-radius: 3px;
+  background: var(--toolbar-btn-bg);
+  color: var(--toolbar-btn-color);
+  cursor: pointer;
+  line-height: 20px;
+}
+
+.toolbar-btn.active {
+  border-color: var(--toolbar-btn-active-border);
+  background: var(--toolbar-btn-active-bg);
+  color: var(--toolbar-btn-active-color);
+}
+
+/* Toolbar separator */
+.toolbar-separator {
+  width: 1px;
+  background: var(--toolbar-separator-bg);
+  margin: 0 4px;
+  align-self: stretch;
+}
+
+/* Tiptap editor styles */
+.artifact-editor .tiptap {
+  outline: none;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.artifact-editor .tiptap h1 { font-size: 1.6em; font-weight: 600; margin: 0.6em 0 0.3em; }
+.artifact-editor .tiptap h2 { font-size: 1.3em; font-weight: 600; margin: 0.5em 0 0.3em; }
+.artifact-editor .tiptap h3 { font-size: 1.1em; font-weight: 600; margin: 0.4em 0 0.2em; }
+.artifact-editor .tiptap p { margin: 0.4em 0; }
+
+.artifact-editor .tiptap ul,
+.artifact-editor .tiptap ol {
+  padding-left: 1.5em;
+}
+
+.artifact-editor .tiptap blockquote {
+  border-left: 3px solid var(--editor-blockquote-border);
+  padding-left: 12px;
+  color: var(--editor-blockquote-color);
+  margin: 0.5em 0;
+}
+
+.artifact-editor .tiptap pre {
+  background: var(--editor-code-bg);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.artifact-editor .tiptap code {
+  background: var(--editor-code-bg);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.artifact-editor .tiptap hr {
+  border: none;
+  border-top: 1px solid var(--editor-hr-color);
+  margin: 1em 0;
+}

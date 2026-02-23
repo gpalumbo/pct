@@ -4,6 +4,7 @@ import type {
   LoRARegistryEntry,
   ModelRegistryEntry,
   ProjectConfig,
+  ProjectStatus,
   WorkflowStageConfig,
 } from '../types/config';
 
@@ -41,6 +42,8 @@ export const deleteLora = (id: string) =>
   client.delete(`/api/config/loras/${id}`);
 
 // Project Config
+export const fetchProjectStatus = () =>
+  client.get<ProjectStatus>('/api/config/project/status').then((r) => r.data);
 export const fetchProjectConfig = () =>
   client.get<ProjectConfig | null>('/api/config/project').then((r) => r.data);
 export const saveProjectConfig = (data: ProjectConfig) =>

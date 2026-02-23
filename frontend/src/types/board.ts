@@ -57,6 +57,7 @@ export interface BoardResponse {
   features: Feature[];
   backlog: BacklogFeature[];
   enabled_stages: string[];
+  stage_labels: Record<string, string>;
 }
 
 // Request types

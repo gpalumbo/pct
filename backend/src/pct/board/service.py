@@ -164,6 +164,25 @@ def _list_tasks(feature_id: str) -> list[Task]:
     return result
 
 
+def _artifact_slug(text: str, max_words: int = 3) -> str:
+    """Create a short underscore-delimited slug from text for artifact paths."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if len(words) > max_words:
+        words = words[:max_words]
+    return "_".join(words) if words else "untitled"
+
+
+def _get_feature_title(feature_id: str) -> str:
+    """Get just the feature title without loading all tasks."""
+    spec = _load_feature_spec(feature_id)
+    if spec:
+        first_line = spec.strip().split("\n", 1)[0]
+        title = re.sub(r"^#+\s*", "", first_line).strip()
+        if title:
+            return title
+    return feature_id
+
+
 def _next_task_id(feature_id: str) -> str:
     """Generate the next sequential task ID (e.g. '001', '002', ...)."""
     existing = _list_tasks(feature_id)
@@ -345,9 +364,11 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
 
     task_id = _next_task_id(feature_id)
 
-    # Auto-generate artifact path from feature/task slug if not provided
-    slug = re.sub(r"[^a-z0-9]+", "-", req.title.lower().strip()).strip("-")
-    artifact_path = req.artifact_path or f"artifacts/{feature_id}/{slug}.md"
+    # Auto-generate artifact path from feature title / task title if not provided
+    feature_title = _get_feature_title(feature_id)
+    feature_slug = _artifact_slug(feature_title)
+    task_slug = _artifact_slug(req.title)
+    artifact_path = req.artifact_path or f"artifacts/{feature_slug}/{task_slug}.md"
 
     task = Task(
         id=task_id,
@@ -441,7 +462,7 @@ def _get_enabled_stages() -> list[str]:
     from pct.settings.service import get_workflow_stages
 
     stages: list[WorkflowStageConfig] = get_workflow_stages()
-    return [s.stage.value for s in stages if s.enabled]
+    return [s.stage for s in stages if s.enabled]
 
 
 def move_task(
@@ -520,10 +541,19 @@ def reassign_task(req: ReassignTaskRequest) -> Task:
 # ---------------------------------------------------------------------------
 
 
+def _get_stage_labels() -> dict[str, str]:
+    """Return a mapping of stage id -> display label."""
+    from pct.settings.service import get_workflow_stages
+
+    stages: list[WorkflowStageConfig] = get_workflow_stages()
+    return {s.stage: s.label or s.stage for s in stages}
+
+
 def get_board() -> BoardResponse:
     """Build the composite board response."""
     return BoardResponse(
         features=list_features(),
         backlog=list_backlog(),
         enabled_stages=_get_enabled_stages(),
+        stage_labels=_get_stage_labels(),
     )
