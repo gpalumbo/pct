@@ -3,6 +3,7 @@ import { CloseOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
 import TaskChat from './TaskChat';
 import ArtifactPane from './ArtifactPane';
+import ImageGenPane from './ImageGenPane';
 import './sidebar.css';
 
 const { Text } = Typography;
@@ -61,12 +62,24 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
       <div className="task-sidebar-divider" style={{ flexShrink: 0 }} />
 
       {/* Artifact pane — bottom portion */}
-      <div style={{ height: 240, minHeight: 200, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div style={{
+        height: task.artifact_type === 'image' ? 480 : 240,
+        minHeight: 200,
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+      }}>
         <div className="task-sidebar-section-label" style={{ padding: '4px 12px' }}>
-          <Text type="secondary" style={{ fontSize: 11 }}>Artifact</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {task.artifact_type === 'image' ? 'Image Studio' : 'Artifact'}
+          </Text>
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <ArtifactPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
+          {task.artifact_type === 'image' ? (
+            <ImageGenPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
+          ) : (
+            <ArtifactPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
+          )}
         </div>
       </div>
     </div>

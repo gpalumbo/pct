@@ -40,6 +40,7 @@ install: install-backend install-frontend
 install-backend:
 	pip install -e "./backend[dev]"
 	pip install -e "./backend[local-llm]"
+	pip install -e "./backend[imagegen]"
 
 install-frontend:
 	cd frontend && npm install

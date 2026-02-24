@@ -68,6 +68,7 @@ class Task(BaseModel):
     created: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated: datetime = Field(default_factory=lambda: datetime.now(UTC))
     body: str = ""
+    artifact_type: str = "text"
 
     @property
     def slug(self) -> str:
@@ -132,6 +133,7 @@ class CreateTaskRequest(BaseModel):
     priority: int = 0
     artifact_path: str | None = None
     body: str = ""
+    artifact_type: str = "text"
 
 
 class UpdateTaskRequest(BaseModel):
@@ -148,6 +150,7 @@ class UpdateTaskRequest(BaseModel):
     attempt: int | None = None
     artifact_path: str | None = None
     body: str | None = None
+    artifact_type: str | None = None
 
 
 class MoveTaskRequest(BaseModel):

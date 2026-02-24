@@ -37,6 +37,7 @@ export interface Task {
   created: string;
   updated: string;
   body: string;
+  artifact_type: string;
 }
 
 export interface Feature {
@@ -88,6 +89,7 @@ export interface CreateTaskRequest {
   priority?: number;
   artifact_path?: string;
   body?: string;
+  artifact_type?: string;
 }
 
 export interface UpdateTaskRequest {
@@ -102,6 +104,7 @@ export interface UpdateTaskRequest {
   attempt?: number;
   artifact_path?: string;
   body?: string;
+  artifact_type?: string;
 }
 
 export interface MoveTaskRequest {

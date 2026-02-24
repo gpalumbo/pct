@@ -114,3 +114,55 @@
   border-top: 1px solid var(--editor-hr-color);
   margin: 1em 0;
 }
+
+/* Image generation grid — 2x2 */
+.imagegen-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.imagegen-grid-item {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.imagegen-grid-item:hover {
+  border-color: var(--sidebar-border);
+}
+
+.imagegen-grid-item.selected {
+  border-color: var(--toolbar-btn-active-border);
+  box-shadow: 0 0 0 1px var(--toolbar-btn-active-border);
+}
+
+.imagegen-grid-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.imagegen-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--editor-code-bg);
+  color: var(--editor-blockquote-color);
+  font-size: 11px;
+}
+
+/* Smaller grid for round history thumbnails */
+.imagegen-grid-small .imagegen-grid-item {
+  cursor: default;
+}
+
+.imagegen-grid-small .imagegen-grid-item img {
+  max-height: 80px;
+  object-fit: cover;
+}

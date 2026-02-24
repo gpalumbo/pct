@@ -10,6 +10,7 @@ from pct import config
 from pct.auth.router import router as auth_router
 from pct.board.router import router as board_router
 from pct.chat.router import router as chat_router
+from pct.imagegen.router import router as imagegen_router
 from pct.settings.router import router as config_router
 
 
@@ -39,6 +40,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(board_router, prefix="/api/board", tags=["board"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
+app.include_router(imagegen_router, prefix="/api/imagegen", tags=["imagegen"])
 
 
 @app.get("/api/health")

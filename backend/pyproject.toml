@@ -30,6 +30,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+imagegen = [
+    "diffusers>=0.27.0",
+    "transformers",
+    "accelerate",
+    "torch>=2.0",
+    "safetensors",
+    "Pillow",
+]
 local-llm = [
     "huggingface-hub"
     ]
