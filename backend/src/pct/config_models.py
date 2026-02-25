@@ -37,6 +37,22 @@ class LoRARegistryEntry(BaseModel):
     created: datetime | None = None
 
 
+class ArtifactTypeConfig(BaseModel):
+    """Configuration for an artifact type with LLM prompt hint."""
+
+    id: str
+    label: str
+    template_hint: str = ""
+
+
+class TemplateVariable(BaseModel):
+    """A user-defined template variable for stage prompt expansion."""
+
+    key: str          # e.g. "project_style"  (used as {{project_style}} in prompts)
+    description: str = ""
+    value: str = ""   # static text substituted at prompt-expansion time
+
+
 class WorkflowStageConfig(BaseModel):
     """Configuration for a single workflow stage."""
 
@@ -63,6 +79,8 @@ class ProjectConfig(BaseModel):
     project_directory: str = ""
     agents: list[AgentConfig] = []
     workflow_stages: list[WorkflowStageConfig] = []
+    template_variables: list[TemplateVariable] = []
+    artifact_types: list[ArtifactTypeConfig] = []
     planning_agent: str = ""
     default_agent: str = ""
     auto_advance: bool = True

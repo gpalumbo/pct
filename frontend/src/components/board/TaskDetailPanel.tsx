@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Select, Tag, Typography, message } from 'antd';
 import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
 import { useBoard, useUpdateTask } from '../../hooks/useBoardQueries';
+import { useArtifactTypes } from '../../hooks/useConfigQueries';
 import TaskChat from './TaskChat';
 import ArtifactPane from './ArtifactPane';
 import ImageGenPane from './ImageGenPane';
@@ -10,19 +11,6 @@ import CrossRefPicker from './CrossRefPicker';
 import './sidebar.css';
 
 const { Text } = Typography;
-
-const ARTIFACT_TYPE_OPTIONS = [
-  { value: 'text', label: 'Text' },
-  { value: 'timeline', label: 'Timeline' },
-  { value: 'location', label: 'Location' },
-  { value: 'character', label: 'Character' },
-  { value: 'faction', label: 'Faction' },
-  { value: 'magic-system', label: 'Magic System' },
-  { value: 'technology', label: 'Technology' },
-  { value: 'item', label: 'Item' },
-  { value: 'story-arc', label: 'Story Arc' },
-  { value: 'chapter', label: 'Chapter' },
-];
 
 interface TaskDetailPanelProps {
   selectedTask: SelectedTask;
@@ -35,6 +23,12 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
   const [refPickerOpen, setRefPickerOpen] = useState(false);
   const { data: board } = useBoard();
   const updateTask = useUpdateTask();
+  const { data: artifactTypes = [] } = useArtifactTypes();
+
+  const artifactTypeOptions = useMemo(
+    () => artifactTypes.map((t) => ({ value: t.id, label: t.label })),
+    [artifactTypes],
+  );
 
   const handleRemoveRef = (ref: string) => {
     const newRefs = task.cross_depends_on.filter((r) => r !== ref);
@@ -97,7 +91,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
           size="small"
           value={task.artifact_type || 'text'}
           onChange={handleArtifactTypeChange}
-          options={ARTIFACT_TYPE_OPTIONS}
+          options={artifactTypeOptions}
           style={{ width: 110, fontSize: 11 }}
           popupMatchSelectWidth={false}
         />

@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/configApi';
 import type {
   AgentConfig,
+  ArtifactTypeConfig,
   LoRARegistryEntry,
   ModelRegistryEntry,
   ProjectConfig,
+  TemplateVariable,
   WorkflowStageConfig,
 } from '../types/config';
 
@@ -128,6 +130,38 @@ export function useSaveWorkflowStages() {
   return useMutation({
     mutationFn: (data: WorkflowStageConfig[]) => api.saveWorkflowStages(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow-stages'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Template Variables
+// ---------------------------------------------------------------------------
+
+export function useTemplateVariables() {
+  return useQuery({ queryKey: ['template-variables'], queryFn: api.fetchTemplateVariables });
+}
+
+export function useSaveTemplateVariables() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: TemplateVariable[]) => api.saveTemplateVariables(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['template-variables'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Artifact Types
+// ---------------------------------------------------------------------------
+
+export function useArtifactTypes() {
+  return useQuery({ queryKey: ['artifact-types'], queryFn: api.fetchArtifactTypes });
+}
+
+export function useSaveArtifactTypes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ArtifactTypeConfig[]) => api.saveArtifactTypes(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['artifact-types'] }),
   });
 }
 

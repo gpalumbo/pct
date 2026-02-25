@@ -148,6 +148,10 @@ def _expand_stage_prompt(
     template = template.replace("{{feature_title}}", feature_title)
     template = template.replace("{{cross_refs}}", cross_ref_text or "(no cross-references)")
 
+    # Expand user-defined template variables
+    for tv in settings_service.get_template_variables():
+        template = template.replace("{{" + tv.key + "}}", tv.value)
+
     return template
 
 

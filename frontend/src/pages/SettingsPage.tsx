@@ -6,6 +6,7 @@ import ModelRegistryTab from '../components/settings/ModelRegistryTab';
 import LoRARegistryTab from '../components/settings/LoRARegistryTab';
 import AgentsTab from '../components/settings/AgentsTab';
 import WorkflowTab from '../components/settings/WorkflowTab';
+import ArtifactTypesTab from '../components/settings/ArtifactTypesTab';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -19,6 +20,7 @@ export default function SettingsPage() {
     { key: 'loras', label: 'LoRA Registry', children: <LoRARegistryTab /> },
     { key: 'agents', label: 'Agents', children: <AgentsTab /> },
     { key: 'workflow', label: 'Workflow Stages', children: <WorkflowTab /> },
+    { key: 'artifact-types', label: 'Artifact Types', children: <ArtifactTypesTab /> },
   ];
 
   return (

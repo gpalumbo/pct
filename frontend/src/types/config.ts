@@ -30,6 +30,18 @@ export interface AgentConfig {
   temperature?: number | null;
 }
 
+export interface ArtifactTypeConfig {
+  id: string;
+  label: string;
+  template_hint: string;
+}
+
+export interface TemplateVariable {
+  key: string;
+  description: string;
+  value: string;
+}
+
 export interface WorkflowStageConfig {
   stage: string;
   label: string;
@@ -50,6 +62,8 @@ export interface ProjectConfig {
   project_directory: string;
   agents: AgentConfig[];
   workflow_stages: WorkflowStageConfig[];
+  template_variables: TemplateVariable[];
+  artifact_types: ArtifactTypeConfig[];
   planning_agent: string;
   default_agent: string;
   auto_advance: boolean;

@@ -11,9 +11,11 @@ import yaml
 from pct import config
 from pct.agent.models import AgentConfig, AgentType, ProviderType
 from pct.config_models import (
+    ArtifactTypeConfig,
     LoRARegistryEntry,
     ModelRegistryEntry,
     ProjectConfig,
+    TemplateVariable,
     WorkflowStageConfig,
 )
 
@@ -388,6 +390,58 @@ def save_workflow_stages(stages: list[WorkflowStageConfig]) -> list[WorkflowStag
     cfg.workflow_stages = stages
     save_project_config(cfg)
     return stages
+
+
+# ---------------------------------------------------------------------------
+# Template Variables (sub-resource of project config)
+# ---------------------------------------------------------------------------
+
+
+def get_template_variables() -> list[TemplateVariable]:
+    cfg = get_project_config()
+    if cfg is None:
+        return []
+    return cfg.template_variables
+
+
+def save_template_variables(variables: list[TemplateVariable]) -> list[TemplateVariable]:
+    cfg = get_project_config()
+    if cfg is None:
+        cfg = ProjectConfig()
+    cfg.template_variables = variables
+    save_project_config(cfg)
+    return variables
+
+
+# ---------------------------------------------------------------------------
+# Artifact Types (sub-resource of project config)
+# ---------------------------------------------------------------------------
+
+
+def _default_artifact_types() -> list[ArtifactTypeConfig]:
+    """Return the hardcoded defaults from WRITING_ARTIFACT_TYPES."""
+    from pct.board.artifact_types import WRITING_ARTIFACT_TYPES
+
+    return [
+        ArtifactTypeConfig(id=k, label=v["label"], template_hint=v["template_hint"])
+        for k, v in WRITING_ARTIFACT_TYPES.items()
+    ]
+
+
+def get_artifact_types() -> list[ArtifactTypeConfig]:
+    cfg = get_project_config()
+    if cfg is None or not cfg.artifact_types:
+        return _default_artifact_types()
+    return cfg.artifact_types
+
+
+def save_artifact_types(types: list[ArtifactTypeConfig]) -> list[ArtifactTypeConfig]:
+    cfg = get_project_config()
+    if cfg is None:
+        cfg = ProjectConfig()
+    cfg.artifact_types = types
+    save_project_config(cfg)
+    return types
 
 
 # ---------------------------------------------------------------------------

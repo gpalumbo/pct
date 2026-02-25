@@ -84,7 +84,20 @@ WRITING_ARTIFACT_TYPES: dict[str, dict[str, str]] = {
 
 
 def get_artifact_type_prompt(artifact_type: str) -> str:
-    """Return the LLM template hint for a given artifact type, or empty string."""
+    """Return the LLM template hint for a given artifact type, or empty string.
+
+    Checks user-configured artifact types first, falls back to hardcoded defaults.
+    """
+    try:
+        from pct.settings import service as settings_service
+
+        for at in settings_service.get_artifact_types():
+            if at.id == artifact_type:
+                return at.template_hint
+    except Exception:
+        pass
+
+    # Fallback to hardcoded defaults
     entry = WRITING_ARTIFACT_TYPES.get(artifact_type)
     if entry:
         return entry["template_hint"]

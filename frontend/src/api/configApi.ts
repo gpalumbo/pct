@@ -1,10 +1,12 @@
 import client from './client';
 import type {
   AgentConfig,
+  ArtifactTypeConfig,
   LoRARegistryEntry,
   ModelRegistryEntry,
   ProjectConfig,
   ProjectStatus,
+  TemplateVariable,
   WorkflowStageConfig,
 } from '../types/config';
 
@@ -74,3 +76,15 @@ export const fetchWorkflowStages = () =>
   client.get<WorkflowStageConfig[]>('/api/config/workflow-stages').then((r) => r.data);
 export const saveWorkflowStages = (data: WorkflowStageConfig[]) =>
   client.put<WorkflowStageConfig[]>('/api/config/workflow-stages', data).then((r) => r.data);
+
+// Template Variables
+export const fetchTemplateVariables = () =>
+  client.get<TemplateVariable[]>('/api/config/template-variables').then((r) => r.data);
+export const saveTemplateVariables = (data: TemplateVariable[]) =>
+  client.put<TemplateVariable[]>('/api/config/template-variables', data).then((r) => r.data);
+
+// Artifact Types
+export const fetchArtifactTypes = () =>
+  client.get<ArtifactTypeConfig[]>('/api/config/artifact-types').then((r) => r.data);
+export const saveArtifactTypes = (data: ArtifactTypeConfig[]) =>
+  client.put<ArtifactTypeConfig[]>('/api/config/artifact-types', data).then((r) => r.data);

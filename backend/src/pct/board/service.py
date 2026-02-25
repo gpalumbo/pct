@@ -528,6 +528,7 @@ def reassign_task(req: ReassignTaskRequest) -> Task:
         attempt=src_task.attempt,
         artifact_path=src_task.artifact_path,
         body=src_task.body,
+        artifact_type=src_task.artifact_type,
     )
     _save_task(req.dest_feature_id, new_task)
 

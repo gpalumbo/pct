@@ -8,9 +8,11 @@ from pydantic import BaseModel as PydanticBaseModel
 from pct.auth.dependencies import get_current_user
 from pct.agent.models import AgentConfig
 from pct.config_models import (
+    ArtifactTypeConfig,
     LoRARegistryEntry,
     ModelRegistryEntry,
     ProjectConfig,
+    TemplateVariable,
     WorkflowStageConfig,
 )
 from pct.settings import service
@@ -247,3 +249,37 @@ async def save_workflow_stages(
     stages: list[WorkflowStageConfig], _user: dict = Depends(get_current_user)
 ):
     return service.save_workflow_stages(stages)
+
+
+# ---------------------------------------------------------------------------
+# Template Variables
+# ---------------------------------------------------------------------------
+
+
+@router.get("/template-variables", response_model=list[TemplateVariable])
+async def get_template_variables(_user: dict = Depends(get_current_user)):
+    return service.get_template_variables()
+
+
+@router.put("/template-variables", response_model=list[TemplateVariable])
+async def save_template_variables(
+    variables: list[TemplateVariable], _user: dict = Depends(get_current_user)
+):
+    return service.save_template_variables(variables)
+
+
+# ---------------------------------------------------------------------------
+# Artifact Types
+# ---------------------------------------------------------------------------
+
+
+@router.get("/artifact-types", response_model=list[ArtifactTypeConfig])
+async def get_artifact_types(_user: dict = Depends(get_current_user)):
+    return service.get_artifact_types()
+
+
+@router.put("/artifact-types", response_model=list[ArtifactTypeConfig])
+async def save_artifact_types(
+    types: list[ArtifactTypeConfig], _user: dict = Depends(get_current_user)
+):
+    return service.save_artifact_types(types)

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from pct.auth.dependencies import get_current_user
 from pct.board import service
-from pct.board.artifact_types import WRITING_ARTIFACT_TYPES
+
 from pct.board.models import (
     BacklogFeature,
     BoardResponse,
@@ -49,7 +49,10 @@ async def get_board(_user: dict = Depends(get_current_user)):
 @router.get("/artifact-types")
 async def get_artifact_types(_user: dict = Depends(get_current_user)):
     """Return available artifact types as {key: label} map."""
-    return {k: v["label"] for k, v in WRITING_ARTIFACT_TYPES.items()}
+    from pct.settings import service as settings_service
+
+    configured = settings_service.get_artifact_types()
+    return {at.id: at.label for at in configured}
 
 
 # ---------------------------------------------------------------------------
