@@ -489,13 +489,20 @@ def scan_and_register_models() -> list[ModelRegistryEntry]:
             if model_id in existing:
                 continue
 
+            # For nested dirs, resolve to the first shard file (llama.cpp
+            # needs a file path, not a directory).
+            if f.parent != models_dir:
+                resolved_path = str(sorted(f.parent.glob(f"*{f.suffix}"))[0])
+            else:
+                resolved_path = str(f)
+
             if f.suffix == ".gguf":
                 entry = ModelRegistryEntry(
                     id=model_id,
                     provider_type=ProviderType.LOCAL_LLM,
                     model_id=model_id,
                     context_length=4096,
-                    model_path=str(f.parent if f.parent != models_dir else f),
+                    model_path=resolved_path,
                 )
             else:
                 entry = ModelRegistryEntry(
@@ -503,7 +510,7 @@ def scan_and_register_models() -> list[ModelRegistryEntry]:
                     provider_type=ProviderType.LOCAL_LLM,
                     model_id=model_id,
                     context_length=0,
-                    model_path=str(f.parent if f.parent != models_dir else f),
+                    model_path=resolved_path,
                 )
 
             create_model(entry)

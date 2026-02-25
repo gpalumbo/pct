@@ -7,11 +7,12 @@ interface Props {
   isStreaming: boolean;
   onSend: (content: string, agentId: string | null) => void;
   onStop: () => void;
+  selectedAgent: string | null;
+  onAgentChange: (agentId: string | null) => void;
 }
 
-export default function ChatInput({ isStreaming, onSend, onStop }: Props) {
+export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, onAgentChange }: Props) {
   const [content, setContent] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const { data: agents = [] } = useAgents();
 
   const handleSend = () => {
@@ -34,7 +35,7 @@ export default function ChatInput({ isStreaming, onSend, onStop }: Props) {
         {agents.length > 0 && (
           <Select
             value={selectedAgent}
-            onChange={setSelectedAgent}
+            onChange={onAgentChange}
             placeholder="Agent"
             allowClear
             style={{ width: 160 }}

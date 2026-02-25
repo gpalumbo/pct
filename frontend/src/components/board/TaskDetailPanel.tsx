@@ -4,7 +4,7 @@ import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
 import { useBoard, useUpdateTask } from '../../hooks/useBoardQueries';
 import { useArtifactTypes } from '../../hooks/useConfigQueries';
-import TaskChat from './TaskChat';
+import PlanningChat from '../chat/PlanningChat';
 import ArtifactPane from './ArtifactPane';
 import ImageGenPane from './ImageGenPane';
 import CrossRefPicker from './CrossRefPicker';
@@ -143,7 +143,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
 
       {/* Chat pane — top half */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <TaskChat sessionId={sessionId} artifactPath={task.artifact_path} />
+        <PlanningChat sessionId={sessionId} artifactPath={task.artifact_path} />
       </div>
 
       {/* Divider */}
