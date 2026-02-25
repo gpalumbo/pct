@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Input, Select, Space } from 'antd';
 import { SendOutlined, StopOutlined } from '@ant-design/icons';
-import { useAgents } from '../../hooks/useConfigQueries';
+import { useAgents, useProjectConfig, useWorkflowStages } from '../../hooks/useConfigQueries';
 
 interface Props {
   isStreaming: boolean;
@@ -9,16 +9,34 @@ interface Props {
   onStop: () => void;
   selectedAgent: string | null;
   onAgentChange: (agentId: string | null) => void;
+  /** Current task workflow stage (e.g. "draft"). Used to resolve stage-level default agent. */
+  taskStage?: string;
 }
 
-export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, onAgentChange }: Props) {
+export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, onAgentChange, taskStage }: Props) {
   const [content, setContent] = useState('');
   const { data: agents = [] } = useAgents();
+  const { data: projectConfig } = useProjectConfig();
+  const { data: workflowStages } = useWorkflowStages();
+
+  // Resolve default agent: stage agent > project default_agent > planning_agent > first agent
+  const defaultAgentId = useMemo(() => {
+    if (taskStage && workflowStages) {
+      const stage = workflowStages.find((s) => s.stage === taskStage);
+      if (stage?.agent) return stage.agent;
+    }
+    if (projectConfig?.default_agent) return projectConfig.default_agent;
+    if (projectConfig?.planning_agent) return projectConfig.planning_agent;
+    if (agents.length > 0) return agents[0].id;
+    return null;
+  }, [taskStage, workflowStages, projectConfig, agents]);
+
+  const effectiveAgent = selectedAgent ?? defaultAgentId;
 
   const handleSend = () => {
     const trimmed = content.trim();
     if (!trimmed) return;
-    onSend(trimmed, selectedAgent);
+    onSend(trimmed, effectiveAgent);
     setContent('');
   };
 
@@ -36,10 +54,17 @@ export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, 
           <Select
             value={selectedAgent}
             onChange={onAgentChange}
-            placeholder="Agent"
+            placeholder={defaultAgentId ? `Default: ${defaultAgentId}` : 'Agent'}
             allowClear
-            style={{ width: 160 }}
-            options={agents.map((a) => ({ label: `${a.id} (${a.model})`, value: a.id }))}
+            style={{ width: 200 }}
+            options={agents
+              .filter((a) => a.provider_type !== 'user')
+              .map((a) => ({
+                label: a.id === defaultAgentId
+                  ? `${a.id} (${a.model}) *`
+                  : `${a.id} (${a.model})`,
+                value: a.id,
+              }))}
           />
         )}
         <Input.TextArea

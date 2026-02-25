@@ -19,9 +19,11 @@ interface PlanningChatProps {
   featureId?: string;
   /** Task ID for artifact append (task context only). */
   taskId?: string;
+  /** Current workflow stage of the task (e.g. "draft"). */
+  taskStage?: string;
 }
 
-export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, featureId, taskId }: PlanningChatProps) {
+export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, featureId, taskId, taskStage }: PlanningChatProps) {
   const queryClient = useQueryClient();
 
   /* ------------------------------------------------------------------ */
@@ -262,6 +264,7 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, f
         onStop={handleStop}
         selectedAgent={selectedAgent}
         onAgentChange={handleAgentChange}
+        taskStage={taskStage}
       />
     </div>
   );
