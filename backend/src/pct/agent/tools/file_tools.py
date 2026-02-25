@@ -80,12 +80,31 @@ class FileTool:
         except Exception as e:
             return f"[error] {e}"
 
+    def _maybe_index(self, file_path: Path) -> None:
+        """If path is under work/, index into RAG."""
+        try:
+            rel = file_path.relative_to(self._root / "work")
+        except ValueError:
+            return
+        try:
+            from pct.rag.indexer import index_file
+            from pct.settings.service import get_project_config
+
+            cfg = get_project_config()
+            if cfg and cfg.project_id:
+                index_file(cfg.project_id, file_path)
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
     def _write(self, parsed: dict) -> str:
         if "content" not in parsed:
             return "[error] content is required for write action."
         target = _resolve_safe(self._root, parsed["path"])
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(parsed["content"], encoding="utf-8")
+        self._maybe_index(target)
         return f"Wrote {len(parsed['content'])} chars to {parsed['path']}"
 
     def _edit(self, parsed: dict) -> str:
@@ -105,4 +124,5 @@ class FileTool:
 
         content = content.replace(old_text, new_text, 1)
         target.write_text(content, encoding="utf-8")
+        self._maybe_index(target)
         return f"Edited {parsed['path']}"

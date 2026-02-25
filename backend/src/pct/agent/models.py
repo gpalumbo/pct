@@ -20,6 +20,7 @@ class AgentType(str, Enum):
     LLM = "llm"
     USER = "user"
     TOOL = "tool"
+    IMAGEGEN = "imagegen"
 
 
 class ProviderType(str, Enum):

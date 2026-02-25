@@ -368,7 +368,7 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
     feature_title = _get_feature_title(feature_id)
     feature_slug = _artifact_slug(feature_title)
     task_slug = _artifact_slug(req.title)
-    artifact_path = req.artifact_path or f"artifacts/{feature_slug}/{task_slug}.md"
+    artifact_path = req.artifact_path or f"work/{feature_slug}/{task_slug}.md"
 
     task = Task(
         id=task_id,

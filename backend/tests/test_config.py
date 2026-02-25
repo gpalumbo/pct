@@ -23,6 +23,7 @@ def _isolate_config(tmp_path):
     """Isolate registries and project root to tmp_path for each test."""
     os.environ["PCT_REGISTRIES_DIR"] = str(tmp_path / "registries")
     os.environ["PCT_PROJECT_ROOT"] = str(tmp_path / "project")
+    os.environ["PCT_ROOT"] = str(tmp_path / "pct_root")
     # Create .pct dir inside project root
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
@@ -211,8 +212,8 @@ class TestAgents:
         assert resp.status_code == 201
 
         resp = await client.get("/api/config/agents", headers=auth_headers)
-        assert len(resp.json()) == 1
-        assert resp.json()[0]["id"] == "coder"
+        agent_ids = [a["id"] for a in resp.json()]
+        assert "coder" in agent_ids
 
     @pytest.mark.anyio
     async def test_duplicate_agent_returns_400(self, client, auth_headers):

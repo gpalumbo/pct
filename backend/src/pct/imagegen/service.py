@@ -34,7 +34,7 @@ def _project_root() -> Path:
 
 
 def _images_dir(feature_id: str, task_id: str) -> Path:
-    return _project_root() / "artifacts" / feature_id / task_id / "images"
+    return _project_root() / "work" / feature_id / task_id / "images"
 
 
 def _session_path(feature_id: str, task_id: str) -> Path:

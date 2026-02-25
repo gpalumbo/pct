@@ -127,7 +127,7 @@ export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenP
 
   const handleAccept = () => {
     if (!selectedImage) return;
-    const artifactPath = `artifacts/${featureId}/${taskId}/images/${selectedImage.filename}`;
+    const artifactPath = `work/${featureId}/${taskId}/images/${selectedImage.filename}`;
     updateTask.mutate(
       { featureId, taskId, data: { artifact_path: artifactPath } },
       {

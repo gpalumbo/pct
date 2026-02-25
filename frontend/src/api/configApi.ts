@@ -61,6 +61,14 @@ export const updateAgent = (id: string, data: AgentConfig) =>
 export const deleteAgent = (id: string) =>
   client.delete(`/api/config/agents/${id}`);
 
+// Reindex
+export interface ReindexResponse {
+  indexed: number;
+  error?: string;
+}
+export const reindexProject = () =>
+  client.post<ReindexResponse>('/api/config/project/reindex').then((r) => r.data);
+
 // Workflow Stages
 export const fetchWorkflowStages = () =>
   client.get<WorkflowStageConfig[]>('/api/config/workflow-stages').then((r) => r.data);

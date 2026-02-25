@@ -16,7 +16,22 @@ from pct.settings.router import router as config_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("PCT server starting up")
+    if not config.settings.project_root:
+        raise RuntimeError(
+            "PCT_PROJECT_ROOT is not set. "
+            "Set it to the project directory you want to work on "
+            "(e.g. PCT_PROJECT_ROOT=/path/to/my-project)."
+        )
+    logger.info(
+        "PCT server starting up  project_root={} pct_root={}",
+        config.settings.project_root,
+        config.settings.root,
+    )
+    # Auto-discover models on every startup
+    from pct.settings.service import scan_and_register_models
+    found = scan_and_register_models()
+    if found:
+        logger.info("Discovered {} new model(s): {}", len(found), [m.id for m in found])
     yield
     logger.info("PCT server shutting down")
 

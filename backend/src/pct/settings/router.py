@@ -162,6 +162,17 @@ async def save_project_config(cfg: ProjectConfig, _user: dict = Depends(get_curr
     return service.save_project_config(cfg)
 
 
+class ReindexResponse(PydanticBaseModel):
+    indexed: int
+    error: str | None = None
+
+
+@router.post("/project/reindex", response_model=ReindexResponse)
+async def reindex_project(_user: dict = Depends(get_current_user)):
+    result = service.reindex_project()
+    return ReindexResponse(**result)
+
+
 # ---------------------------------------------------------------------------
 # Agents (sub-resource of project config)
 # ---------------------------------------------------------------------------

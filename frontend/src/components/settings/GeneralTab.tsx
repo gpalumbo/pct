@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Button, Divider, Form, Input, InputNumber, Select, Slider, Switch, Typography, message } from 'antd';
-import { useProjectConfig, useSaveProjectConfig, useAgents } from '../../hooks/useConfigQueries';
+import { useProjectConfig, useProjectStatus, useSaveProjectConfig, useAgents, useReindexProject } from '../../hooks/useConfigQueries';
 import { useUIStore } from '../../stores/uiStore';
 import type { ProjectConfig } from '../../types/config';
 
@@ -25,8 +25,10 @@ const PROJECT_TYPE_OPTIONS = [
 
 export default function GeneralTab() {
   const { data: config } = useProjectConfig();
+  const { data: status } = useProjectStatus();
   const { data: agents = [] } = useAgents();
   const saveConfig = useSaveProjectConfig();
+  const reindex = useReindexProject();
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -64,10 +66,29 @@ export default function GeneralTab() {
     <Form form={form} layout="vertical" initialValues={config ?? DEFAULT_CONFIG}>
       <Divider orientation="left">Project Metadata</Divider>
       <Form.Item label="Project Directory">
-        <Input value={config?.project_directory ?? ''} disabled />
+        <Input value={status?.project_directory ?? config?.project_directory ?? ''} disabled />
+      </Form.Item>
+      <Form.Item>
+        <Button
+          onClick={() => {
+            reindex.mutate(undefined, {
+              onSuccess: (data) => {
+                if (data.error) {
+                  message.warning(`Re-indexed ${data.indexed} files: ${data.error}`);
+                } else {
+                  message.success(`Re-indexed ${data.indexed} work artifacts`);
+                }
+              },
+              onError: () => message.error('Failed to re-index'),
+            });
+          }}
+          loading={reindex.isPending}
+        >
+          Re-index Work Artifacts
+        </Button>
       </Form.Item>
       <Form.Item name="project_id" label="Project ID">
-        <Input />
+        <Input placeholder="Auto-derived from directory name on first save" />
       </Form.Item>
       <Form.Item name="project_name" label="Project Name" rules={[{ required: true, message: 'Project name is required' }]}>
         <Input />
