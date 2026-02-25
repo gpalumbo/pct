@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, Select, Tag, Typography, message } from 'antd';
 import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
+import type { AgentType } from '../../types/config';
 import { useBoard, useUpdateTask } from '../../hooks/useBoardQueries';
 import { useArtifactTypes } from '../../hooks/useConfigQueries';
 import PlanningChat from '../chat/PlanningChat';
@@ -21,6 +22,8 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
   const { featureId, taskId, task } = selectedTask;
   const sessionId = `task-${featureId}-${taskId}`;
   const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const [activeAgentType, setActiveAgentType] = useState<AgentType | null>(null);
+  const [pendingImagePrompt, setPendingImagePrompt] = useState<string | null>(null);
   const { data: board } = useBoard();
   const updateTask = useUpdateTask();
   const { data: artifactTypes = [] } = useArtifactTypes();
@@ -61,6 +64,10 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
       },
     );
   };
+
+  // Agent type is primary; artifact_type is fallback when no agent is selected
+  const showImageGen = activeAgentType === 'imagegen'
+    || (activeAgentType === null && task.artifact_type === 'image');
 
   return (
     <div
@@ -143,7 +150,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
 
       {/* Chat pane — top half */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <PlanningChat sessionId={sessionId} artifactPath={task.artifact_path} featureId={featureId} taskId={taskId} taskStage={task.status} />
+        <PlanningChat sessionId={sessionId} artifactPath={task.artifact_path} featureId={featureId} taskId={taskId} taskStage={task.status} onAgentTypeChange={setActiveAgentType} onImageGenerate={setPendingImagePrompt} />
       </div>
 
       {/* Divider */}
@@ -151,7 +158,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
 
       {/* Artifact pane — bottom portion */}
       <div style={{
-        height: task.artifact_type === 'image' ? 480 : 240,
+        height: showImageGen ? 480 : 240,
         minHeight: 200,
         display: 'flex',
         flexDirection: 'column',
@@ -159,12 +166,12 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
       }}>
         <div className="task-sidebar-section-label" style={{ padding: '4px 12px' }}>
           <Text type="secondary" style={{ fontSize: 11 }}>
-            {task.artifact_type === 'image' ? 'Image Studio' : 'Artifact'}
+            {showImageGen ? 'Image Studio' : 'Artifact'}
           </Text>
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          {task.artifact_type === 'image' ? (
-            <ImageGenPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
+          {showImageGen ? (
+            <ImageGenPane featureId={featureId} taskId={taskId} taskTitle={task.title} pendingPrompt={pendingImagePrompt} onPromptConsumed={() => setPendingImagePrompt(null)} />
           ) : (
             <ArtifactPane featureId={featureId} taskId={taskId} taskTitle={task.title} />
           )}

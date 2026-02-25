@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Spin, Typography, message as antMessage } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage, useTruncateFromMessage } from '../../hooks/useChatQueries';
+import { useAgents, useWorkflowStages } from '../../hooks/useConfigQueries';
 import { createSession, fetchSession, sendMessageStream } from '../../api/chatApi';
 import { fetchArtifact, saveArtifact } from '../../api/boardApi';
 import type { PlanningMessage } from '../../types/chat';
+import type { AgentType } from '../../types/config';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 
@@ -21,9 +23,13 @@ interface PlanningChatProps {
   taskId?: string;
   /** Current workflow stage of the task (e.g. "draft"). */
   taskStage?: string;
+  /** Called when the selected agent's type changes (or null if cleared/unknown). */
+  onAgentTypeChange?: (agentType: AgentType | null) => void;
+  /** When provided, imagegen-type agent prompts are routed here instead of chat API. */
+  onImageGenerate?: (prompt: string) => void;
 }
 
-export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, featureId, taskId, taskStage }: PlanningChatProps) {
+export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, featureId, taskId, taskStage, onAgentTypeChange, onImageGenerate }: PlanningChatProps) {
   const queryClient = useQueryClient();
 
   /* ------------------------------------------------------------------ */
@@ -74,6 +80,29 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, f
     setSelectedAgent(agentId);
     selectedAgentRef.current = agentId;
   }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  Initialize agent from workflow stage default & notify parent        */
+  /* ------------------------------------------------------------------ */
+  const { data: stages = [] } = useWorkflowStages();
+  const { data: agents = [] } = useAgents();
+
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current || !taskStage || stages.length === 0) return;
+    const stage = stages.find(s => s.stage === taskStage);
+    if (stage?.agent) {
+      handleAgentChange(stage.agent);
+    }
+    initializedRef.current = true;
+  }, [taskStage, stages, handleAgentChange]);
+
+  useEffect(() => {
+    if (!onAgentTypeChange) return;
+    if (!selectedAgent) { onAgentTypeChange(null); return; }
+    const cfg = agents.find(a => a.id === selectedAgent);
+    onAgentTypeChange(cfg?.agent_type ?? null);
+  }, [selectedAgent, agents, onAgentTypeChange]);
 
   /* ------------------------------------------------------------------ */
   /*  Load messages                                                      */
@@ -128,6 +157,13 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, f
     (content: string, agentId: string | null) => {
       if (!activeSessionId) return;
 
+      // Route imagegen prompts to image generation instead of chat
+      const agentCfg = agentId ? agents.find(a => a.id === agentId) : null;
+      if (agentCfg?.agent_type === 'imagegen' && onImageGenerate) {
+        onImageGenerate(content);
+        return;
+      }
+
       const userMsg: PlanningMessage = {
         id: crypto.randomUUID().slice(0, 12),
         role: 'user',
@@ -175,7 +211,7 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, f
       );
       abortRef.current = controller;
     },
-    [activeSessionId, artifactPath, queryClient],
+    [activeSessionId, artifactPath, queryClient, agents, onImageGenerate],
   );
 
   const handleStop = useCallback(() => {

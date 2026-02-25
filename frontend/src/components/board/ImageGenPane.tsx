@@ -18,6 +18,8 @@ interface ImageGenPaneProps {
   featureId: string;
   taskId: string;
   taskTitle?: string;
+  pendingPrompt?: string | null;
+  onPromptConsumed?: () => void;
 }
 
 const divergenceMarks = {
@@ -26,13 +28,12 @@ const divergenceMarks = {
   0.9: 'Diverge',
 };
 
-export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenPaneProps) {
+export default function ImageGenPane({ featureId, taskId, taskTitle, pendingPrompt, onPromptConsumed }: ImageGenPaneProps) {
   const { data: session, refetch: refetchSession } = useImageGenSession(featureId, taskId);
   const startGen = useStartGeneration();
   const selectImg = useSelectImage(featureId, taskId);
   const updateTask = useUpdateTask();
 
-  const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [divergence, setDivergence] = useState(0.5);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
@@ -94,17 +95,14 @@ export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenP
     }
   }, [job?.status, job?.error, refetchSession]);
 
-  const handleGenerate = () => {
-    if (!prompt.trim()) {
-      message.warning('Please enter a prompt');
-      return;
-    }
-
+  // Trigger generation when an external prompt arrives via pendingPrompt
+  useEffect(() => {
+    if (!pendingPrompt) return;
     startGen.mutate(
       {
         feature_id: featureId,
         task_id: taskId,
-        prompt: prompt.trim(),
+        prompt: pendingPrompt.trim(),
         negative_prompt: negativePrompt.trim(),
         guidance_scale: guidanceScale,
         source_image: latestSelectedImage ?? undefined,
@@ -118,7 +116,8 @@ export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenP
         onError: () => message.error('Failed to start generation'),
       },
     );
-  };
+    onPromptConsumed?.();
+  }, [pendingPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectImage = (img: GeneratedImage) => {
     setSelectedImage({ round: img.round, filename: img.filename });
@@ -139,19 +138,6 @@ export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenP
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 12px', gap: 8, overflow: 'auto' }}>
-      {/* Prompt area */}
-      <div>
-        <Text type="secondary" style={{ fontSize: 11 }}>Prompt</Text>
-        <Input.TextArea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={taskTitle ? `Describe the image for "${taskTitle}"...` : 'Describe the image...'}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          style={{ fontSize: 12 }}
-          disabled={isGenerating}
-        />
-      </div>
-
       <Collapse size="small" ghost items={[{
         key: 'neg',
         label: <Text type="secondary" style={{ fontSize: 11 }}>Negative prompt</Text>,
@@ -194,16 +180,6 @@ export default function ImageGenPane({ featureId, taskId, taskTitle }: ImageGenP
           />
         </div>
       </div>
-
-      {/* Generate/Refine button */}
-      <Button
-        type="primary"
-        onClick={handleGenerate}
-        loading={isGenerating}
-        block
-      >
-        {latestSelectedImage ? 'Refine' : 'Generate'}
-      </Button>
 
       {/* Progress bar */}
       {isGenerating && job && (
