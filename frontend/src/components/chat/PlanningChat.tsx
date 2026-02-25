@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Spin, Typography } from 'antd';
+import { Spin, Typography, message as antMessage } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage, useTruncateFromMessage } from '../../hooks/useChatQueries';
 import { createSession, fetchSession, sendMessageStream } from '../../api/chatApi';
+import { fetchArtifact, saveArtifact } from '../../api/boardApi';
 import type { PlanningMessage } from '../../types/chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -14,9 +15,13 @@ interface PlanningChatProps {
   sessionId?: string;
   /** Optional artifact path forwarded to the send-message API. */
   artifactPath?: string;
+  /** Feature ID for artifact append (task context only). */
+  featureId?: string;
+  /** Task ID for artifact append (task context only). */
+  taskId?: string;
 }
 
-export default function PlanningChat({ sessionId: sessionIdProp, artifactPath }: PlanningChatProps) {
+export default function PlanningChat({ sessionId: sessionIdProp, artifactPath, featureId, taskId }: PlanningChatProps) {
   const queryClient = useQueryClient();
 
   /* ------------------------------------------------------------------ */
@@ -201,6 +206,27 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath }:
   );
 
   /* ------------------------------------------------------------------ */
+  /*  Copy to artifact (append)                                          */
+  /* ------------------------------------------------------------------ */
+  const handleCopyToArtifact = useCallback(
+    async (content: string) => {
+      if (!featureId || !taskId) return;
+      try {
+        const artifact = await fetchArtifact(featureId, taskId);
+        const updated = artifact.content
+          ? artifact.content + '\n\n' + content
+          : content;
+        await saveArtifact(featureId, taskId, updated);
+        queryClient.invalidateQueries({ queryKey: ['artifact', featureId, taskId] });
+        antMessage.success('Appended to artifact');
+      } catch {
+        antMessage.error('Failed to append to artifact');
+      }
+    },
+    [featureId, taskId, queryClient],
+  );
+
+  /* ------------------------------------------------------------------ */
   /*  Render                                                             */
   /* ------------------------------------------------------------------ */
   if (sessionLoading || messagesLoading) {
@@ -228,6 +254,7 @@ export default function PlanningChat({ sessionId: sessionIdProp, artifactPath }:
         onDeleteMessage={handleDeleteMessage}
         onReplay={handleReplay}
         onTruncateAndReplay={handleTruncateAndReplay}
+        onCopyToArtifact={featureId && taskId ? handleCopyToArtifact : undefined}
       />
       <ChatInput
         isStreaming={isStreaming}

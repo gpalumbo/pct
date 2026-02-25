@@ -1,5 +1,5 @@
-export type AgentType = 'llm' | 'user' | 'tool';
-export type ProviderType = 'remote' | 'local' | 'user';
+export type AgentType = 'llm' | 'user' | 'tool' | 'imagegen';
+export type ProviderType = 'remote' | 'local' | 'huggingface' | 'user';
 
 export interface ModelRegistryEntry {
   id: string;

@@ -143,7 +143,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
 
       {/* Chat pane — top half */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <PlanningChat sessionId={sessionId} artifactPath={task.artifact_path} />
+        <PlanningChat sessionId={sessionId} artifactPath={task.artifact_path} featureId={featureId} taskId={taskId} />
       </div>
 
       {/* Divider */}

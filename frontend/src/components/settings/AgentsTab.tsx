@@ -95,12 +95,14 @@ export default function AgentsTab() {
               { label: 'LLM', value: 'llm' },
               { label: 'User', value: 'user' },
               { label: 'Tool', value: 'tool' },
+              { label: 'Image Gen', value: 'imagegen' },
             ]} />
           </Form.Item>
           <Form.Item name="provider_type" label="Provider Type" rules={[{ required: true }]}>
             <Select options={[
               { label: 'Remote API', value: 'remote' },
               { label: 'Local LLM', value: 'local' },
+              { label: 'HuggingFace', value: 'huggingface' },
               { label: 'User', value: 'user' },
             ]} />
           </Form.Item>

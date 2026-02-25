@@ -91,6 +91,7 @@ export default function ModelRegistryTab() {
             <Select options={[
               { label: 'Remote API', value: 'remote' },
               { label: 'Local LLM', value: 'local' },
+              { label: 'HuggingFace', value: 'huggingface' },
             ]} />
           </Form.Item>
           <Form.Item name="model_id" label="Model ID" rules={[{ required: true }]}>
@@ -99,7 +100,7 @@ export default function ModelRegistryTab() {
           <Form.Item name="context_length" label="Context Length" initialValue={0} rules={[{ required: true }]} tooltip="0 = use model's training context length">
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          {providerType === 'local' && (
+          {(providerType === 'local' || providerType === 'huggingface') && (
             <Form.Item
               label="Model Path"
               required

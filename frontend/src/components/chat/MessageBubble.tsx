@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Checkbox, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
-import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, RedoOutlined, ScissorOutlined } from '@ant-design/icons';
+import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, RedoOutlined, ScissorOutlined, CopyOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { PlanningMessage } from '../../types/chat';
 
@@ -18,10 +18,11 @@ interface Props {
   onDelete?: (id: string) => void;
   onReplay?: (msg: PlanningMessage) => void;
   onTruncateAndReplay?: (msg: PlanningMessage) => void;
+  onCopyToArtifact?: (content: string) => void;
   isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message, onUpdate, onDelete, onReplay, onTruncateAndReplay, isStreaming }: Props) {
+export default function MessageBubble({ message, onUpdate, onDelete, onReplay, onTruncateAndReplay, onCopyToArtifact, isStreaming }: Props) {
   const [editing, setEditing] = useState(false);
   const [editRole, setEditRole] = useState(message.role);
   const [editContent, setEditContent] = useState(message.content);
@@ -126,6 +127,14 @@ export default function MessageBubble({ message, onUpdate, onDelete, onReplay, o
               onClick={() => onDelete(message.id)}
               style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
             />
+          )}
+          {!isUser && onCopyToArtifact && (
+            <Tooltip title="Copy to artifact">
+              <CopyOutlined
+                onClick={() => onCopyToArtifact(message.content)}
+                style={{ cursor: 'pointer', fontSize: 12, color: '#722ed1' }}
+              />
+            </Tooltip>
           )}
           {isUser && onReplay && (
             <Tooltip title="Replay">
