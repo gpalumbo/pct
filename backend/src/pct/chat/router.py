@@ -21,6 +21,7 @@ from pct.chat.models import (
     SendMessageRequest,
     UpdateMessageRequest,
 )
+from pct.chat.context_builder import rag_search_context, resolve_task_context
 from pct.chat.provider_factory import get_default_planning_agent_id, resolve_provider
 from pct.config import settings
 from pct.settings import service as settings_service
@@ -171,7 +172,22 @@ async def send_message(
     conversation_text = "\n\n".join(
         f"[{m.role}]: {m.content}" for m in included
     )
-    context = AssembledContext(base=conversation_text)
+
+    # 3a. Resolve cross-reference and RAG context for task sessions
+    cross_ref_text, artifact_type_prompt = resolve_task_context(session_id)
+    project_cfg = settings_service.get_project_config()
+    project_id = project_cfg.project_id if project_cfg else ""
+    rag_text = rag_search_context(project_id, req.content)
+
+    # Prepend world context to conversation
+    context_parts = []
+    if cross_ref_text:
+        context_parts.append(cross_ref_text)
+    if rag_text:
+        context_parts.append(rag_text)
+    context_parts.append(conversation_text)
+
+    context = AssembledContext(base="\n\n".join(context_parts))
 
     # 4. Stream response
     async def event_stream():
@@ -189,6 +205,8 @@ async def send_message(
             try:
                 provider, agent_cfg = resolve_provider(agent_id)
                 system_prompt = agent_cfg.prompt_template
+                if artifact_type_prompt:
+                    system_prompt = artifact_type_prompt + "\n\n" + system_prompt
                 if req.artifact_path:
                     system_prompt = (
                         f"You are working on a kanban task. Write your final results "

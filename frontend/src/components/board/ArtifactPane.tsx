@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Button, Input, Spin, message } from 'antd';
+import { useEffect, useState, useMemo } from 'react';
+import { Button, Input, Spin, Tag, message } from 'antd';
 import { SaveOutlined, ReloadOutlined, EditOutlined } from '@ant-design/icons';
 import { useArtifact, useSaveArtifact, useUpdateTask } from '../../hooks/useBoardQueries';
 import ArtifactEditorModal from './ArtifactEditorModal';
@@ -9,6 +9,33 @@ function artifactSlug(text: string, maxWords = 3): string {
   const words = text.toLowerCase().match(/[a-z0-9]+/g) || [];
   const selected = words.length > maxWords ? words.slice(0, maxWords) : words;
   return selected.join('_') || 'untitled';
+}
+
+/** Extract and display [[wikilinks]] found in text as a tag strip */
+function WikilinkStrip({ text }: { text: string }) {
+  const links = useMemo(() => {
+    const matches: string[] = [];
+    const regex = /\[\[([^\[\]]+)\]\]/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (!matches.includes(match[1])) {
+        matches.push(match[1]);
+      }
+    }
+    return matches;
+  }, [text]);
+
+  if (links.length === 0) return null;
+
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 0', flexShrink: 0 }}>
+      {links.map((link) => (
+        <Tag key={link} color="blue" style={{ fontSize: 10, margin: 0, cursor: 'default' }}>
+          {link}
+        </Tag>
+      ))}
+    </div>
+  );
 }
 
 interface ArtifactPaneProps {
@@ -114,6 +141,7 @@ export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactP
         style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
         placeholder={artifact?.exists ? '' : 'Artifact file does not exist yet. Type content and save to create it.'}
       />
+      <WikilinkStrip text={content} />
       <ArtifactEditorModal
         open={editorOpen}
         content={content}

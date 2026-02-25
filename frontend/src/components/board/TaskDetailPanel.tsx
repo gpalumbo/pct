@@ -1,12 +1,28 @@
-import { Button, Typography } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Button, Select, Tag, Typography, message } from 'antd';
+import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import type { SelectedTask } from '../../stores/boardStore';
+import { useBoard, useUpdateTask } from '../../hooks/useBoardQueries';
 import TaskChat from './TaskChat';
 import ArtifactPane from './ArtifactPane';
 import ImageGenPane from './ImageGenPane';
+import CrossRefPicker from './CrossRefPicker';
 import './sidebar.css';
 
 const { Text } = Typography;
+
+const ARTIFACT_TYPE_OPTIONS = [
+  { value: 'text', label: 'Text' },
+  { value: 'timeline', label: 'Timeline' },
+  { value: 'location', label: 'Location' },
+  { value: 'character', label: 'Character' },
+  { value: 'faction', label: 'Faction' },
+  { value: 'magic-system', label: 'Magic System' },
+  { value: 'technology', label: 'Technology' },
+  { value: 'item', label: 'Item' },
+  { value: 'story-arc', label: 'Story Arc' },
+  { value: 'chapter', label: 'Chapter' },
+];
 
 interface TaskDetailPanelProps {
   selectedTask: SelectedTask;
@@ -16,6 +32,41 @@ interface TaskDetailPanelProps {
 export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPanelProps) {
   const { featureId, taskId, task } = selectedTask;
   const sessionId = `task-${featureId}-${taskId}`;
+  const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const { data: board } = useBoard();
+  const updateTask = useUpdateTask();
+
+  const handleRemoveRef = (ref: string) => {
+    const newRefs = task.cross_depends_on.filter((r) => r !== ref);
+    updateTask.mutate(
+      { featureId, taskId, data: { cross_depends_on: newRefs } },
+      {
+        onError: () => message.error('Failed to update references'),
+      },
+    );
+  };
+
+  const handleRefsSelected = (refs: string[]) => {
+    updateTask.mutate(
+      { featureId, taskId, data: { cross_depends_on: refs } },
+      {
+        onSuccess: () => {
+          setRefPickerOpen(false);
+          message.success('References updated');
+        },
+        onError: () => message.error('Failed to update references'),
+      },
+    );
+  };
+
+  const handleArtifactTypeChange = (value: string) => {
+    updateTask.mutate(
+      { featureId, taskId, data: { artifact_type: value } },
+      {
+        onError: () => message.error('Failed to update artifact type'),
+      },
+    );
+  };
 
   return (
     <div
@@ -42,6 +93,14 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
         <Text strong style={{ flex: 1, fontSize: 13 }} ellipsis>
           {task.title}
         </Text>
+        <Select
+          size="small"
+          value={task.artifact_type || 'text'}
+          onChange={handleArtifactTypeChange}
+          options={ARTIFACT_TYPE_OPTIONS}
+          style={{ width: 110, fontSize: 11 }}
+          popupMatchSelectWidth={false}
+        />
         <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
           {featureId}/{taskId}
         </Text>
@@ -51,6 +110,41 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
           icon={<CloseOutlined />}
           onClick={onClose}
         />
+      </div>
+
+      {/* Cross-references strip */}
+      <div
+        style={{
+          padding: '4px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          flexWrap: 'wrap',
+          flexShrink: 0,
+        }}
+      >
+        {task.cross_depends_on.map((ref) => (
+          <Tag
+            key={ref}
+            closable
+            onClose={() => handleRemoveRef(ref)}
+            style={{ fontSize: 10, margin: 0 }}
+          >
+            {ref}
+          </Tag>
+        ))}
+        <Button
+          size="small"
+          type="dashed"
+          icon={<LinkOutlined />}
+          onClick={() => setRefPickerOpen(true)}
+          style={{ fontSize: 11 }}
+        >
+          Add Ref
+        </Button>
+        <Text type="secondary" style={{ fontSize: 10, marginLeft: 'auto' }}>
+          Tip: use [[Name]] to auto-link
+        </Text>
       </div>
 
       {/* Chat pane — top half */}
@@ -82,6 +176,17 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
           )}
         </div>
       </div>
+
+      {/* Cross-reference picker modal */}
+      <CrossRefPicker
+        open={refPickerOpen}
+        features={board?.features || []}
+        currentFeatureId={featureId}
+        currentTaskId={taskId}
+        selected={task.cross_depends_on}
+        onOk={handleRefsSelected}
+        onCancel={() => setRefPickerOpen(false)}
+      />
     </div>
   );
 }

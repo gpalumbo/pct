@@ -120,7 +120,7 @@ class SearchTool:
         self._ensure_loaded()
 
         available = self._db.list_tables()
-        tables_to_search = [t for t in ["tasks", "specs"] if t in available]
+        tables_to_search = [t for t in ["tasks", "specs", "artifacts"] if t in available]
 
         if not tables_to_search:
             return "No documents indexed yet."

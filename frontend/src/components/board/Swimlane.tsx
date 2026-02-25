@@ -30,6 +30,13 @@ export default function Swimlane({ feature, enabledStages }: SwimlaneProps) {
     setNewTaskTitle('');
   };
 
+  // Infer default artifact_type from sibling tasks in this feature
+  const inferredArtifactType = (() => {
+    const types = feature.tasks.map((t) => t.artifact_type).filter((t) => t && t !== 'text');
+    if (types.length > 0) return types[0];
+    return 'text';
+  })();
+
   const handleSubmitTask = () => {
     const title = newTaskTitle.trim();
     if (!title) {
@@ -38,7 +45,10 @@ export default function Swimlane({ feature, enabledStages }: SwimlaneProps) {
     }
     const firstStage = enabledStages[0] || 'todo';
     createTask.mutate(
-      { featureId: feature.id, data: { title, status: firstStage } },
+      {
+        featureId: feature.id,
+        data: { title, status: firstStage, artifact_type: inferredArtifactType },
+      },
       { onSuccess: () => { setAddingTask(false); setNewTaskTitle(''); } },
     );
   };

@@ -7,8 +7,11 @@ def _stage(stage_id: str, label: str) -> dict:
     return {"stage": stage_id, "label": label, "enabled": True, "agent": None}
 
 
-def _task(title: str) -> dict:
-    return {"title": title}
+def _task(title: str, artifact_type: str = "text") -> dict:
+    d: dict = {"title": title}
+    if artifact_type != "text":
+        d["artifact_type"] = artifact_type
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -38,49 +41,70 @@ TEMPLATES: dict[str, dict] = {
             ],
         },
     },
-    "campaign-building": {
+    "writing": {
         "stages": [
             _stage("concept", "Concept"),
-            _stage("world-building", "World Building"),
             _stage("outline", "Outline"),
             _stage("draft", "Draft"),
-            _stage("review", "Review"),
             _stage("revise", "Revise"),
-            _stage("ready", "Ready"),
+            _stage("polish", "Polish"),
             _stage("done", "Done"),
         ],
-        "initial_feature": {
-            "id": "f1-campaign-foundation",
-            "title": "Campaign Foundation",
-            "tasks": [
-                _task("Define campaign setting and tone"),
-                _task("Create key NPCs and factions"),
-                _task("Map major locations"),
-                _task("Outline Session 1 encounter"),
-            ],
-        },
-    },
-    "novel": {
-        "stages": [
-            _stage("concept", "Concept"),
-            _stage("world-building", "World Building"),
-            _stage("outline", "Outline"),
-            _stage("draft", "Draft"),
-            _stage("edit", "Edit"),
-            _stage("review", "Review"),
-            _stage("final-polish", "Final Polish"),
-            _stage("done", "Done"),
+        "initial_features": [
+            {
+                "id": "f0-timeline",
+                "title": "Timeline & History",
+                "tasks": [
+                    _task("Establish world chronology", "timeline"),
+                ],
+            },
+            {
+                "id": "f1-locations",
+                "title": "Locations",
+                "tasks": [
+                    _task("Define major regions and geography", "location"),
+                    _task("Detail key cities and landmarks", "location"),
+                ],
+            },
+            {
+                "id": "f2-characters",
+                "title": "Characters",
+                "tasks": [
+                    _task("Create protagonist profile", "character"),
+                    _task("Create antagonist profile", "character"),
+                ],
+            },
+            {
+                "id": "f3-factions",
+                "title": "Factions & Organizations",
+                "tasks": [
+                    _task("Outline major factions and power structures", "faction"),
+                    _task("Define faction relationships and conflicts", "faction"),
+                ],
+            },
+            {
+                "id": "f4-magic-religion",
+                "title": "Magic & Religion",
+                "tasks": [
+                    _task("Define magic system rules and limitations", "magic-system"),
+                    _task("Outline religious traditions and beliefs", "magic-system"),
+                ],
+            },
+            {
+                "id": "f5-technology",
+                "title": "Technology",
+                "tasks": [
+                    _task("Define technology level and key inventions", "technology"),
+                ],
+            },
+            {
+                "id": "f6-items",
+                "title": "Items & Artifacts",
+                "tasks": [
+                    _task("Catalog significant items and their origins", "item"),
+                ],
+            },
         ],
-        "initial_feature": {
-            "id": "f1-novel-foundation",
-            "title": "Novel Foundation",
-            "tasks": [
-                _task("Define world rules and magic system"),
-                _task("Create main character profiles"),
-                _task("Outline overall plot arc"),
-                _task("Draft opening chapter"),
-            ],
-        },
     },
 }
 

@@ -1,0 +1,152 @@
+"""Context builder: resolves cross-references, wikilinks, and RAG context for chat."""
+
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_task_context(session_id: str) -> tuple[str, str | None]:
+    """Resolve cross-reference context for a task chat session.
+
+    Parses the session ID (``task-{featureId}-{taskId}``), loads the task,
+    collects referenced artifacts from explicit ``cross_depends_on`` entries
+    and ``[[wikilinks]]`` found in the task body and artifact content.
+
+    Returns ``(cross_ref_context_text, artifact_type_prompt)``
+    """
+    from pct.board import service as board_service
+    from pct.board.artifact_types import get_artifact_type_prompt
+    from pct.board.wikilinks import extract_wikilinks, resolve_wikilinks
+
+    # Parse session ID: "task-{featureId}-{taskId}"
+    if not session_id.startswith("task-"):
+        return ("", None)
+
+    rest = session_id[len("task-"):]
+    # Split from the right since feature IDs may contain hyphens
+    parts = rest.rsplit("-", 1)
+    if len(parts) != 2:
+        return ("", None)
+
+    feature_id, task_id = parts
+
+    task = board_service.get_task(feature_id, task_id)
+    if task is None:
+        return ("", None)
+
+    # Artifact type prompt
+    artifact_type_prompt = get_artifact_type_prompt(task.artifact_type) or None
+
+    # Collect referenced task IDs (deduped) from multiple sources
+    ref_pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add_ref(fid: str, tid: str) -> None:
+        key = (fid, tid)
+        if key not in seen:
+            ref_pairs.append(key)
+            seen.add(key)
+
+    # 1. Explicit cross_depends_on ("featureId:taskId")
+    for ref in task.cross_depends_on:
+        if ":" in ref:
+            fid, tid = ref.split(":", 1)
+            _add_ref(fid, tid)
+
+    # 2. Wikilinks from task body + artifact content
+    texts_to_scan: list[str] = []
+    if task.body:
+        texts_to_scan.append(task.body)
+
+    artifact_data = board_service.read_artifact(feature_id, task_id)
+    if artifact_data.get("exists") and artifact_data.get("content"):
+        texts_to_scan.append(artifact_data["content"])
+
+    if texts_to_scan:
+        all_links: list[str] = []
+        for text in texts_to_scan:
+            all_links.extend(extract_wikilinks(text))
+
+        if all_links:
+            features = board_service.list_features()
+            resolved = resolve_wikilinks(all_links, features)
+            for fid, tid in resolved:
+                _add_ref(fid, tid)
+
+    # Build context text from all referenced artifacts
+    if not ref_pairs:
+        return ("", artifact_type_prompt)
+
+    sections: list[str] = []
+    for fid, tid in ref_pairs:
+        ref_task = board_service.get_task(fid, tid)
+        if ref_task is None:
+            continue
+
+        ref_artifact = board_service.read_artifact(fid, tid)
+        content = ref_artifact.get("content", "")
+        if not content:
+            continue
+
+        sections.append(
+            f"--- Referenced: {ref_task.title} ({fid}/{tid}) ---\n{content}"
+        )
+
+    if not sections:
+        return ("", artifact_type_prompt)
+
+    cross_ref_text = (
+        "## Cross-Reference Context\n"
+        "The following are referenced world artifacts relevant to this task:\n\n"
+        + "\n\n".join(sections)
+    )
+    return (cross_ref_text, artifact_type_prompt)
+
+
+def rag_search_context(
+    project_id: str, query: str, max_results: int = 5
+) -> str:
+    """Perform RAG semantic search over indexed artifacts.
+
+    Returns formatted results or empty string if RAG is unavailable.
+    """
+    if not project_id or not query.strip():
+        return ""
+
+    try:
+        from pct.rag.indexer import _get_model, _get_db
+    except ImportError:
+        return ""
+
+    try:
+        model = _get_model()
+        db = _get_db(project_id)
+
+        available = db.list_tables()
+        if "artifacts" not in available:
+            return ""
+
+        vector = model.encode(query[:8192]).tolist()
+        table = db.open_table("artifacts")
+        results = table.search(vector).limit(max_results).to_list()
+
+        if not results:
+            return ""
+
+        sections: list[str] = []
+        for r in results:
+            path = r.get("path", "unknown")
+            text = r.get("text", "")
+            snippet = text[:500] + "..." if len(text) > 500 else text
+            sections.append(f"[{path}]\n{snippet}")
+
+        return (
+            "## World Knowledge (RAG)\n"
+            "Potentially relevant artifacts from the project knowledge base:\n\n"
+            + "\n\n".join(sections)
+        )
+    except Exception:
+        logger.debug("RAG search failed", exc_info=True)
+        return ""

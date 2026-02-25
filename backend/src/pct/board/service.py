@@ -382,6 +382,7 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
         priority=req.priority,
         artifact_path=artifact_path,
         body=req.body,
+        artifact_type=req.artifact_type,
     )
     _save_task(feature_id, task)
     return task

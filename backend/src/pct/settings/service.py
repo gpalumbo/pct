@@ -211,25 +211,33 @@ def save_project_config(cfg: ProjectConfig) -> ProjectConfig:
 
 
 def _apply_initial_feature(tpl: dict) -> None:
-    """Create the initial feature and tasks from a project template."""
+    """Create the initial feature(s) and tasks from a project template.
+
+    Supports both singular ``initial_feature`` (backward-compat) and plural
+    ``initial_features`` list for templates that create multiple features.
+    """
     from pct.board.service import create_feature, create_task
     from pct.board.models import CreateFeatureRequest, CreateTaskRequest
 
-    feat_tpl = tpl.get("initial_feature")
-    if not feat_tpl:
-        return
-
     first_stage = tpl["stages"][0]["stage"] if tpl["stages"] else "todo"
 
-    create_feature(CreateFeatureRequest(
-        id=feat_tpl["id"],
-        title=feat_tpl["title"],
-    ))
-    for task_tpl in feat_tpl.get("tasks", []):
-        create_task(feat_tpl["id"], CreateTaskRequest(
-            title=task_tpl["title"],
-            status=first_stage,
+    # Collect feature templates — plural key takes precedence
+    feat_templates: list[dict] = list(tpl.get("initial_features", []))
+    singular = tpl.get("initial_feature")
+    if singular and not feat_templates:
+        feat_templates = [singular]
+
+    for feat_tpl in feat_templates:
+        create_feature(CreateFeatureRequest(
+            id=feat_tpl["id"],
+            title=feat_tpl["title"],
         ))
+        for task_tpl in feat_tpl.get("tasks", []):
+            create_task(feat_tpl["id"], CreateTaskRequest(
+                title=task_tpl["title"],
+                status=first_stage,
+                artifact_type=task_tpl.get("artifact_type", "text"),
+            ))
 
 
 # ---------------------------------------------------------------------------

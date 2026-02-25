@@ -19,8 +19,7 @@ const DEFAULT_CONFIG: ProjectConfig = {
 
 const PROJECT_TYPE_OPTIONS = [
   { label: 'Coding', value: 'coding' },
-  { label: 'Campaign Building', value: 'campaign-building' },
-  { label: 'Novel (w/ World Building)', value: 'novel' },
+  { label: 'Writing (World Building + Story)', value: 'writing' },
 ];
 
 export default function GeneralTab() {

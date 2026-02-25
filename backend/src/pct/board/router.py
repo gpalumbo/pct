@@ -1,10 +1,18 @@
 """API routes for the Kanban board: features, tasks, backlog, and composite board."""
 
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from pct.auth.dependencies import get_current_user
 from pct.board import service
+from pct.board.artifact_types import WRITING_ARTIFACT_TYPES
 from pct.board.models import (
     BacklogFeature,
     BoardResponse,
@@ -17,6 +25,8 @@ from pct.board.models import (
     UpdateFeatureMetadataRequest,
     UpdateTaskRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ArtifactWriteRequest(BaseModel):
@@ -34,6 +44,12 @@ router = APIRouter()
 async def get_board(_user: dict = Depends(get_current_user)):
     """Return the full board state in a single request."""
     return service.get_board()
+
+
+@router.get("/artifact-types")
+async def get_artifact_types(_user: dict = Depends(get_current_user)):
+    """Return available artifact types as {key: label} map."""
+    return {k: v["label"] for k, v in WRITING_ARTIFACT_TYPES.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -230,3 +246,92 @@ async def put_artifact(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return service.write_artifact(feature_id, task_id, req.content)
+
+
+# ---------------------------------------------------------------------------
+# Analysis endpoints (Gap Analysis & Continuity Check)
+# ---------------------------------------------------------------------------
+
+
+def _sse(data: dict) -> str:
+    """Format a dict as an SSE data line."""
+    return f"data: {json.dumps(data)}\n\n"
+
+
+async def _run_analysis_stream(feature_id: str, build_prompt_fn):
+    """Shared SSE streaming logic for analysis endpoints."""
+    from pct.agent.chat_loop import execute_chat_turn
+    from pct.agent.models import AssembledContext
+    from pct.agent.tools import ToolRegistry
+    from pct.chat.provider_factory import get_default_planning_agent_id, resolve_provider
+
+    feature = service.get_feature(feature_id)
+    if feature is None:
+        async def not_found():
+            yield _sse({"error": "Feature not found"})
+        return StreamingResponse(not_found(), media_type="text/event-stream")
+
+    agent_id = get_default_planning_agent_id()
+    if agent_id is None:
+        async def no_agent():
+            yield _sse({"error": "No agent configured. Add an agent in Settings."})
+        return StreamingResponse(no_agent(), media_type="text/event-stream")
+
+    context: AssembledContext = build_prompt_fn(feature_id)
+
+    async def event_stream():
+        collected_tokens: list[str] = []
+        token_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        async def on_token(token: str) -> None:
+            collected_tokens.append(token)
+            await token_queue.put(token)
+
+        async def run_analysis():
+            try:
+                provider, agent_cfg = resolve_provider(agent_id)
+                result = await execute_chat_turn(
+                    provider=provider,
+                    context=context,
+                    system_prompt=agent_cfg.prompt_template,
+                    on_token=on_token,
+                    tool_registry=ToolRegistry(),
+                )
+                return "".join(collected_tokens) or result.output
+            except Exception:
+                logger.exception("Analysis failed")
+                raise
+            finally:
+                await token_queue.put(None)
+
+        task = asyncio.create_task(run_analysis())
+
+        while True:
+            token = await token_queue.get()
+            if token is None:
+                break
+            yield _sse({"token": token})
+
+        try:
+            full_content = await task
+            yield _sse({"done": True, "content": full_content})
+        except Exception as e:
+            yield _sse({"error": str(e)})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/features/{feature_id}/gap-analysis")
+async def run_gap_analysis(
+    feature_id: str, _user: dict = Depends(get_current_user)
+):
+    from pct.board.analysis import build_gap_analysis_prompt
+    return await _run_analysis_stream(feature_id, build_gap_analysis_prompt)
+
+
+@router.post("/features/{feature_id}/continuity-check")
+async def run_continuity_check(
+    feature_id: str, _user: dict = Depends(get_current_user)
+):
+    from pct.board.analysis import build_continuity_check_prompt
+    return await _run_analysis_stream(feature_id, build_continuity_check_prompt)

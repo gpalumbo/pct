@@ -1,4 +1,5 @@
 import client from './client';
+import { useAuthStore } from '../stores/authStore';
 import type {
   BacklogFeature,
   BoardResponse,
@@ -66,3 +67,97 @@ export const fetchArtifact = (featureId: string, taskId: string) =>
 
 export const saveArtifact = (featureId: string, taskId: string, content: string) =>
   client.put<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`, { content }).then((r) => r.data);
+
+// Artifact types
+export const fetchArtifactTypes = () =>
+  client.get<Record<string, string>>('/api/board/artifact-types').then((r) => r.data);
+
+// Analysis SSE streaming
+function streamAnalysis(
+  url: string,
+  onToken: (token: string) => void,
+  onDone: (content: string) => void,
+  onError: (error: string) => void,
+): AbortController {
+  const controller = new AbortController();
+  const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const token = useAuthStore.getState().token;
+
+  fetch(`${baseURL}${url}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        onError(`HTTP ${response.status}: ${response.statusText}`);
+        return;
+      }
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError('No response body');
+        return;
+      }
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if ('token' in event) {
+              onToken(event.token);
+            } else if ('done' in event) {
+              onDone(event.content || '');
+            } else if ('error' in event) {
+              onError(event.error);
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        onError(err.message || 'Stream failed');
+      }
+    });
+
+  return controller;
+}
+
+export function runGapAnalysis(
+  featureId: string,
+  onToken: (token: string) => void,
+  onDone: (content: string) => void,
+  onError: (error: string) => void,
+): AbortController {
+  return streamAnalysis(
+    `/api/board/features/${featureId}/gap-analysis`,
+    onToken, onDone, onError,
+  );
+}
+
+export function runContinuityCheck(
+  featureId: string,
+  onToken: (token: string) => void,
+  onDone: (content: string) => void,
+  onError: (error: string) => void,
+): AbortController {
+  return streamAnalysis(
+    `/api/board/features/${featureId}/continuity-check`,
+    onToken, onDone, onError,
+  );
+}
