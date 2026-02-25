@@ -174,7 +174,7 @@ async def send_message(
     )
 
     # 3a. Resolve cross-reference and RAG context for task sessions
-    cross_ref_text, artifact_type_prompt = resolve_task_context(session_id)
+    cross_ref_text, artifact_type_prompt, stage_prompt = resolve_task_context(session_id)
     project_cfg = settings_service.get_project_config()
     project_id = project_cfg.project_id if project_cfg else ""
     rag_text = rag_search_context(project_id, req.content)
@@ -204,7 +204,9 @@ async def send_message(
         async def run_chat():
             try:
                 provider, agent_cfg = resolve_provider(agent_id)
-                system_prompt = agent_cfg.prompt_template
+                system_prompt = agent_cfg.prompt_template or ""
+                if stage_prompt:
+                    system_prompt = stage_prompt + "\n\n" + system_prompt
                 if artifact_type_prompt:
                     system_prompt = artifact_type_prompt + "\n\n" + system_prompt
                 if req.artifact_path:

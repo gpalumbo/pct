@@ -41,6 +41,23 @@ def _session_path(feature_id: str, task_id: str) -> Path:
     return _images_dir(feature_id, task_id) / "session.json"
 
 
+_DEFAULT_MODEL = "sd-legacy/stable-diffusion-v1-5"
+_IMAGEGEN_AGENT_ID = "stable-diffusion-v1-5"
+
+
+def _resolve_model_id() -> str:
+    """Get model ID from the imagegen agent config, falling back to default."""
+    try:
+        from pct.settings.service import get_agent
+
+        agent = get_agent(_IMAGEGEN_AGENT_ID)
+        if agent and agent.model:
+            return agent.model
+    except Exception:
+        pass
+    return _DEFAULT_MODEL
+
+
 def _get_pipeline():
     """Lazy-load the Stable Diffusion pipeline singleton."""
     global _pipeline
@@ -56,11 +73,11 @@ def _get_pipeline():
             "Install with: pip install -e '.[imagegen]'"
         ) from exc
 
-    model_id = "runwayml/stable-diffusion-v1-5"
+    model_id = _resolve_model_id()
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    logger.info("Loading Stable Diffusion pipeline ({}, {})", device, dtype)
+    logger.info("Loading Stable Diffusion pipeline '{}' ({}, {})", model_id, device, dtype)
     _pipeline = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=dtype)
     _pipeline = _pipeline.to(device)
     _pipeline.enable_attention_slicing()

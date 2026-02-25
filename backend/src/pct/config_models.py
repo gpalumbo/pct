@@ -18,6 +18,7 @@ class ModelRegistryEntry(BaseModel):
     context_length: int
     model_path: str | None = None
     api_base: str | None = None
+    download_status: str | None = None  # pending | downloading | ready | error
 
     @model_validator(mode="after")
     def require_model_path_for_local(self) -> ModelRegistryEntry:
@@ -43,6 +44,7 @@ class WorkflowStageConfig(BaseModel):
     label: str = ""
     enabled: bool = True
     agent: str | None = None
+    prompt_template: str = ""
 
 
 class ConcurrencyConfig(BaseModel):

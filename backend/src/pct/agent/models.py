@@ -28,6 +28,7 @@ class ProviderType(str, Enum):
 
     REMOTE_API = "remote"
     LOCAL_LLM = "local"
+    HUGGINGFACE = "huggingface"
     USER = "user"
 
 

@@ -67,7 +67,14 @@ async def list_models(_user: dict = Depends(get_current_user)):
 async def create_model(entry: ModelRegistryEntry, _user: dict = Depends(get_current_user)):
     if service.get_model(entry.id):
         raise HTTPException(status_code=400, detail=f"Model '{entry.id}' already exists")
-    return service.create_model(entry)
+    from pct.agent.models import ProviderType
+
+    if entry.provider_type == ProviderType.HUGGINGFACE:
+        entry.download_status = "pending"
+    result = service.create_model(entry)
+    if entry.provider_type == ProviderType.HUGGINGFACE:
+        await service.download_hf_model(entry.id)
+    return result
 
 
 @router.get("/models/{model_id}", response_model=ModelRegistryEntry)
@@ -84,6 +91,19 @@ async def update_model(model_id: str, entry: ModelRegistryEntry, _user: dict = D
     if m is None:
         raise HTTPException(status_code=404, detail="Model not found")
     return m
+
+
+@router.post("/models/{model_id}/download", response_model=ModelRegistryEntry)
+async def download_model(model_id: str, _user: dict = Depends(get_current_user)):
+    m = service.get_model(model_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+    from pct.agent.models import ProviderType
+
+    if m.provider_type != ProviderType.HUGGINGFACE:
+        raise HTTPException(status_code=400, detail="Only HuggingFace models can be downloaded")
+    await service.download_hf_model(model_id)
+    return service.get_model(model_id)
 
 
 @router.delete("/models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)

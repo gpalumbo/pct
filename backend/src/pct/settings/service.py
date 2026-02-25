@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -117,6 +118,82 @@ def delete_model(model_id: str) -> bool:
         return False
     _save_yaml_list(_models_path(), new_items)
     return True
+
+
+# ---------------------------------------------------------------------------
+# HuggingFace model download
+# ---------------------------------------------------------------------------
+
+
+def _download_hf_model_sync(model_id: str) -> None:
+    """Download a HuggingFace model to the project models directory (blocking).
+
+    Detects whether the repo contains GGUF files (downloads only those) or is a
+    full diffusers/transformers repo (snapshot download of the whole thing).
+    Updates the model registry entry with model_path and download_status.
+    """
+    entry = get_model(model_id)
+    if entry is None:
+        raise ValueError(f"Model '{model_id}' not found in registry")
+    if entry.provider_type != ProviderType.HUGGINGFACE:
+        raise ValueError(f"Model '{model_id}' is not a HuggingFace model")
+
+    try:
+        from huggingface_hub import HfApi, snapshot_download
+    except ImportError as exc:
+        raise RuntimeError(
+            "huggingface-hub is required. Install with: pip install -e '.[local-llm]'"
+        ) from exc
+
+    dest = _get_project_root() / "models" / model_id.replace("/", "--")
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # Mark as downloading
+    entry.download_status = "downloading"
+    update_model(model_id, entry)
+
+    try:
+        # Check if repo has GGUF files — if so, only grab those
+        api = HfApi()
+        files = api.list_repo_files(entry.model_id)
+        gguf_files = [f for f in files if f.endswith(".gguf")]
+
+        if gguf_files:
+            from huggingface_hub import hf_hub_download
+
+            for fname in gguf_files:
+                logger.info("Downloading %s/%s", entry.model_id, fname)
+                hf_hub_download(
+                    repo_id=entry.model_id,
+                    filename=fname,
+                    local_dir=str(dest),
+                )
+        else:
+            # Full snapshot (diffusers pipeline, transformers model, etc.)
+            logger.info("Downloading full snapshot of %s", entry.model_id)
+            snapshot_download(
+                repo_id=entry.model_id,
+                local_dir=str(dest),
+            )
+
+        entry.model_path = str(dest)
+        entry.download_status = "ready"
+        update_model(model_id, entry)
+        logger.info("Download complete for '%s' → %s", model_id, dest)
+
+    except Exception:
+        entry.download_status = "error"
+        update_model(model_id, entry)
+        logger.exception("Failed to download model '%s'", model_id)
+        raise
+
+
+async def download_hf_model(model_id: str) -> None:
+    """Download a HuggingFace model in the background via the event loop executor."""
+    loop = asyncio.get_event_loop()
+    asyncio.ensure_future(
+        loop.run_in_executor(None, _download_hf_model_sync, model_id)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +465,7 @@ def scan_and_register_models() -> list[ModelRegistryEntry]:
 
 
 def _apply_default_agents(cfg: ProjectConfig) -> None:
-    """Create default agents: user agent + one agent per discovered model."""
+    """Create default agents: user agent, imagegen agent, + one per discovered model."""
     existing_ids = {a.id for a in cfg.agents}
 
     # Always create a "user" agent
@@ -400,6 +477,16 @@ def _apply_default_agents(cfg: ProjectConfig) -> None:
             model="",
         ))
         existing_ids.add("user")
+
+    # Always create a default imagegen agent (diffusers auto-downloads from HF Hub)
+    if "stable-diffusion-v1-5" not in existing_ids:
+        cfg.agents.append(AgentConfig(
+            id="stable-diffusion-v1-5",
+            agent_type=AgentType.IMAGEGEN,
+            provider_type=ProviderType.HUGGINGFACE,
+            model="sd-legacy/stable-diffusion-v1-5",
+        ))
+        existing_ids.add("stable-diffusion-v1-5")
 
     # Discover and register models first
     scan_and_register_models()

@@ -35,6 +35,7 @@ export interface WorkflowStageConfig {
   label: string;
   enabled: boolean;
   agent?: string | null;
+  prompt_template?: string;
 }
 
 export interface ConcurrencyConfig {
