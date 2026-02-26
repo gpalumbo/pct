@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/gordo/projects/pct-f2-kanban/**)",
+      "Write(//c/Users/gordo/projects/pct-f2-kanban/**)"
+    ]
+  }
+}
