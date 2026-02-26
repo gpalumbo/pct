@@ -83,10 +83,7 @@ class FakeLlama:
         }
 
     def _stream_response(self, text: str) -> Iterator[dict]:
-        chunks = [
-            text[i : i + self.stream_chunk_size]
-            for i in range(0, len(text), self.stream_chunk_size)
-        ]
+        chunks = [text[i : i + self.stream_chunk_size] for i in range(0, len(text), self.stream_chunk_size)]
         for idx, chunk in enumerate(chunks):
             if self.fail_after is not None and idx >= self.fail_after:
                 raise RuntimeError("Backend failure during streaming (injected)")

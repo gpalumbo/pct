@@ -8,14 +8,26 @@ interface Props {
   messages: PlanningMessage[];
   streamingContent: string;
   isStreaming: boolean;
-  onUpdateMessage?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
+  onUpdateMessage?: (
+    id: string,
+    updates: { role?: string; content?: string; included?: boolean },
+  ) => void;
   onDeleteMessage?: (id: string) => void;
   onReplay?: (msg: PlanningMessage) => void;
   onTruncateAndReplay?: (msg: PlanningMessage) => void;
   onCopyToArtifact?: (content: string) => void;
 }
 
-export default function MessageList({ messages, streamingContent, isStreaming, onUpdateMessage, onDeleteMessage, onReplay, onTruncateAndReplay, onCopyToArtifact }: Props) {
+export default function MessageList({
+  messages,
+  streamingContent,
+  isStreaming,
+  onUpdateMessage,
+  onDeleteMessage,
+  onReplay,
+  onTruncateAndReplay,
+  onCopyToArtifact,
+}: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,14 +37,34 @@ export default function MessageList({ messages, streamingContent, isStreaming, o
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 0' }}>
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} onUpdate={onUpdateMessage} onDelete={onDeleteMessage} onReplay={onReplay} onTruncateAndReplay={onTruncateAndReplay} onCopyToArtifact={onCopyToArtifact} isStreaming={isStreaming} />
+        <MessageBubble
+          key={msg.id}
+          message={msg}
+          onUpdate={onUpdateMessage}
+          onDelete={onDeleteMessage}
+          onReplay={onReplay}
+          onTruncateAndReplay={onTruncateAndReplay}
+          onCopyToArtifact={onCopyToArtifact}
+          isStreaming={isStreaming}
+        />
       ))}
 
       {/* Streaming indicator: temporary assistant bubble */}
       {isStreaming && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: 12 }}>
-          <Tag color="green" style={{ marginBottom: 2 }}>assistant</Tag>
-          <div style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            marginBottom: 12,
+          }}
+        >
+          <Tag color="green" style={{ marginBottom: 2 }}>
+            assistant
+          </Tag>
+          <div
+            style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
+          >
             {streamingContent ? (
               <ReactMarkdown>{streamingContent}</ReactMarkdown>
             ) : (

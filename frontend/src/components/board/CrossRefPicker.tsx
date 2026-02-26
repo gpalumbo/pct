@@ -58,33 +58,22 @@ export default function CrossRefPicker({
     children: (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {feature.tasks
-          .filter(
-            (t) =>
-              !(t.feature === currentFeatureId && t.id === currentTaskId),
-          )
+          .filter((t) => !(t.feature === currentFeatureId && t.id === currentTaskId))
           .map((task) => {
             const key = `${feature.id}:${task.id}`;
             return (
-              <Checkbox
-                key={key}
-                checked={checked.has(key)}
-                onChange={() => handleToggle(key)}
-              >
+              <Checkbox key={key} checked={checked.has(key)} onChange={() => handleToggle(key)}>
                 <Text style={{ fontSize: 12 }}>
                   {task.title}
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: 10, marginLeft: 4 }}
-                  >
+                  <Text type="secondary" style={{ fontSize: 10, marginLeft: 4 }}>
                     ({task.id})
                   </Text>
                 </Text>
               </Checkbox>
             );
           })}
-        {feature.tasks.filter(
-          (t) => !(t.feature === currentFeatureId && t.id === currentTaskId),
-        ).length === 0 && (
+        {feature.tasks.filter((t) => !(t.feature === currentFeatureId && t.id === currentTaskId))
+          .length === 0 && (
           <Text type="secondary" style={{ fontSize: 11 }}>
             No tasks available
           </Text>

@@ -92,39 +92,20 @@ export default function SwimlaneHeader({
           </Text>
         )}
         <Space style={{ marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="small"
-            type="text"
-            icon={<PlusOutlined />}
-            onClick={onAddTask}
-          >
+          <Button size="small" type="text" icon={<PlusOutlined />} onClick={onAddTask}>
             Add Task
           </Button>
           <Dropdown menu={{ items: analysisMenuItems }} trigger={['click']}>
-            <Button
-              size="small"
-              type="text"
-              icon={<ExperimentOutlined />}
-            >
+            <Button size="small" type="text" icon={<ExperimentOutlined />}>
               Analyze
             </Button>
           </Dropdown>
           {stage !== 'suspended' ? (
-            <Button
-              size="small"
-              type="text"
-              icon={<PauseCircleOutlined />}
-              onClick={onSuspend}
-            >
+            <Button size="small" type="text" icon={<PauseCircleOutlined />} onClick={onSuspend}>
               Suspend
             </Button>
           ) : (
-            <Button
-              size="small"
-              type="text"
-              icon={<PlayCircleOutlined />}
-              onClick={onResume}
-            >
+            <Button size="small" type="text" icon={<PlayCircleOutlined />} onClick={onResume}>
               Resume
             </Button>
           )}

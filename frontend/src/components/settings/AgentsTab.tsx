@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
-  useAgents, useCreateAgent, useUpdateAgent, useDeleteAgent,
-  useModels, useLoras,
+  useAgents,
+  useCreateAgent,
+  useUpdateAgent,
+  useDeleteAgent,
+  useModels,
+  useLoras,
 } from '../../hooks/useConfigQueries';
 import type { AgentConfig, ProviderType } from '../../types/config';
 
@@ -65,7 +69,12 @@ export default function AgentsTab() {
       render: (_: unknown, record: AgentConfig) => (
         <Space>
           <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
-          <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDelete(record.id)} />
+          <Button
+            icon={<DeleteOutlined />}
+            size="small"
+            danger
+            onClick={() => handleDelete(record.id)}
+          />
         </Space>
       ),
     },
@@ -73,7 +82,12 @@ export default function AgentsTab() {
 
   return (
     <>
-      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ marginBottom: 16 }}>
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={openCreate}
+        style={{ marginBottom: 16 }}
+      >
         Add Agent
       </Button>
       <Table dataSource={agents} columns={columns} rowKey="id" loading={isLoading} size="small" />
@@ -91,20 +105,24 @@ export default function AgentsTab() {
             <Input disabled={!!editing} />
           </Form.Item>
           <Form.Item name="agent_type" label="Agent Type" rules={[{ required: true }]}>
-            <Select options={[
-              { label: 'LLM', value: 'llm' },
-              { label: 'User', value: 'user' },
-              { label: 'Tool', value: 'tool' },
-              { label: 'Image Gen', value: 'imagegen' },
-            ]} />
+            <Select
+              options={[
+                { label: 'LLM', value: 'llm' },
+                { label: 'User', value: 'user' },
+                { label: 'Tool', value: 'tool' },
+                { label: 'Image Gen', value: 'imagegen' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="provider_type" label="Provider Type" rules={[{ required: true }]}>
-            <Select options={[
-              { label: 'Remote API', value: 'remote' },
-              { label: 'Local LLM', value: 'local' },
-              { label: 'HuggingFace', value: 'huggingface' },
-              { label: 'User', value: 'user' },
-            ]} />
+            <Select
+              options={[
+                { label: 'Remote API', value: 'remote' },
+                { label: 'Local LLM', value: 'local' },
+                { label: 'HuggingFace', value: 'huggingface' },
+                { label: 'User', value: 'user' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="model" label="Model" rules={[{ required: true }]}>
             <Select
@@ -115,20 +133,35 @@ export default function AgentsTab() {
           <Form.Item name="lora" label="LoRA">
             <Select
               allowClear
-              options={filteredLoras.map((l) => ({ label: `${l.id} — ${l.description || l.path}`, value: l.id }))}
-              placeholder={selectedModel ? 'Select LoRA (filtered by model)' : 'Select a model first'}
+              options={filteredLoras.map((l) => ({
+                label: `${l.id} — ${l.description || l.path}`,
+                value: l.id,
+              }))}
+              placeholder={
+                selectedModel ? 'Select LoRA (filtered by model)' : 'Select a model first'
+              }
               disabled={!selectedModel}
             />
           </Form.Item>
           <Form.Item name="prompt_template" label="Prompt Template">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="context_length" label="Context Length Override" tooltip="0 = use model's training context length">
+          <Form.Item
+            name="context_length"
+            label="Context Length Override"
+            tooltip="0 = use model's training context length"
+          >
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           {providerType !== 'user' && (
             <Form.Item name="temperature" label="Temperature">
-              <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} placeholder="Model default" />
+              <InputNumber
+                min={0}
+                max={2}
+                step={0.1}
+                style={{ width: '100%' }}
+                placeholder="Model default"
+              />
             </Form.Item>
           )}
           {providerType === 'remote' && (

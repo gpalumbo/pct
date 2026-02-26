@@ -14,6 +14,7 @@ def _isolate_chat(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 
@@ -21,6 +22,7 @@ def _isolate_chat(tmp_path):
 @pytest.fixture
 async def client():
     from pct.main import app
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -45,7 +47,9 @@ class TestSessionEndpoints:
 
     async def test_create_session(self, client, auth_headers):
         resp = await client.post(
-            "/api/chat/sessions", params={"title": "Test Chat"}, headers=auth_headers,
+            "/api/chat/sessions",
+            params={"title": "Test Chat"},
+            headers=auth_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -61,7 +65,9 @@ class TestSessionEndpoints:
 
     async def test_get_default_session_returns_existing(self, client, auth_headers):
         await client.post(
-            "/api/chat/sessions", params={"title": "Custom"}, headers=auth_headers,
+            "/api/chat/sessions",
+            params={"title": "Custom"},
+            headers=auth_headers,
         )
         resp = await client.get("/api/chat/sessions/default", headers=auth_headers)
         assert resp.json()["title"] == "Custom"
@@ -75,21 +81,23 @@ class TestMessageEndpoints:
     async def test_get_messages_empty(self, client, auth_headers):
         await client.get("/api/chat/sessions/default", headers=auth_headers)
         resp = await client.get(
-            "/api/chat/sessions/planning-001/messages", headers=auth_headers,
+            "/api/chat/sessions/planning-001/messages",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.json() == []
 
     async def test_get_messages_session_not_found(self, client, auth_headers):
         resp = await client.get(
-            "/api/chat/sessions/nonexistent/messages", headers=auth_headers,
+            "/api/chat/sessions/nonexistent/messages",
+            headers=auth_headers,
         )
         assert resp.status_code == 404
 
     async def test_update_message(self, client, auth_headers):
         # Create session and send a message via the service directly
-        from pct.chat.models import PlanningMessage
         from pct.chat import service
+        from pct.chat.models import PlanningMessage
 
         service.create_session("Test")
         msg = PlanningMessage(role="user", content="Hello")
@@ -107,6 +115,7 @@ class TestMessageEndpoints:
 
     async def test_update_message_not_found(self, client, auth_headers):
         from pct.chat import service
+
         service.create_session("Test")
 
         resp = await client.put(
@@ -125,8 +134,8 @@ class TestMessageEndpoints:
         assert resp.status_code == 404
 
     async def test_delete_message(self, client, auth_headers):
-        from pct.chat.models import PlanningMessage
         from pct.chat import service
+        from pct.chat.models import PlanningMessage
 
         service.create_session("Test")
         msg = PlanningMessage(role="user", content="To delete")
@@ -139,12 +148,14 @@ class TestMessageEndpoints:
         assert resp.status_code == 204
 
         resp = await client.get(
-            "/api/chat/sessions/planning-001/messages", headers=auth_headers,
+            "/api/chat/sessions/planning-001/messages",
+            headers=auth_headers,
         )
         assert resp.json() == []
 
     async def test_delete_message_not_found(self, client, auth_headers):
         from pct.chat import service
+
         service.create_session("Test")
 
         resp = await client.delete(
@@ -165,6 +176,7 @@ class TestSendEndpoint:
     async def test_send_no_agent_configured(self, client, auth_headers):
         """When no agents are configured, SSE stream returns an error event."""
         from pct.chat import service
+
         service.create_session("Test")
 
         resp = await client.post(

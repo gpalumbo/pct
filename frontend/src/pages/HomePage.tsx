@@ -23,8 +23,12 @@ export default function HomePage() {
           PCT
         </Title>
         <Space>
-          <Button icon={<AppstoreOutlined />} onClick={() => navigate('/board')}>Board</Button>
-          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>Settings</Button>
+          <Button icon={<AppstoreOutlined />} onClick={() => navigate('/board')}>
+            Board
+          </Button>
+          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>
+            Settings
+          </Button>
           <Button onClick={handleLogout}>Logout</Button>
         </Space>
       </Header>

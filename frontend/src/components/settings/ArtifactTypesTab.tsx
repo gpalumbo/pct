@@ -105,10 +105,7 @@ export default function ArtifactTypesTab() {
             }}
           >
             {/* ID (read-only, auto-derived from label) */}
-            <Text
-              type="secondary"
-              style={{ fontSize: 12, fontFamily: 'monospace' }}
-            >
+            <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
               {t.id}
             </Text>
 
@@ -149,11 +146,7 @@ export default function ArtifactTypesTab() {
         <Button icon={<PlusOutlined />} onClick={addType}>
           Add Type
         </Button>
-        <Button
-          type="primary"
-          onClick={handleSave}
-          loading={saveTypes.isPending}
-        >
+        <Button type="primary" onClick={handleSave} loading={saveTypes.isPending}>
           Save Changes
         </Button>
       </Space>

@@ -59,9 +59,7 @@ async def google_auth(data: GoogleAuthRequest):
         from google.auth.transport import requests
         from google.oauth2 import id_token
 
-        idinfo = id_token.verify_oauth2_token(
-            data.credential, requests.Request(), config.settings.google_client_id
-        )
+        idinfo = id_token.verify_oauth2_token(data.credential, requests.Request(), config.settings.google_client_id)
         email = idinfo["email"]
     except ValueError as err:
         raise HTTPException(

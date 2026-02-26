@@ -5,8 +5,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel as PydanticBaseModel
 
-from pct.auth.dependencies import get_current_user
 from pct.agent.models import AgentConfig
+from pct.auth.dependencies import get_current_user
 from pct.config_models import (
     ArtifactTypeConfig,
     LoRARegistryEntry,
@@ -45,13 +45,15 @@ async def browse_files(
         for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
             if item.name.startswith("."):
                 continue
-            entries.append(FileEntry(
-                name=item.name,
-                path=str(item),
-                is_dir=item.is_dir(),
-            ))
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Permission denied")
+            entries.append(
+                FileEntry(
+                    name=item.name,
+                    path=str(item),
+                    is_dir=item.is_dir(),
+                )
+            )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Permission denied") from exc
     return entries
 
 
@@ -133,18 +135,18 @@ async def create_lora(entry: LoRARegistryEntry, _user: dict = Depends(get_curren
 
 @router.get("/loras/{lora_id}", response_model=LoRARegistryEntry)
 async def get_lora(lora_id: str, _user: dict = Depends(get_current_user)):
-    l = service.get_lora(lora_id)
-    if l is None:
+    lora = service.get_lora(lora_id)
+    if lora is None:
         raise HTTPException(status_code=404, detail="LoRA not found")
-    return l
+    return lora
 
 
 @router.put("/loras/{lora_id}", response_model=LoRARegistryEntry)
 async def update_lora(lora_id: str, entry: LoRARegistryEntry, _user: dict = Depends(get_current_user)):
-    l = service.update_lora(lora_id, entry)
-    if l is None:
+    lora = service.update_lora(lora_id, entry)
+    if lora is None:
         raise HTTPException(status_code=404, detail="LoRA not found")
-    return l
+    return lora
 
 
 @router.delete("/loras/{lora_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -166,6 +168,7 @@ class ProjectStatus(PydanticBaseModel):
 @router.get("/project/status", response_model=ProjectStatus)
 async def get_project_status(_user: dict = Depends(get_current_user)):
     from pct import config
+
     cfg = service.get_project_config()
     root = config.settings.project_root
     if cfg is None:
@@ -245,9 +248,7 @@ async def get_workflow_stages(_user: dict = Depends(get_current_user)):
 
 
 @router.put("/workflow-stages", response_model=list[WorkflowStageConfig])
-async def save_workflow_stages(
-    stages: list[WorkflowStageConfig], _user: dict = Depends(get_current_user)
-):
+async def save_workflow_stages(stages: list[WorkflowStageConfig], _user: dict = Depends(get_current_user)):
     return service.save_workflow_stages(stages)
 
 
@@ -262,9 +263,7 @@ async def get_template_variables(_user: dict = Depends(get_current_user)):
 
 
 @router.put("/template-variables", response_model=list[TemplateVariable])
-async def save_template_variables(
-    variables: list[TemplateVariable], _user: dict = Depends(get_current_user)
-):
+async def save_template_variables(variables: list[TemplateVariable], _user: dict = Depends(get_current_user)):
     return service.save_template_variables(variables)
 
 
@@ -279,7 +278,5 @@ async def get_artifact_types(_user: dict = Depends(get_current_user)):
 
 
 @router.put("/artifact-types", response_model=list[ArtifactTypeConfig])
-async def save_artifact_types(
-    types: list[ArtifactTypeConfig], _user: dict = Depends(get_current_user)
-):
+async def save_artifact_types(types: list[ArtifactTypeConfig], _user: dict = Depends(get_current_user)):
     return service.save_artifact_types(types)

@@ -12,7 +12,12 @@ interface FileBrowserProps {
   title?: string;
 }
 
-export default function FileBrowser({ open, onCancel, onSelect, title = 'Browse Files' }: FileBrowserProps) {
+export default function FileBrowser({
+  open,
+  onCancel,
+  onSelect,
+  title = 'Browse Files',
+}: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState('');
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,13 +68,7 @@ export default function FileBrowser({ open, onCancel, onSelect, title = 'Browse 
   };
 
   return (
-    <Modal
-      title={title}
-      open={open}
-      onCancel={onCancel}
-      footer={null}
-      width={600}
-    >
+    <Modal title={title} open={open} onCancel={onCancel} footer={null} width={600}>
       <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
         <Input
           value={pathInput}
@@ -95,7 +94,18 @@ export default function FileBrowser({ open, onCancel, onSelect, title = 'Browse 
             onClick={() => handleNavigate(entry)}
             actions={
               !entry.is_dir
-                ? [<Button size="small" type="link" onClick={(e) => { e.stopPropagation(); onSelect(entry.path); }}>Select</Button>]
+                ? [
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(entry.path);
+                      }}
+                    >
+                      Select
+                    </Button>,
+                  ]
                 : undefined
             }
           >

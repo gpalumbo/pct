@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from pct.agent.chat_loop import build_messages, execute_chat_turn
-from pct.agent.models import AgentResult, AssembledContext, TaskOutcome
+from pct.agent.models import AgentResult, TaskOutcome
 
 
 class TestBuildMessages:
@@ -64,15 +64,13 @@ class TestExecuteChatTurn:
                 pass
 
         with pytest.raises(asyncio.TimeoutError):
-            await execute_chat_turn(
-                SlowProvider(), sample_context, timeout_seconds=0.01
-            )
+            await execute_chat_turn(SlowProvider(), sample_context, timeout_seconds=0.01)
 
     async def test_error_handling_model_failure(self, sample_context, fake_llama_failing):
         """When the backend fails, result has outcome=ERROR and error field set."""
-        provider = __import__(
-            "pct.agent.providers.local_llm", fromlist=["LocalLLMProvider"]
-        ).LocalLLMProvider(backend=fake_llama_failing)
+        provider = __import__("pct.agent.providers.local_llm", fromlist=["LocalLLMProvider"]).LocalLLMProvider(
+            backend=fake_llama_failing
+        )
         result = await execute_chat_turn(provider, sample_context)
         assert result.outcome == TaskOutcome.ERROR
         assert result.error is not None

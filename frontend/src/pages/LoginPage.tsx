@@ -98,7 +98,9 @@ export default function LoginPage() {
 
         <Divider>or</Divider>
 
-        <div style={{ display: 'flex', justifyContent: 'center', opacity: 0.5, pointerEvents: 'none' }}>
+        <div
+          style={{ display: 'flex', justifyContent: 'center', opacity: 0.5, pointerEvents: 'none' }}
+        >
           <GoogleLogin
             onSuccess={onGoogleSuccess}
             onError={() => messageApi.error('Google authentication failed')}

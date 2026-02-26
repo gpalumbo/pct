@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import frontmatter
-import pytest
 
 from pct.agent.tools.todo_tool import TodoTool
 
@@ -44,9 +43,7 @@ class TestTodoToolList:
         _create_task_file(tasks_dir, "002", "Second task", status="implement")
 
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "list", "feature_id": "001-test-feature"})
-        )
+        result = await tool.execute(json.dumps({"action": "list", "feature_id": "001-test-feature"}))
         assert "001" in result
         assert "002" in result
         assert "First task" in result
@@ -54,17 +51,13 @@ class TestTodoToolList:
 
     async def test_list_missing_feature(self, tmp_path):
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "list", "feature_id": "nonexistent"})
-        )
+        result = await tool.execute(json.dumps({"action": "list", "feature_id": "nonexistent"}))
         assert "No tasks directory" in result
 
     async def test_list_empty_tasks(self, tmp_path):
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "list", "feature_id": "001-test-feature"})
-        )
+        result = await tool.execute(json.dumps({"action": "list", "feature_id": "001-test-feature"}))
         assert "No tasks found" in result
 
 
@@ -74,9 +67,7 @@ class TestTodoToolGet:
         _create_task_file(tasks_dir, "001", "My task", body="Detailed spec here.")
 
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "get", "feature_id": "001-test-feature", "task_id": "001"})
-        )
+        result = await tool.execute(json.dumps({"action": "get", "feature_id": "001-test-feature", "task_id": "001"}))
         data = json.loads(result)
         assert data["id"] == "001"
         assert data["title"] == "My task"
@@ -85,17 +76,13 @@ class TestTodoToolGet:
     async def test_get_missing_task(self, tmp_path):
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "get", "feature_id": "001-test-feature", "task_id": "999"})
-        )
+        result = await tool.execute(json.dumps({"action": "get", "feature_id": "001-test-feature", "task_id": "999"}))
         assert "[error]" in result
 
     async def test_get_missing_task_id_param(self, tmp_path):
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "get", "feature_id": "001-test-feature"})
-        )
+        result = await tool.execute(json.dumps({"action": "get", "feature_id": "001-test-feature"}))
         assert "[error]" in result
         assert "task_id" in result
 
@@ -106,14 +93,16 @@ class TestTodoToolCreate:
 
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "create",
-                "feature_id": "001-feat",
-                "title": "Build the widget",
-                "body": "## Spec\nBuild it well.",
-                "priority": 2,
-                "tags": ["backend"],
-            })
+            json.dumps(
+                {
+                    "action": "create",
+                    "feature_id": "001-feat",
+                    "title": "Build the widget",
+                    "body": "## Spec\nBuild it well.",
+                    "priority": 2,
+                    "tags": ["backend"],
+                }
+            )
         )
         assert "Created task 001" in result
 
@@ -133,12 +122,14 @@ class TestTodoToolCreate:
 
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "create",
-                "feature_id": "001-test-feature",
-                "title": "Third task",
-                "body": "Body.",
-            })
+            json.dumps(
+                {
+                    "action": "create",
+                    "feature_id": "001-test-feature",
+                    "title": "Third task",
+                    "body": "Body.",
+                }
+            )
         )
         assert "Created task 003" in result
 
@@ -146,11 +137,13 @@ class TestTodoToolCreate:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "create",
-                "feature_id": "001-test-feature",
-                "body": "Body.",
-            })
+            json.dumps(
+                {
+                    "action": "create",
+                    "feature_id": "001-test-feature",
+                    "body": "Body.",
+                }
+            )
         )
         assert "[error]" in result
         assert "title" in result
@@ -159,11 +152,13 @@ class TestTodoToolCreate:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "create",
-                "feature_id": "001-test-feature",
-                "title": "A task",
-            })
+            json.dumps(
+                {
+                    "action": "create",
+                    "feature_id": "001-test-feature",
+                    "title": "A task",
+                }
+            )
         )
         assert "[error]" in result
         assert "body" in result
@@ -176,12 +171,14 @@ class TestTodoToolEdit:
 
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "edit",
-                "feature_id": "001-test-feature",
-                "task_id": "001",
-                "status": "implement",
-            })
+            json.dumps(
+                {
+                    "action": "edit",
+                    "feature_id": "001-test-feature",
+                    "task_id": "001",
+                    "status": "implement",
+                }
+            )
         )
         assert "Updated task 001" in result
 
@@ -195,12 +192,14 @@ class TestTodoToolEdit:
 
         tool = TodoTool(root_dir=tmp_path)
         await tool.execute(
-            json.dumps({
-                "action": "edit",
-                "feature_id": "001-test-feature",
-                "task_id": "001",
-                "title": "Renamed",
-            })
+            json.dumps(
+                {
+                    "action": "edit",
+                    "feature_id": "001-test-feature",
+                    "task_id": "001",
+                    "title": "Renamed",
+                }
+            )
         )
 
         filepath = list(tasks_dir.glob("001-*.md"))[0]
@@ -214,12 +213,14 @@ class TestTodoToolEdit:
 
         tool = TodoTool(root_dir=tmp_path)
         await tool.execute(
-            json.dumps({
-                "action": "edit",
-                "feature_id": "001-test-feature",
-                "task_id": "001",
-                "body": "New body content.",
-            })
+            json.dumps(
+                {
+                    "action": "edit",
+                    "feature_id": "001-test-feature",
+                    "task_id": "001",
+                    "body": "New body content.",
+                }
+            )
         )
 
         filepath = list(tasks_dir.glob("001-*.md"))[0]
@@ -230,11 +231,13 @@ class TestTodoToolEdit:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "edit",
-                "feature_id": "001-test-feature",
-                "task_id": "999",
-            })
+            json.dumps(
+                {
+                    "action": "edit",
+                    "feature_id": "001-test-feature",
+                    "task_id": "999",
+                }
+            )
         )
         assert "[error]" in result
 
@@ -242,10 +245,12 @@ class TestTodoToolEdit:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "edit",
-                "feature_id": "001-test-feature",
-            })
+            json.dumps(
+                {
+                    "action": "edit",
+                    "feature_id": "001-test-feature",
+                }
+            )
         )
         assert "[error]" in result
         assert "task_id" in result
@@ -259,11 +264,13 @@ class TestTodoToolDelete:
 
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "delete",
-                "feature_id": "001-test-feature",
-                "task_id": "001",
-            })
+            json.dumps(
+                {
+                    "action": "delete",
+                    "feature_id": "001-test-feature",
+                    "task_id": "001",
+                }
+            )
         )
         assert "Deleted task 001" in result
         assert not filepath.exists()
@@ -272,11 +279,13 @@ class TestTodoToolDelete:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "delete",
-                "feature_id": "001-test-feature",
-                "task_id": "999",
-            })
+            json.dumps(
+                {
+                    "action": "delete",
+                    "feature_id": "001-test-feature",
+                    "task_id": "999",
+                }
+            )
         )
         assert "[error]" in result
 
@@ -284,10 +293,12 @@ class TestTodoToolDelete:
         _setup_feature(tmp_path)
         tool = TodoTool(root_dir=tmp_path)
         result = await tool.execute(
-            json.dumps({
-                "action": "delete",
-                "feature_id": "001-test-feature",
-            })
+            json.dumps(
+                {
+                    "action": "delete",
+                    "feature_id": "001-test-feature",
+                }
+            )
         )
         assert "[error]" in result
         assert "task_id" in result
@@ -296,9 +307,7 @@ class TestTodoToolDelete:
 class TestTodoToolGeneral:
     async def test_unknown_action(self, tmp_path):
         tool = TodoTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "archive", "feature_id": "001-feat"})
-        )
+        result = await tool.execute(json.dumps({"action": "archive", "feature_id": "001-feat"}))
         assert "[error]" in result
         assert "Unknown action" in result
 

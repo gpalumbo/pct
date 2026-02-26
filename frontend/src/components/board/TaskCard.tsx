@@ -31,7 +31,7 @@ interface TaskCardProps {
 
 export default function TaskCard({ task, index, featureId }: TaskCardProps) {
   const isBlocked = task.depends_on.length > 0 || task.cross_depends_on.length > 0;
-  const borderColor = task.agent ? (AGENT_COLORS[task.agent] || '#d9d9d9') : '#d9d9d9';
+  const borderColor = task.agent ? AGENT_COLORS[task.agent] || '#d9d9d9' : '#d9d9d9';
   const setSelectedTask = useBoardStore((s) => s.setSelectedTask);
   const selectedTask = useBoardStore((s) => s.selectedTask);
   const isSelected = selectedTask?.taskId === task.id && selectedTask?.featureId === featureId;
@@ -85,7 +85,10 @@ export default function TaskCard({ task, index, featureId }: TaskCardProps) {
                 />
               )}
               {task.agent && (
-                <Tag color={AGENT_COLORS[task.agent] || 'default'} style={{ fontSize: 10, margin: 0, lineHeight: '16px' }}>
+                <Tag
+                  color={AGENT_COLORS[task.agent] || 'default'}
+                  style={{ fontSize: 10, margin: 0, lineHeight: '16px' }}
+                >
                   {task.agent}
                 </Tag>
               )}

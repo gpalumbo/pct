@@ -47,8 +47,7 @@ class SearchTool:
             "function": {
                 "name": "search",
                 "description": (
-                    "Search the web and project knowledge base."
-                    " Returns combined results from both sources."
+                    "Search the web and project knowledge base. Returns combined results from both sources."
                 ),
                 "parameters": {
                     "type": "object",
@@ -76,9 +75,7 @@ class SearchTool:
             web_coro = self._web_search(query, max_results)
             rag_coro = self._rag_search(query, max_results)
 
-            web_result, rag_result = await asyncio.gather(
-                web_coro, rag_coro, return_exceptions=True
-            )
+            web_result, rag_result = await asyncio.gather(web_coro, rag_coro, return_exceptions=True)
 
             sections = []
 

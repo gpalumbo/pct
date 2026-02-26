@@ -27,8 +27,12 @@ export default function BoardPage() {
           PCT Board
         </Title>
         <Space>
-          <Button icon={<HomeOutlined />} onClick={() => navigate('/')}>Home</Button>
-          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>Settings</Button>
+          <Button icon={<HomeOutlined />} onClick={() => navigate('/')}>
+            Home
+          </Button>
+          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>
+            Settings
+          </Button>
           <Button onClick={handleLogout}>Logout</Button>
         </Space>
       </Header>

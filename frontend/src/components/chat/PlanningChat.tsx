@@ -23,7 +23,15 @@ interface PlanningChatProps {
   onImageGenerate?: (prompt: string) => void;
 }
 
-export default function PlanningChat({ sessionId, artifactPath, featureId, taskId, taskStage, onAgentTypeChange, onImageGenerate }: PlanningChatProps) {
+export default function PlanningChat({
+  sessionId,
+  artifactPath,
+  featureId,
+  taskId,
+  taskStage,
+  onAgentTypeChange,
+  onImageGenerate,
+}: PlanningChatProps) {
   const chat = usePlanningChat({
     sessionId,
     artifactPath,
@@ -36,8 +44,12 @@ export default function PlanningChat({ sessionId, artifactPath, featureId, taskI
 
   if (chat.sessionLoading || chat.messagesLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <Spin tip="Loading chat..."><div /></Spin>
+      <div
+        style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}
+      >
+        <Spin tip="Loading chat...">
+          <div />
+        </Spin>
       </div>
     );
   }

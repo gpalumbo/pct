@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from pct.chat.models import PlanningMessage, UpdateMessageRequest
 from pct.chat import service
+from pct.chat.models import PlanningMessage, UpdateMessageRequest
 
 
 @pytest.fixture(autouse=True)
@@ -16,6 +16,7 @@ def _isolate_chat(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 

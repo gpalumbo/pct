@@ -46,16 +46,34 @@ TEMPLATES: dict[str, dict] = {
     },
     "writing": {
         "stages": [
-            _stage("concept", "Concept",
-                   "Help the user brainstorm and develop the core concept. Read {{artifact}} if it exists and suggest expansions."),
-            _stage("outline", "Outline",
-                   "Help structure and outline the content. Reference {{cross_refs}} for world consistency."),
-            _stage("draft", "Draft",
-                   "Write or expand the draft. Use {{artifact}} as the working document. Reference {{cross_refs}} for world consistency."),
-            _stage("revise", "Revise",
-                   "Review {{artifact}} for quality, consistency, and completeness. Cross-check against {{cross_refs}}. Suggest specific improvements."),
-            _stage("polish", "Polish",
-                   "Final polish of {{artifact}}. Fix grammar, improve prose, ensure consistency with {{cross_refs}}."),
+            _stage(
+                "concept",
+                "Concept",
+                "Help the user brainstorm and develop the core concept."
+                " Read {{artifact}} if it exists and suggest expansions.",
+            ),
+            _stage(
+                "outline",
+                "Outline",
+                "Help structure and outline the content. Reference {{cross_refs}} for world consistency.",
+            ),
+            _stage(
+                "draft",
+                "Draft",
+                "Write or expand the draft. Use {{artifact}} as the working document."
+                " Reference {{cross_refs}} for world consistency.",
+            ),
+            _stage(
+                "revise",
+                "Revise",
+                "Review {{artifact}} for quality, consistency, and completeness."
+                " Cross-check against {{cross_refs}}. Suggest specific improvements.",
+            ),
+            _stage(
+                "polish",
+                "Polish",
+                "Final polish of {{artifact}}. Fix grammar, improve prose, ensure consistency with {{cross_refs}}.",
+            ),
             _stage("done", "Done"),
         ],
         "initial_features": [

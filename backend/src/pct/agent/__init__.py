@@ -1,5 +1,6 @@
 """PCT Agent Execution Engine — core chat loop and provider abstractions."""
 
+from pct.agent.chat_loop import build_messages, execute_chat_turn
 from pct.agent.models import (
     AgentConfig,
     AgentJob,
@@ -13,9 +14,8 @@ from pct.agent.models import (
     ToolCall,
     ToolResult,
 )
-from pct.agent.protocols import AgentProvider, CompletionBackend
-from pct.agent.chat_loop import build_messages, execute_chat_turn
 from pct.agent.pool import AgentPool
+from pct.agent.protocols import AgentProvider, CompletionBackend
 from pct.agent.tools import BashTool, Tool, ToolRegistry
 
 __all__ = [

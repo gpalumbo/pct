@@ -67,9 +67,7 @@ def _parse_tool_calls_from_content(content: str) -> list[ToolCall]:
     tool_calls: list[ToolCall] = []
 
     # Try <tool_call>...</tool_call> tags first
-    tag_matches = re.findall(
-        r"<tool_call>\s*(.*?)\s*</tool_call>", content, re.DOTALL
-    )
+    tag_matches = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", content, re.DOTALL)
 
     if not tag_matches:
         # Fall back to a bare JSON object
@@ -183,9 +181,7 @@ class LocalLLMProvider:
             kwargs["temperature"] = self._temperature
         response = await loop.run_in_executor(
             None,
-            lambda: self._backend.create_chat_completion(
-                messages, stream=False, **kwargs
-            ),
+            lambda: self._backend.create_chat_completion(messages, stream=False, **kwargs),
         )
         choice = response["choices"][0]
         message = choice["message"]
@@ -230,9 +226,7 @@ class LocalLLMProvider:
                 stream_kwargs: dict[str, Any] = {}
                 if self._temperature is not None:
                     stream_kwargs["temperature"] = self._temperature
-                chunks = self._backend.create_chat_completion(
-                    messages, stream=True, **stream_kwargs
-                )
+                chunks = self._backend.create_chat_completion(messages, stream=True, **stream_kwargs)
                 for chunk in chunks:
                     if self._interrupted:
                         break

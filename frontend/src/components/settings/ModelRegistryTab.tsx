@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons';
-import { useModels, useCreateModel, useUpdateModel, useDeleteModel } from '../../hooks/useConfigQueries';
+import {
+  useModels,
+  useCreateModel,
+  useUpdateModel,
+  useDeleteModel,
+} from '../../hooks/useConfigQueries';
 import type { ModelRegistryEntry, ProviderType } from '../../types/config';
 import FileBrowser from './FileBrowser';
 
@@ -63,7 +68,12 @@ export default function ModelRegistryTab() {
       render: (_: unknown, record: ModelRegistryEntry) => (
         <Space>
           <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
-          <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDelete(record.id)} />
+          <Button
+            icon={<DeleteOutlined />}
+            size="small"
+            danger
+            onClick={() => handleDelete(record.id)}
+          />
         </Space>
       ),
     },
@@ -71,7 +81,12 @@ export default function ModelRegistryTab() {
 
   return (
     <>
-      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ marginBottom: 16 }}>
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={openCreate}
+        style={{ marginBottom: 16 }}
+      >
         Add Model
       </Button>
       <Table dataSource={models} columns={columns} rowKey="id" loading={isLoading} size="small" />
@@ -88,24 +103,28 @@ export default function ModelRegistryTab() {
             <Input disabled={!!editing} />
           </Form.Item>
           <Form.Item name="provider_type" label="Provider Type" rules={[{ required: true }]}>
-            <Select options={[
-              { label: 'Remote API', value: 'remote' },
-              { label: 'Local LLM', value: 'local' },
-              { label: 'HuggingFace', value: 'huggingface' },
-            ]} />
+            <Select
+              options={[
+                { label: 'Remote API', value: 'remote' },
+                { label: 'Local LLM', value: 'local' },
+                { label: 'HuggingFace', value: 'huggingface' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="model_id" label="Model ID" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="context_length" label="Context Length" initialValue={0} rules={[{ required: true }]} tooltip="0 = use model's training context length">
+          <Form.Item
+            name="context_length"
+            label="Context Length"
+            initialValue={0}
+            rules={[{ required: true }]}
+            tooltip="0 = use model's training context length"
+          >
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           {(providerType === 'local' || providerType === 'huggingface') && (
-            <Form.Item
-              label="Model Path"
-              required
-              style={{ marginBottom: 0 }}
-            >
+            <Form.Item label="Model Path" required style={{ marginBottom: 0 }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Form.Item
                   name="model_path"

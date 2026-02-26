@@ -15,13 +15,13 @@ from pct.agent.models import AssembledContext
 from pct.agent.tools import ToolRegistry, create_global_registry
 from pct.auth.dependencies import get_current_user
 from pct.chat import service
+from pct.chat.context_builder import rag_search_context, resolve_task_context
 from pct.chat.models import (
     ChatSession,
     PlanningMessage,
     SendMessageRequest,
     UpdateMessageRequest,
 )
-from pct.chat.context_builder import rag_search_context, resolve_task_context
 from pct.chat.provider_factory import get_default_planning_agent_id, resolve_provider
 from pct.config import settings
 from pct.settings import service as settings_service
@@ -169,9 +169,7 @@ async def send_message(
 
     # 3. Build context from included messages
     included = service.get_included_messages(session_id)
-    conversation_text = "\n\n".join(
-        f"[{m.role}]: {m.content}" for m in included
-    )
+    conversation_text = "\n\n".join(f"[{m.role}]: {m.content}" for m in included)
 
     # 3a. Resolve cross-reference and RAG context for task sessions
     cross_ref_text, artifact_type_prompt, stage_prompt = resolve_task_context(session_id)
@@ -217,8 +215,7 @@ async def send_message(
                         f"You are working on a kanban task.\n"
                         f"The task's artifact directory is: {req.artifact_path}\n"
                         f"Write your primary text output to: {main_file}\n"
-                        f'Use the file tool with action "write" to save your output there.\n\n'
-                        + system_prompt
+                        f'Use the file tool with action "write" to save your output there.\n\n' + system_prompt
                     )
                 result = await execute_chat_turn(
                     provider=provider,
@@ -255,10 +252,12 @@ async def send_message(
         # the client is still connected.
         try:
             assistant_msg = await task
-            yield _sse({
-                "done": True,
-                "message": json.loads(assistant_msg.model_dump_json()),
-            })
+            yield _sse(
+                {
+                    "done": True,
+                    "message": json.loads(assistant_msg.model_dump_json()),
+                }
+            )
         except Exception as e:
             yield _sse({"error": str(e)})
 

@@ -38,14 +38,10 @@ export default function KanbanBoard() {
     visibleFeatures = visibleFeatures.filter((f) => filterFeatureIds.includes(f.id));
   }
   if (!showSuspended) {
-    visibleFeatures = visibleFeatures.filter(
-      (f) => f.metadata.lifecycle_stage !== 'suspended',
-    );
+    visibleFeatures = visibleFeatures.filter((f) => f.metadata.lifecycle_stage !== 'suspended');
   }
   if (!showComplete) {
-    visibleFeatures = visibleFeatures.filter(
-      (f) => f.metadata.lifecycle_stage !== 'complete',
-    );
+    visibleFeatures = visibleFeatures.filter((f) => f.metadata.lifecycle_stage !== 'complete');
   }
 
   const handleDragStart = () => setIsDragging(true);
@@ -111,11 +107,7 @@ export default function KanbanBoard() {
         <BoardHeader enabledStages={enabledStages} stageLabels={stageLabels} />
         <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           {visibleFeatures.map((feature) => (
-            <Swimlane
-              key={feature.id}
-              feature={feature}
-              enabledStages={enabledStages}
-            />
+            <Swimlane key={feature.id} feature={feature} enabledStages={enabledStages} />
           ))}
         </DragDropContext>
         <BacklogSection backlog={board.backlog} />

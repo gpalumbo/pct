@@ -25,7 +25,7 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
     if not session_id.startswith("task-"):
         return ("", None, None)
 
-    rest = session_id[len("task-"):]
+    rest = session_id[len("task-") :]
     # Split from the right since feature IDs may contain hyphens
     parts = rest.rsplit("-", 1)
     if len(parts) != 2:
@@ -90,16 +90,13 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
         if not content:
             continue
 
-        sections.append(
-            f"--- Referenced: {ref_task.title} ({fid}/{tid}) ---\n{content}"
-        )
+        sections.append(f"--- Referenced: {ref_task.title} ({fid}/{tid}) ---\n{content}")
 
     cross_ref_text = ""
     if sections:
         cross_ref_text = (
             "## Cross-Reference Context\n"
-            "The following are referenced world artifacts relevant to this task:\n\n"
-            + "\n\n".join(sections)
+            "The following are referenced world artifacts relevant to this task:\n\n" + "\n\n".join(sections)
         )
 
     # Expand stage prompt template
@@ -162,9 +159,7 @@ def _expand_stage_prompt(
     return template
 
 
-def rag_search_context(
-    project_id: str, query: str, max_results: int = 5
-) -> str:
+def rag_search_context(project_id: str, query: str, max_results: int = 5) -> str:
     """Perform RAG semantic search over indexed artifacts.
 
     Returns formatted results or empty string if RAG is unavailable.
@@ -173,7 +168,7 @@ def rag_search_context(
         return ""
 
     try:
-        from pct.rag.indexer import _get_model, _get_db
+        from pct.rag.indexer import _get_db, _get_model
     except ImportError:
         return ""
 
@@ -201,8 +196,7 @@ def rag_search_context(
 
         return (
             "## World Knowledge (RAG)\n"
-            "Potentially relevant artifacts from the project knowledge base:\n\n"
-            + "\n\n".join(sections)
+            "Potentially relevant artifacts from the project knowledge base:\n\n" + "\n\n".join(sections)
         )
     except Exception:
         logger.debug("RAG search failed", exc_info=True)

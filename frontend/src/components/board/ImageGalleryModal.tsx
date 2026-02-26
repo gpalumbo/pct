@@ -50,16 +50,18 @@ export default function ImageGalleryModal({
       {current && (
         <>
           {/* Image display */}
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            overflow: 'hidden',
-            background: '#1a1a1a',
-            minHeight: 0,
-          }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+              background: '#1a1a1a',
+              minHeight: 0,
+            }}
+          >
             {/* Left nav */}
             {currentIndex > 0 && (
               <Button
@@ -92,15 +94,17 @@ export default function ImageGalleryModal({
           </div>
 
           {/* Bottom bar: info + actions */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 16px',
-            borderTop: '1px solid #303030',
-            background: '#1a1a1a',
-            flexShrink: 0,
-          }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 16px',
+              borderTop: '1px solid #303030',
+              background: '#1a1a1a',
+              flexShrink: 0,
+            }}
+          >
             <Space>
               <Text style={{ color: '#aaa', fontSize: 12 }}>
                 {currentIndex + 1} / {images.length}
@@ -111,19 +115,12 @@ export default function ImageGalleryModal({
             </Space>
             <Space>
               {onRefine && (
-                <Button
-                  icon={<EditOutlined />}
-                  onClick={() => onRefine(current)}
-                >
+                <Button icon={<EditOutlined />} onClick={() => onRefine(current)}>
                   Refine
                 </Button>
               )}
               {onAccept && (
-                <Button
-                  type="primary"
-                  icon={<CheckOutlined />}
-                  onClick={() => onAccept(current)}
-                >
+                <Button type="primary" icon={<CheckOutlined />} onClick={() => onAccept(current)}>
                   Accept
                 </Button>
               )}

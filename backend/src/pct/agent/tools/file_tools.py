@@ -83,7 +83,7 @@ class FileTool:
     def _maybe_index(self, file_path: Path) -> None:
         """If path is under work/, index into RAG."""
         try:
-            rel = file_path.relative_to(self._root / "work")
+            file_path.relative_to(self._root / "work")
         except ValueError:
             return
         try:

@@ -93,10 +93,24 @@
   line-height: 1.6;
 }
 
-.artifact-editor .tiptap h1 { font-size: 1.6em; font-weight: 600; margin: 0.6em 0 0.3em; }
-.artifact-editor .tiptap h2 { font-size: 1.3em; font-weight: 600; margin: 0.5em 0 0.3em; }
-.artifact-editor .tiptap h3 { font-size: 1.1em; font-weight: 600; margin: 0.4em 0 0.2em; }
-.artifact-editor .tiptap p { margin: 0.4em 0; }
+.artifact-editor .tiptap h1 {
+  font-size: 1.6em;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.artifact-editor .tiptap h2 {
+  font-size: 1.3em;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em;
+}
+.artifact-editor .tiptap h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em;
+}
+.artifact-editor .tiptap p {
+  margin: 0.4em 0;
+}
 
 .artifact-editor .tiptap ul,
 .artifact-editor .tiptap ol {
@@ -236,12 +250,28 @@
   line-height: 1.5;
 }
 
-.artifact-output-text-body h1 { font-size: 1.4em; font-weight: 600; margin: 0.4em 0 0.2em; }
-.artifact-output-text-body h2 { font-size: 1.2em; font-weight: 600; margin: 0.4em 0 0.2em; }
-.artifact-output-text-body h3 { font-size: 1.05em; font-weight: 600; margin: 0.3em 0 0.15em; }
-.artifact-output-text-body p { margin: 0.3em 0; }
+.artifact-output-text-body h1 {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em;
+}
+.artifact-output-text-body h2 {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em;
+}
+.artifact-output-text-body h3 {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin: 0.3em 0 0.15em;
+}
+.artifact-output-text-body p {
+  margin: 0.3em 0;
+}
 .artifact-output-text-body ul,
-.artifact-output-text-body ol { padding-left: 1.5em; }
+.artifact-output-text-body ol {
+  padding-left: 1.5em;
+}
 .artifact-output-text-body pre {
   background: var(--editor-code-bg);
   border-radius: 4px;

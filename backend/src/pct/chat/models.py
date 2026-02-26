@@ -1,6 +1,6 @@
 """Data models for the planning chat system."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from pydantic import BaseModel, Field

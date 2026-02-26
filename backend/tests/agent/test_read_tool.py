@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from pct.agent.tools.read_tool import ReadTool, _strip_html
 
 

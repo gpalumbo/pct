@@ -7,7 +7,6 @@ import uuid
 
 from pct.imagegen.models import JobResponse, JobStatus
 
-
 _jobs: dict[str, JobResponse] = {}
 _tasks: dict[str, asyncio.Task] = {}
 

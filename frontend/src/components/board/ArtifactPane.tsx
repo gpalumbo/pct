@@ -15,7 +15,7 @@ function artifactSlug(text: string, maxWords = 3): string {
 function WikilinkStrip({ text }: { text: string }) {
   const links = useMemo(() => {
     const matches: string[] = [];
-    const regex = /\[\[([^\[\]]+)\]\]/g;
+    const regex = /\[\[([^[\]]+)\]\]/g;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       if (!matches.includes(match[1])) {
@@ -101,7 +101,9 @@ export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactP
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 12px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}
+      >
         <Input
           size="small"
           value={path}
@@ -111,16 +113,8 @@ export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactP
           placeholder={`work/${artifactSlug(featureId)}/${taskTitle ? artifactSlug(taskTitle) : 'task'}/`}
           style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
         />
-        <Button
-          size="small"
-          icon={<EditOutlined />}
-          onClick={() => setEditorOpen(true)}
-        />
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          onClick={() => refetch()}
-        />
+        <Button size="small" icon={<EditOutlined />} onClick={() => setEditorOpen(true)} />
+        <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()} />
         <Button
           size="small"
           type="primary"
@@ -139,7 +133,11 @@ export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactP
           setDirty(true);
         }}
         style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
-        placeholder={artifact?.exists ? '' : 'Artifact file does not exist yet. Type content and save to create it.'}
+        placeholder={
+          artifact?.exists
+            ? ''
+            : 'Artifact file does not exist yet. Type content and save to create it.'
+        }
       />
       <WikilinkStrip text={content} />
       <ArtifactEditorModal

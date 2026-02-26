@@ -2,18 +2,14 @@
 
 import asyncio
 
-import pytest
-
 from pct.agent.models import (
     AgentJob,
     AgentResult,
     AssembledContext,
     ProviderType,
-    TaskOutcome,
 )
 from pct.agent.pool import AgentPool
 from pct.agent.providers.local_llm import LocalLLMProvider
-
 from tests.agent.conftest import FakeLlama
 
 

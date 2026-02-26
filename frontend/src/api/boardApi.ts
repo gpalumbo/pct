@@ -14,20 +14,17 @@ import type {
 } from '../types/board';
 
 // Composite board
-export const fetchBoard = () =>
-  client.get<BoardResponse>('/api/board/').then((r) => r.data);
+export const fetchBoard = () => client.get<BoardResponse>('/api/board/').then((r) => r.data);
 
 // Features
-export const fetchFeatures = () =>
-  client.get<Feature[]>('/api/board/features').then((r) => r.data);
+export const fetchFeatures = () => client.get<Feature[]>('/api/board/features').then((r) => r.data);
 export const fetchFeature = (id: string) =>
   client.get<Feature>(`/api/board/features/${id}`).then((r) => r.data);
 export const createFeature = (data: CreateFeatureRequest) =>
   client.post<Feature>('/api/board/features', data).then((r) => r.data);
 export const updateFeatureMetadata = (id: string, data: UpdateFeatureMetadataRequest) =>
   client.patch<Feature>(`/api/board/features/${id}`, data).then((r) => r.data);
-export const deleteFeature = (id: string) =>
-  client.delete(`/api/board/features/${id}`);
+export const deleteFeature = (id: string) => client.delete(`/api/board/features/${id}`);
 export const suspendFeature = (id: string) =>
   client.post<Feature>(`/api/board/features/${id}/suspend`).then((r) => r.data);
 export const resumeFeature = (id: string) =>
@@ -49,7 +46,9 @@ export const createTask = (featureId: string, data: CreateTaskRequest) =>
 export const updateTask = (featureId: string, taskId: string, data: UpdateTaskRequest) =>
   client.put<Task>(`/api/board/features/${featureId}/tasks/${taskId}`, data).then((r) => r.data);
 export const moveTask = (featureId: string, taskId: string, data: MoveTaskRequest) =>
-  client.post<Task>(`/api/board/features/${featureId}/tasks/${taskId}/move`, data).then((r) => r.data);
+  client
+    .post<Task>(`/api/board/features/${featureId}/tasks/${taskId}/move`, data)
+    .then((r) => r.data);
 export const deleteTask = (featureId: string, taskId: string) =>
   client.delete(`/api/board/features/${featureId}/tasks/${taskId}`);
 export const reassignTask = (data: ReassignTaskRequest) =>
@@ -63,10 +62,14 @@ export interface ArtifactResponse {
 }
 
 export const fetchArtifact = (featureId: string, taskId: string) =>
-  client.get<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`).then((r) => r.data);
+  client
+    .get<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`)
+    .then((r) => r.data);
 
 export const saveArtifact = (featureId: string, taskId: string, content: string) =>
-  client.put<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`, { content }).then((r) => r.data);
+  client
+    .put<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`, { content })
+    .then((r) => r.data);
 
 // Artifact files (directory listing)
 export interface ArtifactFile {
@@ -77,7 +80,9 @@ export interface ArtifactFile {
 }
 
 export const fetchArtifactFiles = (featureId: string, taskId: string) =>
-  client.get<ArtifactFile[]>(`/api/board/features/${featureId}/tasks/${taskId}/files`).then((r) => r.data);
+  client
+    .get<ArtifactFile[]>(`/api/board/features/${featureId}/tasks/${taskId}/files`)
+    .then((r) => r.data);
 
 // Artifact types
 export const fetchArtifactTypes = () =>
@@ -115,6 +120,7 @@ function streamAnalysis(
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -155,10 +161,7 @@ export function runGapAnalysis(
   onDone: (content: string) => void,
   onError: (error: string) => void,
 ): AbortController {
-  return streamAnalysis(
-    `/api/board/features/${featureId}/gap-analysis`,
-    onToken, onDone, onError,
-  );
+  return streamAnalysis(`/api/board/features/${featureId}/gap-analysis`, onToken, onDone, onError);
 }
 
 export function runContinuityCheck(
@@ -169,6 +172,8 @@ export function runContinuityCheck(
 ): AbortController {
   return streamAnalysis(
     `/api/board/features/${featureId}/continuity-check`,
-    onToken, onDone, onError,
+    onToken,
+    onDone,
+    onError,
   );
 }

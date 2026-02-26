@@ -4,40 +4,30 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from pct.agent.tools.file_tools import FileTool
 
 
 class TestFileToolWrite:
     async def test_write_creates_file(self, tmp_path):
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "write", "path": "out.txt", "content": "data"})
-        )
+        result = await tool.execute(json.dumps({"action": "write", "path": "out.txt", "content": "data"}))
         assert "Wrote" in result
         assert (tmp_path / "out.txt").read_text(encoding="utf-8") == "data"
 
     async def test_write_creates_parent_dirs(self, tmp_path):
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "write", "path": "sub/dir/file.txt", "content": "nested"})
-        )
+        result = await tool.execute(json.dumps({"action": "write", "path": "sub/dir/file.txt", "content": "nested"}))
         assert "Wrote" in result
         assert (tmp_path / "sub" / "dir" / "file.txt").read_text(encoding="utf-8") == "nested"
 
     async def test_write_path_traversal_rejected(self, tmp_path):
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "write", "path": "../escape.txt", "content": "bad"})
-        )
+        result = await tool.execute(json.dumps({"action": "write", "path": "../escape.txt", "content": "bad"}))
         assert "[error]" in result
 
     async def test_write_missing_content(self, tmp_path):
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "write", "path": "out.txt"})
-        )
+        result = await tool.execute(json.dumps({"action": "write", "path": "out.txt"}))
         assert "[error]" in result
         assert "content" in result.lower()
 
@@ -80,9 +70,7 @@ class TestFileToolEdit:
     async def test_edit_missing_old_text_param(self, tmp_path):
         (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "edit", "path": "a.txt", "new_text": "x"})
-        )
+        result = await tool.execute(json.dumps({"action": "edit", "path": "a.txt", "new_text": "x"}))
         assert "[error]" in result
         assert "old_text" in result
 
@@ -90,9 +78,7 @@ class TestFileToolEdit:
 class TestFileToolGeneral:
     async def test_unknown_action(self, tmp_path):
         tool = FileTool(root_dir=tmp_path)
-        result = await tool.execute(
-            json.dumps({"action": "delete", "path": "file.txt"})
-        )
+        result = await tool.execute(json.dumps({"action": "delete", "path": "file.txt"}))
         assert "[error]" in result
         assert "Unknown action" in result
 

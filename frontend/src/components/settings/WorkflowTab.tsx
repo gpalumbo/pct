@@ -32,7 +32,10 @@ function slugify(label: string): string {
 const BUILTIN_VARS: { key: string; description: string }[] = [
   { key: 'artifact', description: 'Full content of the task artifact file' },
   { key: 'artifact_path', description: 'Directory path to the task artifact folder' },
-  { key: 'artifact_main_path', description: 'Path to the main text file (e.g. main.md) inside the artifact directory' },
+  {
+    key: 'artifact_main_path',
+    description: 'Path to the main text file (e.g. main.md) inside the artifact directory',
+  },
   { key: 'task_title', description: "The task's title" },
   { key: 'feature_title', description: "The parent feature's title" },
   { key: 'cross_refs', description: 'Cross-reference context from wikilinks' },
@@ -74,7 +77,10 @@ export default function WorkflowTab() {
     while (existing.has(id)) {
       id = slugify(label) + '-' + counter++;
     }
-    setStages((prev) => [...prev, { stage: id, label, enabled: true, agent: null, prompt_template: '' }]);
+    setStages((prev) => [
+      ...prev,
+      { stage: id, label, enabled: true, agent: null, prompt_template: '' },
+    ]);
   };
 
   const removeStage = (index: number) => {
@@ -114,17 +120,26 @@ export default function WorkflowTab() {
   const startEdit = (index: number, field: 'label' | 'prompt', value: string) => {
     setEditState((prev) => ({
       ...prev,
-      [index]: { ...prev[index] ?? { label: stages[index].label, prompt: stages[index].prompt_template || '' }, [field]: value },
+      [index]: {
+        ...(prev[index] ?? {
+          label: stages[index].label,
+          prompt: stages[index].prompt_template || '',
+        }),
+        [field]: value,
+      },
     }));
   };
 
-  const isDirty = useCallback((index: number) => {
-    const edit = editState[index];
-    if (!edit) return false;
-    const stage = stages[index];
-    if (!stage) return false;
-    return edit.label !== stage.label || edit.prompt !== (stage.prompt_template || '');
-  }, [editState, stages]);
+  const isDirty = useCallback(
+    (index: number) => {
+      const edit = editState[index];
+      if (!edit) return false;
+      const stage = stages[index];
+      if (!stage) return false;
+      return edit.label !== stage.label || edit.prompt !== (stage.prompt_template || '');
+    },
+    [editState, stages],
+  );
 
   const commitEdit = (index: number) => {
     const edit = editState[index];
@@ -227,7 +242,11 @@ export default function WorkflowTab() {
                 const dirty = isDirty(index);
 
                 return (
-                  <Draggable key={stage.stage + '-' + index} draggableId={stage.stage + '-' + index} index={index}>
+                  <Draggable
+                    key={stage.stage + '-' + index}
+                    draggableId={stage.stage + '-' + index}
+                    index={index}
+                  >
                     {(dragProvided, snapshot) => (
                       <div
                         ref={dragProvided.innerRef}
@@ -247,7 +266,13 @@ export default function WorkflowTab() {
                         {/* Drag handle */}
                         <div
                           {...dragProvided.dragHandleProps}
-                          style={{ cursor: 'grab', color: '#666', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{
+                            cursor: 'grab',
+                            color: '#666',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
                         >
                           <HolderOutlined style={{ fontSize: 16 }} />
                         </div>
@@ -348,11 +373,7 @@ export default function WorkflowTab() {
         <Button icon={<PlusOutlined />} onClick={addStage}>
           Add Stage
         </Button>
-        <Button
-          type="primary"
-          onClick={handleSave}
-          loading={saveStages.isPending}
-        >
+        <Button type="primary" onClick={handleSave} loading={saveStages.isPending}>
           Save Changes
         </Button>
       </Space>
@@ -364,7 +385,11 @@ export default function WorkflowTab() {
         items={[
           {
             key: 'template-vars',
-            label: <Text strong style={{ fontSize: 14 }}>Template Variables</Text>,
+            label: (
+              <Text strong style={{ fontSize: 14 }}>
+                Template Variables
+              </Text>
+            ),
             children: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* Built-in variables (read-only reference) */}
@@ -373,9 +398,20 @@ export default function WorkflowTab() {
                 </Text>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
                   {BUILTIN_VARS.map((v) => (
-                    <div key={v.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 8, alignItems: 'center', padding: '2px 0' }}>
+                    <div
+                      key={v.key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '160px 1fr',
+                        gap: 8,
+                        alignItems: 'center',
+                        padding: '2px 0',
+                      }}
+                    >
                       <code style={{ fontSize: 12, color: '#1890ff' }}>{`{{${v.key}}}`}</code>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{v.description}</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {v.description}
+                      </Text>
                     </div>
                   ))}
                 </div>
@@ -387,7 +423,17 @@ export default function WorkflowTab() {
 
                 {/* Header */}
                 {customVars.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 2fr 32px', gap: 8, padding: '2px 0', fontWeight: 600, fontSize: 12, color: '#888' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr 2fr 32px',
+                      gap: 8,
+                      padding: '2px 0',
+                      fontWeight: 600,
+                      fontSize: 12,
+                      color: '#888',
+                    }}
+                  >
                     <div>Key</div>
                     <div>Description</div>
                     <div>Value</div>
@@ -396,11 +442,23 @@ export default function WorkflowTab() {
                 )}
 
                 {customVars.map((v, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 2fr 32px', gap: 8, alignItems: 'center' }}>
+                  <div
+                    key={i}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '140px 1fr 2fr 32px',
+                      gap: 8,
+                      alignItems: 'center',
+                    }}
+                  >
                     <Input
                       size="small"
                       value={v.key}
-                      onChange={(e) => updateCustomVar(i, { key: e.target.value.replace(/[^a-z0-9_]/gi, '_').toLowerCase() })}
+                      onChange={(e) =>
+                        updateCustomVar(i, {
+                          key: e.target.value.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+                        })
+                      }
                       placeholder="variable_name"
                       style={{ fontFamily: 'monospace', fontSize: 12 }}
                     />

@@ -11,9 +11,7 @@ from pct.agent.chat_loop import execute_chat_turn
 from pct.agent.models import AssembledContext, ContextMetadata, TaskOutcome
 from pct.agent.providers.local_llm import LocalLLMProvider
 from pct.agent.tools import BashTool, ToolRegistry
-
 from tests.agent.conftest import FakeLlama
-
 
 # ---------------------------------------------------------------------------
 # BashTool
@@ -30,9 +28,7 @@ class TestBashTool:
     async def test_bash_tool_captures_stderr(self):
         """stderr output is included in the result."""
         tool = BashTool()
-        result = await tool.execute(
-            json.dumps({"command": "echo err >&2"})
-        )
+        result = await tool.execute(json.dumps({"command": "echo err >&2"}))
         assert "err" in result
 
     async def test_bash_tool_timeout(self):
@@ -120,9 +116,7 @@ class TestToolLoop:
         registry = ToolRegistry()
         registry.register(BashTool())
 
-        result = await execute_chat_turn(
-            provider, _sample_context(), tool_registry=registry
-        )
+        result = await execute_chat_turn(provider, _sample_context(), tool_registry=registry)
 
         assert result.outcome == TaskOutcome.APPROVED
         assert result.output == "Final answer: it worked."
@@ -146,10 +140,7 @@ class TestToolLoop:
     async def test_tool_loop_max_iterations(self):
         """Safety cap prevents infinite tool-call loops."""
         # Every call returns a tool_call — should stop at max_iterations
-        always_tool = {
-            i: [_make_tool_call(f"call_{i}", "bash", {"command": "echo loop"})]
-            for i in range(20)
-        }
+        always_tool = {i: [_make_tool_call(f"call_{i}", "bash", {"command": "echo loop"})] for i in range(20)}
         llama = FakeLlama(
             responses=["never reached"],
             tool_call_responses=always_tool,

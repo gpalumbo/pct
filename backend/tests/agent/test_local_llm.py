@@ -6,7 +6,6 @@ import pytest
 
 from pct.agent.models import AgentResult, TaskOutcome
 from pct.agent.providers.local_llm import LocalLLMProvider, _parse_tool_calls_from_content
-
 from tests.agent.conftest import FakeLlama
 
 
@@ -154,9 +153,7 @@ class TestToolCallContentFallback:
 
     async def test_provider_fallback_populates_tool_calls(self):
         """When backend puts tool call in content, provider still populates tool_calls."""
-        tool_call_json = json.dumps(
-            {"name": "bash", "arguments": {"command": "echo hi"}}
-        )
+        tool_call_json = json.dumps({"name": "bash", "arguments": {"command": "echo hi"}})
         llama = FakeLlama(responses=[tool_call_json])
         provider = LocalLLMProvider(backend=llama)
         messages = [{"role": "user", "content": "run echo"}]

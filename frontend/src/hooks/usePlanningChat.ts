@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { message as antMessage } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
-import { useDefaultSession, useMessages, useUpdateMessage, useDeleteMessage, useTruncateFromMessage } from './useChatQueries';
+import {
+  useDefaultSession,
+  useMessages,
+  useUpdateMessage,
+  useDeleteMessage,
+  useTruncateFromMessage,
+} from './useChatQueries';
 import { useAgents, useWorkflowStages } from './useConfigQueries';
 import { createSession, fetchSession, sendMessageStream } from '../api/chatApi';
 import { fetchArtifact, saveArtifact } from '../api/boardApi';
@@ -45,7 +51,10 @@ export interface UsePlanningChatReturn {
   handleStop: () => void;
   handleReplay: (msg: PlanningMessage) => void;
   handleTruncateAndReplay: (msg: PlanningMessage) => Promise<void>;
-  handleUpdateMessage: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
+  handleUpdateMessage: (
+    id: string,
+    updates: { role?: string; content?: string; included?: boolean },
+  ) => void;
   handleDeleteMessage: (id: string) => void;
   handleCopyToArtifact: ((content: string) => Promise<void>) | undefined;
 }
@@ -89,7 +98,9 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
         if (!cancelled) setExplicitSessionLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [sessionIdProp]);
 
   const activeSessionId = sessionIdProp || defaultSession?.id || null;
@@ -120,7 +131,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
   const initializedRef = useRef(false);
   useEffect(() => {
     if (initializedRef.current || !taskStage || stages.length === 0) return;
-    const stage = stages.find(s => s.stage === taskStage);
+    const stage = stages.find((s) => s.stage === taskStage);
     if (stage?.agent) {
       handleAgentChange(stage.agent);
     }
@@ -129,8 +140,11 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
 
   useEffect(() => {
     if (!onAgentTypeChange) return;
-    if (!selectedAgent) { onAgentTypeChange(null); return; }
-    const cfg = agents.find(a => a.id === selectedAgent);
+    if (!selectedAgent) {
+      onAgentTypeChange(null);
+      return;
+    }
+    const cfg = agents.find((a) => a.id === selectedAgent);
     onAgentTypeChange(cfg?.agent_type ?? null);
   }, [selectedAgent, agents, onAgentTypeChange]);
 
@@ -138,7 +152,9 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
   /*  Load messages                                                      */
   /* ------------------------------------------------------------------ */
   const enabledSessionId = sessionIdProp
-    ? (explicitSessionReady ? activeSessionId : null)
+    ? explicitSessionReady
+      ? activeSessionId
+      : null
     : activeSessionId;
 
   const { data: fetchedMessages, isLoading: messagesLoading } = useMessages(enabledSessionId);
@@ -188,7 +204,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
       if (!activeSessionId) return;
 
       // Route imagegen prompts to image generation instead of chat
-      const agentCfg = agentId ? agents.find(a => a.id === agentId) : null;
+      const agentCfg = agentId ? agents.find((a) => a.id === agentId) : null;
       if (agentCfg?.agent_type === 'imagegen' && onImageGenerate) {
         onImageGenerate(content);
         return;
@@ -281,9 +297,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
       if (!featureId || !taskId) return;
       try {
         const artifact = await fetchArtifact(featureId, taskId);
-        const updated = artifact.content
-          ? artifact.content + '\n\n' + content
-          : content;
+        const updated = artifact.content ? artifact.content + '\n\n' + content : content;
         await saveArtifact(featureId, taskId, updated);
         queryClient.invalidateQueries({ queryKey: ['artifact', featureId, taskId] });
         antMessage.success('Appended to artifact');

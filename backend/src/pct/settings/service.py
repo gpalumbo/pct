@@ -143,9 +143,7 @@ def _download_hf_model_sync(model_id: str) -> None:
     try:
         from huggingface_hub import HfApi, snapshot_download
     except ImportError as exc:
-        raise RuntimeError(
-            "huggingface-hub is required. Install with: pip install -e '.[local-llm]'"
-        ) from exc
+        raise RuntimeError("huggingface-hub is required. Install with: pip install -e '.[local-llm]'") from exc
 
     dest = _get_project_root() / "models" / model_id.replace("/", "--")
     dest.mkdir(parents=True, exist_ok=True)
@@ -193,9 +191,7 @@ def _download_hf_model_sync(model_id: str) -> None:
 async def download_hf_model(model_id: str) -> None:
     """Download a HuggingFace model in the background via the event loop executor."""
     loop = asyncio.get_event_loop()
-    asyncio.ensure_future(
-        loop.run_in_executor(None, _download_hf_model_sync, model_id)
-    )
+    asyncio.ensure_future(loop.run_in_executor(None, _download_hf_model_sync, model_id))
 
 
 # ---------------------------------------------------------------------------
@@ -208,13 +204,13 @@ def _loras_path() -> Path:
 
 
 def list_loras() -> list[LoRARegistryEntry]:
-    return [LoRARegistryEntry(**l) for l in _load_yaml_list(_loras_path())]
+    return [LoRARegistryEntry(**item) for item in _load_yaml_list(_loras_path())]
 
 
 def get_lora(lora_id: str) -> LoRARegistryEntry | None:
-    for l in _load_yaml_list(_loras_path()):
-        if l.get("id") == lora_id:
-            return LoRARegistryEntry(**l)
+    for item in _load_yaml_list(_loras_path()):
+        if item.get("id") == lora_id:
+            return LoRARegistryEntry(**item)
     return None
 
 
@@ -227,8 +223,8 @@ def create_lora(entry: LoRARegistryEntry) -> LoRARegistryEntry:
 
 def update_lora(lora_id: str, entry: LoRARegistryEntry) -> LoRARegistryEntry | None:
     items = _load_yaml_list(_loras_path())
-    for i, l in enumerate(items):
-        if l.get("id") == lora_id:
+    for i, item in enumerate(items):
+        if item.get("id") == lora_id:
             items[i] = entry.model_dump(mode="json", exclude_none=True)
             _save_yaml_list(_loras_path(), items)
             return entry
@@ -237,7 +233,7 @@ def update_lora(lora_id: str, entry: LoRARegistryEntry) -> LoRARegistryEntry | N
 
 def delete_lora(lora_id: str) -> bool:
     items = _load_yaml_list(_loras_path())
-    new_items = [l for l in items if l.get("id") != lora_id]
+    new_items = [item for item in items if item.get("id") != lora_id]
     if len(new_items) == len(items):
         return False
     _save_yaml_list(_loras_path(), new_items)
@@ -273,9 +269,7 @@ def save_project_config(cfg: ProjectConfig) -> ProjectConfig:
 
         tpl = get_template(cfg.project_type)
         if tpl:
-            cfg.workflow_stages = [
-                WorkflowStageConfig(**s) for s in tpl["stages"]
-            ]
+            cfg.workflow_stages = [WorkflowStageConfig(**s) for s in tpl["stages"]]
             _apply_initial_feature(tpl)
         _apply_default_agents(cfg)
         _create_work_index()
@@ -295,8 +289,8 @@ def _apply_initial_feature(tpl: dict) -> None:
     Supports both singular ``initial_feature`` (backward-compat) and plural
     ``initial_features`` list for templates that create multiple features.
     """
-    from pct.board.service import create_feature, create_task
     from pct.board.models import CreateFeatureRequest, CreateTaskRequest
+    from pct.board.service import create_feature, create_task
 
     first_stage = tpl["stages"][0]["stage"] if tpl["stages"] else "todo"
 
@@ -307,16 +301,21 @@ def _apply_initial_feature(tpl: dict) -> None:
         feat_templates = [singular]
 
     for feat_tpl in feat_templates:
-        create_feature(CreateFeatureRequest(
-            id=feat_tpl["id"],
-            title=feat_tpl["title"],
-        ))
+        create_feature(
+            CreateFeatureRequest(
+                id=feat_tpl["id"],
+                title=feat_tpl["title"],
+            )
+        )
         for task_tpl in feat_tpl.get("tasks", []):
-            create_task(feat_tpl["id"], CreateTaskRequest(
-                title=task_tpl["title"],
-                status=first_stage,
-                artifact_type=task_tpl.get("artifact_type", "text"),
-            ))
+            create_task(
+                feat_tpl["id"],
+                CreateTaskRequest(
+                    title=task_tpl["title"],
+                    status=first_stage,
+                    artifact_type=task_tpl.get("artifact_type", "text"),
+                ),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -481,20 +480,14 @@ def scan_and_register_models() -> list[ModelRegistryEntry]:
                 continue
 
             # Determine model id: use parent dir name if nested, else file stem
-            if f.parent != models_dir:
-                model_id = f.parent.name
-            else:
-                model_id = f.stem
+            model_id = f.parent.name if f.parent != models_dir else f.stem
 
             if model_id in existing:
                 continue
 
             # For nested dirs, resolve to the first shard file (llama.cpp
             # needs a file path, not a directory).
-            if f.parent != models_dir:
-                resolved_path = str(sorted(f.parent.glob(f"*{f.suffix}"))[0])
-            else:
-                resolved_path = str(f)
+            resolved_path = str(sorted(f.parent.glob(f"*{f.suffix}"))[0]) if f.parent != models_dir else str(f)
 
             if f.suffix == ".gguf":
                 entry = ModelRegistryEntry(
@@ -531,22 +524,26 @@ def _apply_default_agents(cfg: ProjectConfig) -> None:
 
     # Always create a "user" agent
     if "user" not in existing_ids:
-        cfg.agents.append(AgentConfig(
-            id="user",
-            agent_type=AgentType.USER,
-            provider_type=ProviderType.USER,
-            model="",
-        ))
+        cfg.agents.append(
+            AgentConfig(
+                id="user",
+                agent_type=AgentType.USER,
+                provider_type=ProviderType.USER,
+                model="",
+            )
+        )
         existing_ids.add("user")
 
     # Always create a default imagegen agent (diffusers auto-downloads from HF Hub)
     if "stable-diffusion-v1-5" not in existing_ids:
-        cfg.agents.append(AgentConfig(
-            id="stable-diffusion-v1-5",
-            agent_type=AgentType.IMAGEGEN,
-            provider_type=ProviderType.HUGGINGFACE,
-            model="sd-legacy/stable-diffusion-v1-5",
-        ))
+        cfg.agents.append(
+            AgentConfig(
+                id="stable-diffusion-v1-5",
+                agent_type=AgentType.IMAGEGEN,
+                provider_type=ProviderType.HUGGINGFACE,
+                model="sd-legacy/stable-diffusion-v1-5",
+            )
+        )
         existing_ids.add("stable-diffusion-v1-5")
 
     # Discover and register models first
@@ -561,12 +558,14 @@ def _apply_default_agents(cfg: ProjectConfig) -> None:
         if model.model_path and model.model_path.endswith(".safetensors"):
             agent_type = AgentType.IMAGEGEN
 
-        cfg.agents.append(AgentConfig(
-            id=model.id,
-            agent_type=agent_type,
-            provider_type=model.provider_type,
-            model=model.model_id,
-        ))
+        cfg.agents.append(
+            AgentConfig(
+                id=model.id,
+                agent_type=agent_type,
+                provider_type=model.provider_type,
+                model=model.model_id,
+            )
+        )
         existing_ids.add(model.id)
 
 
@@ -619,6 +618,7 @@ def _index_existing_work(cfg: ProjectConfig) -> None:
         return
     try:
         from pct.rag.indexer import index_directory
+
         index_directory(project_id, work_dir)
     except ImportError:
         logger.debug("RAG dependencies not available, skipping index")
@@ -640,6 +640,7 @@ def reindex_project() -> dict:
 
     try:
         from pct.rag.indexer import reindex_all
+
         count = reindex_all(cfg.project_id, work_dir)
         return {"indexed": count}
     except ImportError:

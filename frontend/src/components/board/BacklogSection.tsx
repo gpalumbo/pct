@@ -24,11 +24,7 @@ export default function BacklogSection({ backlog }: BacklogSectionProps) {
       items={[
         {
           key: 'backlog',
-          label: (
-            <Text strong>
-              Backlog ({backlog.length})
-            </Text>
-          ),
+          label: <Text strong>Backlog ({backlog.length})</Text>,
           children: (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {backlog.map((feature) => (

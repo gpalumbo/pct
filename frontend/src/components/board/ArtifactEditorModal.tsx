@@ -12,12 +12,14 @@ interface ArtifactEditorModalProps {
   onCancel: () => void;
 }
 
-export default function ArtifactEditorModal({ open, content, onSave, onCancel }: ArtifactEditorModalProps) {
+export default function ArtifactEditorModal({
+  open,
+  content,
+  onSave,
+  onCancel,
+}: ArtifactEditorModalProps) {
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Markdown,
-    ],
+    extensions: [StarterKit, Markdown],
     content: '',
   });
 
@@ -48,12 +50,15 @@ export default function ArtifactEditorModal({ open, content, onSave, onCancel }:
       <div className="artifact-editor">
         {/* Toolbar */}
         {editor && (
-          <div className="toolbar-row" style={{
-            display: 'flex',
-            gap: 2,
-            padding: '6px 8px',
-            flexWrap: 'wrap',
-          }}>
+          <div
+            className="toolbar-row"
+            style={{
+              display: 'flex',
+              gap: 2,
+              padding: '6px 8px',
+              flexWrap: 'wrap',
+            }}
+          >
             <ToolbarBtn
               label="B"
               active={editor.isActive('bold')}
@@ -119,21 +124,27 @@ export default function ArtifactEditorModal({ open, content, onSave, onCancel }:
         )}
 
         {/* Editor area */}
-        <div style={{
-          minHeight: 400,
-          maxHeight: '60vh',
-          overflowY: 'auto',
-          padding: '12px 16px',
-        }}>
+        <div
+          style={{
+            minHeight: 400,
+            maxHeight: '60vh',
+            overflowY: 'auto',
+            padding: '12px 16px',
+          }}
+        >
           <EditorContent editor={editor} />
         </div>
       </div>
-
     </Modal>
   );
 }
 
-function ToolbarBtn({ label, active, onClick, style }: {
+function ToolbarBtn({
+  label,
+  active,
+  onClick,
+  style,
+}: {
   label: string;
   active: boolean;
   onClick: () => void;
@@ -143,7 +154,10 @@ function ToolbarBtn({ label, active, onClick, style }: {
     <button
       type="button"
       className={`toolbar-btn${active ? ' active' : ''}`}
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onClick();
+      }}
       style={style}
     >
       {label}

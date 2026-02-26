@@ -14,6 +14,7 @@ def _isolate_board(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 
@@ -182,12 +183,10 @@ class TestBacklogEndpoints:
     @pytest.mark.anyio
     async def test_activate_backlog_feature(self, client, auth_headers):
         # Create a backlog feature by writing a file directly
-        from pct.board.models import BacklogFeature
         from pct.board import service
+        from pct.board.models import BacklogFeature
 
-        service.create_backlog_feature(
-            BacklogFeature(id="b1", title="B1", specification="# B1\nBacklog spec")
-        )
+        service.create_backlog_feature(BacklogFeature(id="b1", title="B1", specification="# B1\nBacklog spec"))
 
         resp = await client.post("/api/board/backlog/b1/activate", headers=auth_headers)
         assert resp.status_code == 200
@@ -220,9 +219,7 @@ class TestTaskEndpoints:
         assert resp.status_code == 201
         task_id = resp.json()["id"]
 
-        resp = await client.get(
-            f"/api/board/features/f1/tasks/{task_id}", headers=auth_headers
-        )
+        resp = await client.get(f"/api/board/features/f1/tasks/{task_id}", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json()["title"] == "My Task"
 
@@ -393,6 +390,7 @@ class TestArtifactFilesEndpoint:
 
         # Create a file inside the artifact directory
         from pathlib import Path
+
         project_root = Path(tmp_path / "project")
         artifact_dir = project_root / artifact_path.rstrip("/")
         artifact_dir.mkdir(parents=True, exist_ok=True)

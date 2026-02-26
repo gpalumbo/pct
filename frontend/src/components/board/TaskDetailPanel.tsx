@@ -36,29 +36,35 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startX: e.clientX, startWidth: width };
-    setIsResizing(true);
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      resizeRef.current = { startX: e.clientX, startWidth: width };
+      setIsResizing(true);
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      // Dragging left edge: moving left increases width
-      const delta = resizeRef.current.startX - ev.clientX;
-      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, resizeRef.current.startWidth + delta));
-      setWidth(newWidth);
-    };
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!resizeRef.current) return;
+        // Dragging left edge: moving left increases width
+        const delta = resizeRef.current.startX - ev.clientX;
+        const newWidth = Math.max(
+          MIN_WIDTH,
+          Math.min(MAX_WIDTH, resizeRef.current.startWidth + delta),
+        );
+        setWidth(newWidth);
+      };
 
-    const onMouseUp = () => {
-      setIsResizing(false);
-      resizeRef.current = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
+      const onMouseUp = () => {
+        setIsResizing(false);
+        resizeRef.current = null;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [width]);
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [width],
+  );
 
   /* ------------------------------------------------------------------ */
   /*  Agent type + imagegen routing                                      */
@@ -73,19 +79,22 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
   const [refineSourceImage, setRefineSourceImage] = useState<string | null>(null);
   const { data: agents = [] } = useAgents();
 
-  const handleRefineImage = useCallback((img: GeneratedImage) => {
-    // Find the blob URL for this image (it should already be loaded)
-    // We'll use a proxy URL for the chip display
-    const imageUrl = `/api/imagegen/${featureId}/${taskId}/images/${img.filename}`;
-    setRefineTarget({ filename: img.filename, imageUrl });
-    setRefineSourceImage(img.filename);
+  const handleRefineImage = useCallback(
+    (img: GeneratedImage) => {
+      // Find the blob URL for this image (it should already be loaded)
+      // We'll use a proxy URL for the chip display
+      const imageUrl = `/api/imagegen/${featureId}/${taskId}/images/${img.filename}`;
+      setRefineTarget({ filename: img.filename, imageUrl });
+      setRefineSourceImage(img.filename);
 
-    // Auto-switch to imagegen agent
-    const imagegenAgent = agents.find(a => a.agent_type === 'imagegen');
-    if (imagegenAgent) {
-      chat.handleAgentChange(imagegenAgent.id);
-    }
-  }, [featureId, taskId, agents]); // eslint-disable-line react-hooks/exhaustive-deps
+      // Auto-switch to imagegen agent
+      const imagegenAgent = agents.find((a) => a.agent_type === 'imagegen');
+      if (imagegenAgent) {
+        chat.handleAgentChange(imagegenAgent.id);
+      }
+    },
+    [featureId, taskId, agents],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCancelRefine = useCallback(() => {
     setRefineTarget(null);
@@ -106,13 +115,16 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
   });
 
   // Wrap handleSend to clear refine target on send
-  const handleSend = useCallback((content: string, agentId: string | null) => {
-    chat.handleSend(content, agentId);
-    if (refineTarget) {
-      setRefineTarget(null);
-      // Keep refineSourceImage until prompt is consumed
-    }
-  }, [chat, refineTarget]);
+  const handleSend = useCallback(
+    (content: string, agentId: string | null) => {
+      chat.handleSend(content, agentId);
+      if (refineTarget) {
+        setRefineTarget(null);
+        // Keep refineSourceImage until prompt is consumed
+      }
+    },
+    [chat, refineTarget],
+  );
 
   /* ------------------------------------------------------------------ */
   /*  Config UI                                                          */
@@ -139,7 +151,10 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
     updateTask.mutate(
       { featureId, taskId, data: { cross_depends_on: refs } },
       {
-        onSuccess: () => { setRefPickerOpen(false); message.success('References updated'); },
+        onSuccess: () => {
+          setRefPickerOpen(false);
+          message.success('References updated');
+        },
         onError: () => message.error('Failed to update references'),
       },
     );
@@ -198,12 +213,7 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
         <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
           {featureId}/{taskId}
         </Text>
-        <Button
-          type="text"
-          size="small"
-          icon={<CloseOutlined />}
-          onClick={onClose}
-        />
+        <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} />
       </div>
 
       {/* Cross-references strip */}
@@ -281,14 +291,25 @@ export default function TaskDetailPanel({ selectedTask, onClose }: TaskDetailPan
       {/* SECTION 3: Artifact / Output (split view)                     */}
       {/* ============================================================ */}
       <div className="task-sidebar-divider" style={{ flexShrink: 0 }} />
-      <div style={{ height: '40%', minHeight: 200, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          height: '40%',
+          minHeight: 200,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <ArtifactOutputPane
           featureId={featureId}
           taskId={taskId}
           taskTitle={task.title}
           activeAgentType={activeAgentType}
           pendingImagePrompt={pendingImagePrompt}
-          onPromptConsumed={() => { setPendingImagePrompt(null); setRefineSourceImage(null); }}
+          onPromptConsumed={() => {
+            setPendingImagePrompt(null);
+            setRefineSourceImage(null);
+          }}
           refineSourceImage={refineSourceImage}
           onRefineImage={handleRefineImage}
         />

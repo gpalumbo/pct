@@ -61,10 +61,14 @@ export const fetchSession = (featureId: string, taskId: string) =>
   client.get<SessionMetadata>(`/api/imagegen/${featureId}/${taskId}/session`).then((r) => r.data);
 
 export const selectImage = (featureId: string, taskId: string, data: SelectImageRequest) =>
-  client.post<SessionMetadata>(`/api/imagegen/${featureId}/${taskId}/select`, data).then((r) => r.data);
+  client
+    .post<SessionMetadata>(`/api/imagegen/${featureId}/${taskId}/select`, data)
+    .then((r) => r.data);
 
 export const getImageUrl = (featureId: string, taskId: string, filename: string) =>
   `/api/imagegen/${featureId}/${taskId}/images/${filename}`;
 
 export const fetchImageBlob = (featureId: string, taskId: string, filename: string) =>
-  client.get(`/api/imagegen/${featureId}/${taskId}/images/${filename}`, { responseType: 'blob' }).then((r) => r.data as Blob);
+  client
+    .get(`/api/imagegen/${featureId}/${taskId}/images/${filename}`, { responseType: 'blob' })
+    .then((r) => r.data as Blob);

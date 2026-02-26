@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from pct.board import service
 from pct.board.models import (
     CreateFeatureRequest,
     CreateTaskRequest,
@@ -13,7 +14,6 @@ from pct.board.models import (
     UpdateFeatureMetadataRequest,
     UpdateTaskRequest,
 )
-from pct.board import service
 from pct.config_models import ProjectConfig, WorkflowStageConfig
 from pct.settings import service as settings_service
 
@@ -26,6 +26,7 @@ def _isolate_board(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 
@@ -55,9 +56,7 @@ class TestFeatureCRUD:
         assert service.list_features() == []
 
     def test_create_feature(self):
-        req = CreateFeatureRequest(
-            id="f1", title="Feature One", specification="# Feature One\nDetails here."
-        )
+        req = CreateFeatureRequest(id="f1", title="Feature One", specification="# Feature One\nDetails here.")
         feature = service.create_feature(req)
         assert feature.id == "f1"
         assert feature.title == "Feature One"
@@ -87,9 +86,10 @@ class TestFeatureCRUD:
         assert updated.metadata.lifecycle_stage == FeatureStage.ACTIVE
 
     def test_update_feature_metadata_not_found(self):
-        assert service.update_feature_metadata(
-            "nope", UpdateFeatureMetadataRequest(lifecycle_stage=FeatureStage.ACTIVE)
-        ) is None
+        assert (
+            service.update_feature_metadata("nope", UpdateFeatureMetadataRequest(lifecycle_stage=FeatureStage.ACTIVE))
+            is None
+        )
 
     def test_delete_feature(self):
         service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
@@ -270,6 +270,7 @@ class TestTaskCRUD:
 
         # Write main.md manually into the artifact directory
         from pct.board.service import _project_root
+
         artifact_dir = _project_root() / task.artifact_path.rstrip("/")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         (artifact_dir / "main.md").write_text("# Hello", encoding="utf-8")
@@ -290,6 +291,7 @@ class TestTaskCRUD:
         assert result["path"] == task.artifact_path
 
         from pct.board.service import _project_root
+
         main_file = _project_root() / task.artifact_path.rstrip("/") / "main.md"
         assert main_file.exists()
         assert main_file.read_text(encoding="utf-8") == "# Written Content"
@@ -307,6 +309,7 @@ class TestTaskCRUD:
         assert result["exists"] is True
 
         from pct.board.service import _project_root
+
         legacy_file = _project_root() / "work" / "legacy" / "task.md"
         assert legacy_file.exists()
         assert legacy_file.read_text(encoding="utf-8") == "Legacy content"
@@ -322,6 +325,7 @@ class TestTaskCRUD:
         assert task is not None
 
         from pct.board.service import _project_root
+
         artifact_dir = _project_root() / task.artifact_path.rstrip("/")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         (artifact_dir / "main.md").write_text("# Hello", encoding="utf-8")
@@ -349,6 +353,7 @@ class TestTaskCRUD:
         assert task is not None
 
         from pct.board.service import _project_root
+
         legacy_file = _project_root() / "work" / "legacy" / "file.md"
         legacy_file.parent.mkdir(parents=True, exist_ok=True)
         legacy_file.write_text("content", encoding="utf-8")
@@ -392,9 +397,7 @@ class TestMoveTask:
         service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
         service.create_task("f1", CreateTaskRequest(title="T", status="refine-spec"))
 
-        t = service.move_task(
-            "f1", "001", MoveTaskRequest(new_status="code-review", confirm_skip=True)
-        )
+        t = service.move_task("f1", "001", MoveTaskRequest(new_status="code-review", confirm_skip=True))
         assert t is not None
         assert t.status == "code-review"
 
@@ -432,9 +435,7 @@ class TestBoardAssembly:
 
         from pct.board.models import BacklogFeature
 
-        service.create_backlog_feature(
-            BacklogFeature(id="b1", title="B1", specification="# B1")
-        )
+        service.create_backlog_feature(BacklogFeature(id="b1", title="B1", specification="# B1"))
 
         board = service.get_board()
         assert len(board.features) == 1

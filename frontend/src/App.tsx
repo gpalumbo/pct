@@ -18,7 +18,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: status, isLoading } = useProjectStatus(!!token);
 
   if (!token) return <Navigate to="/login" replace />;
-  if (isLoading) return <Spin style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />;
+  if (isLoading)
+    return <Spin style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />;
   if (status && !status.initialized && location.pathname !== '/settings') {
     return <Navigate to="/settings" replace />;
   }
@@ -32,7 +33,12 @@ export default function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <QueryClientProvider client={queryClient}>
-        <ConfigProvider theme={{ algorithm: theme.compactAlgorithm, token: { fontSize, colorTextSecondary: '#3d4a5c' } }}>
+        <ConfigProvider
+          theme={{
+            algorithm: theme.compactAlgorithm,
+            token: { fontSize, colorTextSecondary: '#3d4a5c' },
+          }}
+        >
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />

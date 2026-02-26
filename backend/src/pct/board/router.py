@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from pct.auth.dependencies import get_current_user
 from pct.board import service
-
 from pct.board.models import (
     BacklogFeature,
     BoardResponse,
@@ -31,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class ArtifactWriteRequest(BaseModel):
     content: str
+
 
 router = APIRouter()
 
@@ -161,9 +161,7 @@ async def create_task(
 
 
 @router.get("/features/{feature_id}/tasks/{task_id}", response_model=Task)
-async def get_task(
-    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
-):
+async def get_task(feature_id: str, task_id: str, _user: dict = Depends(get_current_user)):
     t = service.get_task(feature_id, task_id)
     if t is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -193,7 +191,7 @@ async def move_task(
     try:
         t = service.move_task(feature_id, task_id, req)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if t is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return t
@@ -203,9 +201,7 @@ async def move_task(
     "/features/{feature_id}/tasks/{task_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_task(
-    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
-):
+async def delete_task(feature_id: str, task_id: str, _user: dict = Depends(get_current_user)):
     if not service.delete_task(feature_id, task_id):
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -220,7 +216,7 @@ async def reassign_task(req: ReassignTaskRequest, _user: dict = Depends(get_curr
     try:
         return service.reassign_task(req)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +225,7 @@ async def reassign_task(req: ReassignTaskRequest, _user: dict = Depends(get_curr
 
 
 @router.get("/features/{feature_id}/tasks/{task_id}/artifact")
-async def get_artifact(
-    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
-):
+async def get_artifact(feature_id: str, task_id: str, _user: dict = Depends(get_current_user)):
     task = service.get_task(feature_id, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -239,9 +233,7 @@ async def get_artifact(
 
 
 @router.get("/features/{feature_id}/tasks/{task_id}/files")
-async def list_artifact_files(
-    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
-):
+async def list_artifact_files(feature_id: str, task_id: str, _user: dict = Depends(get_current_user)):
     task = service.get_task(feature_id, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -280,14 +272,18 @@ async def _run_analysis_stream(feature_id: str, build_prompt_fn):
 
     feature = service.get_feature(feature_id)
     if feature is None:
+
         async def not_found():
             yield _sse({"error": "Feature not found"})
+
         return StreamingResponse(not_found(), media_type="text/event-stream")
 
     agent_id = get_default_planning_agent_id()
     if agent_id is None:
+
         async def no_agent():
             yield _sse({"error": "No agent configured. Add an agent in Settings."})
+
         return StreamingResponse(no_agent(), media_type="text/event-stream")
 
     context: AssembledContext = build_prompt_fn(feature_id)
@@ -335,16 +331,14 @@ async def _run_analysis_stream(feature_id: str, build_prompt_fn):
 
 
 @router.post("/features/{feature_id}/gap-analysis")
-async def run_gap_analysis(
-    feature_id: str, _user: dict = Depends(get_current_user)
-):
+async def run_gap_analysis(feature_id: str, _user: dict = Depends(get_current_user)):
     from pct.board.analysis import build_gap_analysis_prompt
+
     return await _run_analysis_stream(feature_id, build_gap_analysis_prompt)
 
 
 @router.post("/features/{feature_id}/continuity-check")
-async def run_continuity_check(
-    feature_id: str, _user: dict = Depends(get_current_user)
-):
+async def run_continuity_check(feature_id: str, _user: dict = Depends(get_current_user)):
     from pct.board.analysis import build_continuity_check_prompt
+
     return await _run_analysis_stream(feature_id, build_continuity_check_prompt)

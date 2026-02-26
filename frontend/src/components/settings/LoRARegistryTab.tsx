@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { Button, Form, Input, Modal, Select, Space, Table, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useLoras, useCreateLora, useUpdateLora, useDeleteLora, useModels } from '../../hooks/useConfigQueries';
+import {
+  useLoras,
+  useCreateLora,
+  useUpdateLora,
+  useDeleteLora,
+  useModels,
+} from '../../hooks/useConfigQueries';
 import type { LoRARegistryEntry } from '../../types/config';
 
 export default function LoRARegistryTab() {
@@ -56,7 +62,12 @@ export default function LoRARegistryTab() {
       render: (_: unknown, record: LoRARegistryEntry) => (
         <Space>
           <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
-          <Button icon={<DeleteOutlined />} size="small" danger onClick={() => handleDelete(record.id)} />
+          <Button
+            icon={<DeleteOutlined />}
+            size="small"
+            danger
+            onClick={() => handleDelete(record.id)}
+          />
         </Space>
       ),
     },
@@ -64,7 +75,12 @@ export default function LoRARegistryTab() {
 
   return (
     <>
-      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ marginBottom: 16 }}>
+      <Button
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={openCreate}
+        style={{ marginBottom: 16 }}
+      >
         Add LoRA
       </Button>
       <Table dataSource={loras} columns={columns} rowKey="id" loading={isLoading} size="small" />

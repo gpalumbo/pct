@@ -28,6 +28,7 @@ def _isolate_config(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 
@@ -35,6 +36,7 @@ def _isolate_config(tmp_path):
 @pytest.fixture
 async def client():
     from pct.main import app
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -290,6 +292,7 @@ class TestProjectConfig:
     async def test_project_config_null_when_missing(self, client, auth_headers, tmp_path):
         # Remove the .pct dir to simulate missing config
         import shutil
+
         pct_dir = tmp_path / "project" / ".pct"
         if pct_dir.exists():
             shutil.rmtree(pct_dir)

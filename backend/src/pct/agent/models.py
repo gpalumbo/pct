@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel
-
 
 # ---------------------------------------------------------------------------
 # Enums (from object model spec)
 # ---------------------------------------------------------------------------
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     """Types of agents that can execute tasks."""
 
     LLM = "llm"
@@ -23,7 +22,7 @@ class AgentType(str, Enum):
     IMAGEGEN = "imagegen"
 
 
-class ProviderType(str, Enum):
+class ProviderType(StrEnum):
     """Agent execution backend."""
 
     REMOTE_API = "remote"
@@ -32,7 +31,7 @@ class ProviderType(str, Enum):
     USER = "user"
 
 
-class TaskOutcome(str, Enum):
+class TaskOutcome(StrEnum):
     """Result of a task execution attempt."""
 
     APPROVED = "approved"

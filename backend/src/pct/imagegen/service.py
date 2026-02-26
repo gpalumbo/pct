@@ -12,8 +12,8 @@ from loguru import logger
 from pct import config
 from pct.imagegen import job_manager
 from pct.imagegen.models import (
-    GenerateRequest,
     GeneratedImage,
+    GenerateRequest,
     GenerationRound,
     JobStatus,
     SelectImageRequest,
@@ -87,8 +87,7 @@ def _get_pipeline():
         from diffusers import StableDiffusionPipeline
     except ImportError as exc:
         raise RuntimeError(
-            "Image generation requires the 'imagegen' optional dependencies. "
-            "Install with: pip install -e '.[imagegen]'"
+            "Image generation requires the 'imagegen' optional dependencies. Install with: pip install -e '.[imagegen]'"
         ) from exc
 
     model_id = _resolve_model_id()
@@ -118,14 +117,10 @@ async def _generate_images(job_id: str, req: GenerateRequest) -> None:
     try:
         loop = asyncio.get_event_loop()
         images = await loop.run_in_executor(None, _generate_sync, job_id, req)
-        job_manager.update_job(
-            job_id, status=JobStatus.COMPLETED, progress=1.0, images=images
-        )
+        job_manager.update_job(job_id, status=JobStatus.COMPLETED, progress=1.0, images=images)
     except Exception as exc:
         logger.exception("Image generation failed for job {}", job_id)
-        job_manager.update_job(
-            job_id, status=JobStatus.FAILED, error=str(exc)
-        )
+        job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(exc))
 
 
 def _generate_sync(job_id: str, req: GenerateRequest) -> list[GeneratedImage]:
@@ -184,9 +179,7 @@ def _generate_sync(job_id: str, req: GenerateRequest) -> list[GeneratedImage]:
         filename = f"round_{round_num:03d}_img_{i:03d}.png"
         image.save(out_dir / filename)
 
-        gen_img = GeneratedImage(
-            filename=filename, seed=seed, round=round_num, index=i
-        )
+        gen_img = GeneratedImage(filename=filename, seed=seed, round=round_num, index=i)
         generated.append(gen_img)
 
         # Update progress

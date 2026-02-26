@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
     )
     # Auto-discover models on every startup
     from pct.settings.service import scan_and_register_models
+
     found = scan_and_register_models()
     if found:
         logger.info("Discovered {} new model(s): {}", len(found), [m.id for m in found])

@@ -1,13 +1,9 @@
 """Tests for pct.agent.protocols — protocol conformance checks."""
 
-import asyncio
 import inspect
 
 from pct.agent.models import AgentResult
 from pct.agent.protocols import AgentProvider, CompletionBackend
-from pct.agent.providers.local_llm import LocalLLMProvider
-
-from tests.agent.conftest import FakeLlama
 
 
 class TestProtocolConformance:

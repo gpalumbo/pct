@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 WRITING_ARTIFACT_TYPES: dict[str, dict[str, str]] = {
     "timeline": {
         "label": "Timeline & History",

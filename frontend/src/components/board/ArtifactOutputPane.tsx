@@ -30,7 +30,7 @@ const { Text } = Typography;
 function WikilinkStrip({ text }: { text: string }) {
   const links = useMemo(() => {
     const matches: string[] = [];
-    const regex = /\[\[([^\[\]]+)\]\]/g;
+    const regex = /\[\[([^[\]]+)\]\]/g;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       if (!matches.includes(match[1])) matches.push(match[1]);
@@ -41,7 +41,9 @@ function WikilinkStrip({ text }: { text: string }) {
   return (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 0', flexShrink: 0 }}>
       {links.map((link) => (
-        <Tag key={link} color="blue" style={{ fontSize: 10, margin: 0, cursor: 'default' }}>{link}</Tag>
+        <Tag key={link} color="blue" style={{ fontSize: 10, margin: 0, cursor: 'default' }}>
+          {link}
+        </Tag>
       ))}
     </div>
   );
@@ -86,7 +88,10 @@ function TextPreview({ featureId, taskId, taskTitle }: TextPreviewProps) {
     updateTask.mutate(
       { featureId, taskId, data: { artifact_path: trimmed } },
       {
-        onSuccess: () => { refetch(); message.success('Artifact path updated'); },
+        onSuccess: () => {
+          refetch();
+          message.success('Artifact path updated');
+        },
         onError: () => message.error('Failed to update artifact path'),
       },
     );
@@ -96,22 +101,36 @@ function TextPreview({ featureId, taskId, taskTitle }: TextPreviewProps) {
     saveMutation.mutate(
       { featureId, taskId, content },
       {
-        onSuccess: () => { setDirty(false); message.success('Artifact saved'); },
+        onSuccess: () => {
+          setDirty(false);
+          message.success('Artifact saved');
+        },
         onError: () => message.error('Failed to save artifact'),
       },
     );
   };
 
   if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}><Spin size="small" /></div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}>
+        <Spin size="small" />
+      </div>
+    );
   }
 
   return (
     <div className="artifact-output-text-section">
       {/* Toolbar */}
       <div className="artifact-output-section-header" onClick={() => setCollapsed(!collapsed)}>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}>
-          {collapsed ? <DownOutlined style={{ fontSize: 9, marginRight: 4 }} /> : <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />}
+        <Text
+          type="secondary"
+          style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}
+        >
+          {collapsed ? (
+            <DownOutlined style={{ fontSize: 9, marginRight: 4 }} />
+          ) : (
+            <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />
+          )}
           Text Artifact
         </Text>
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
@@ -151,7 +170,9 @@ function TextPreview({ featureId, taskId, taskTitle }: TextPreviewProps) {
               <ReactMarkdown>{content}</ReactMarkdown>
             ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {artifact?.exists ? '(empty)' : 'Artifact file does not exist yet. Use "Copy to artifact" or the editor to create it.'}
+                {artifact?.exists
+                  ? '(empty)'
+                  : 'Artifact file does not exist yet. Use "Copy to artifact" or the editor to create it.'}
               </Text>
             )}
           </div>
@@ -165,7 +186,11 @@ function TextPreview({ featureId, taskId, taskTitle }: TextPreviewProps) {
       <ArtifactEditorModal
         open={editorOpen}
         content={content}
-        onSave={(md) => { setContent(md); setDirty(true); setEditorOpen(false); }}
+        onSave={(md) => {
+          setContent(md);
+          setDirty(true);
+          setEditorOpen(false);
+        }}
         onCancel={() => setEditorOpen(false)}
       />
     </div>
@@ -208,7 +233,9 @@ function ImageGrid({
   const [divergence, setDivergence] = useState(0.5);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<{ round: number; filename: string } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ round: number; filename: string } | null>(
+    null,
+  );
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -251,7 +278,9 @@ function ImageGrid({
         const blob = await fetchImageBlob(featureId, taskId, filename);
         const url = URL.createObjectURL(blob);
         setImageUrls((prev) => ({ ...prev, [filename]: url }));
-      } catch { /* not yet available */ }
+      } catch {
+        /* not yet available */
+      }
     },
     [featureId, taskId, imageUrls],
   );
@@ -261,8 +290,13 @@ function ImageGrid({
   }, [currentImages, loadImageBlob]);
 
   useEffect(() => {
-    if (job?.status === 'completed') { refetchSession(); setActiveJobId(null); }
-    else if (job?.status === 'failed') { message.error(job.error || 'Image generation failed'); setActiveJobId(null); }
+    if (job?.status === 'completed') {
+      refetchSession();
+      setActiveJobId(null);
+    } else if (job?.status === 'failed') {
+      message.error(job.error || 'Image generation failed');
+      setActiveJobId(null);
+    }
   }, [job?.status, job?.error, refetchSession]);
 
   // Trigger generation from pending prompt
@@ -280,7 +314,10 @@ function ImageGrid({
         divergence,
       },
       {
-        onSuccess: (data) => { setActiveJobId(data.job_id); setSelectedImage(null); },
+        onSuccess: (data) => {
+          setActiveJobId(data.job_id);
+          setSelectedImage(null);
+        },
         onError: () => message.error('Failed to start generation'),
       },
     );
@@ -293,7 +330,9 @@ function ImageGrid({
   };
 
   const handleAcceptImage = (img?: GeneratedImage) => {
-    const target = img ?? (selectedImage ? { round: selectedImage.round, filename: selectedImage.filename } : null);
+    const target =
+      img ??
+      (selectedImage ? { round: selectedImage.round, filename: selectedImage.filename } : null);
     if (!target) return;
     selectImg.mutate(
       { round: target.round, filename: target.filename },
@@ -305,7 +344,7 @@ function ImageGrid({
   };
 
   const handleViewImage = (img: GeneratedImage) => {
-    const idx = allImages.findIndex(i => i.filename === img.filename);
+    const idx = allImages.findIndex((i) => i.filename === img.filename);
     setGalleryIndex(idx >= 0 ? idx : 0);
     setGalleryOpen(true);
   };
@@ -328,41 +367,84 @@ function ImageGrid({
     <div className="artifact-output-image-section">
       {/* Section header */}
       <div className="artifact-output-section-header" onClick={() => setCollapsed(!collapsed)}>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}>
-          {collapsed ? <DownOutlined style={{ fontSize: 9, marginRight: 4 }} /> : <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />}
+        <Text
+          type="secondary"
+          style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}
+        >
+          {collapsed ? (
+            <DownOutlined style={{ fontSize: 9, marginRight: 4 }} />
+          ) : (
+            <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />
+          )}
           Images {currentImages.length > 0 && `(${currentImages.length})`}
         </Text>
       </div>
 
       {!collapsed && (
-        <div style={{ padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+        <div
+          style={{
+            padding: '4px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            overflow: 'auto',
+          }}
+        >
           {/* Generation params (visible when imagegen agent active) */}
           {showParams && (
             <>
-              <Collapse size="small" ghost items={[{
-                key: 'neg',
-                label: <Text type="secondary" style={{ fontSize: 11 }}>Negative prompt</Text>,
-                children: (
-                  <Input.TextArea
-                    value={negativePrompt}
-                    onChange={(e) => setNegativePrompt(e.target.value)}
-                    placeholder="Things to avoid..."
-                    autoSize={{ minRows: 1, maxRows: 3 }}
-                    style={{ fontSize: 12 }}
-                    disabled={isGenerating}
-                  />
-                ),
-              }]} />
+              <Collapse
+                size="small"
+                ghost
+                items={[
+                  {
+                    key: 'neg',
+                    label: (
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        Negative prompt
+                      </Text>
+                    ),
+                    children: (
+                      <Input.TextArea
+                        value={negativePrompt}
+                        onChange={(e) => setNegativePrompt(e.target.value)}
+                        placeholder="Things to avoid..."
+                        autoSize={{ minRows: 1, maxRows: 3 }}
+                        style={{ fontSize: 12 }}
+                        disabled={isGenerating}
+                      />
+                    ),
+                  },
+                ]}
+              />
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 {hasRounds && (
                   <div style={{ flex: 1 }}>
-                    <Text type="secondary" style={{ fontSize: 11 }}>Divergence</Text>
-                    <Slider min={0.1} max={0.9} step={0.1} value={divergence} onChange={setDivergence} marks={divergenceMarks} disabled={isGenerating} />
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      Divergence
+                    </Text>
+                    <Slider
+                      min={0.1}
+                      max={0.9}
+                      step={0.1}
+                      value={divergence}
+                      onChange={setDivergence}
+                      marks={divergenceMarks}
+                      disabled={isGenerating}
+                    />
                   </div>
                 )}
                 <div style={{ width: 80 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>Guidance</Text>
-                  <Input size="small" type="number" value={guidanceScale} onChange={(e) => setGuidanceScale(parseFloat(e.target.value) || 7.5)} disabled={isGenerating} />
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    Guidance
+                  </Text>
+                  <Input
+                    size="small"
+                    type="number"
+                    value={guidanceScale}
+                    onChange={(e) => setGuidanceScale(parseFloat(e.target.value) || 7.5)}
+                    disabled={isGenerating}
+                  />
                 </div>
               </div>
             </>
@@ -395,14 +477,20 @@ function ImageGrid({
                       <Button
                         size="small"
                         icon={<EditOutlined />}
-                        onClick={(e) => { e.stopPropagation(); onRefineImage?.(img); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRefineImage?.(img);
+                        }}
                       >
                         Refine
                       </Button>
                       <Button
                         size="small"
                         icon={<EyeOutlined />}
-                        onClick={(e) => { e.stopPropagation(); handleViewImage(img); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewImage(img);
+                        }}
                       >
                         View
                       </Button>
@@ -432,7 +520,8 @@ function ImageGrid({
                   key: round.round,
                   label: (
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      Round {round.round} — {round.prompt.slice(0, 40)}{round.prompt.length > 40 ? '...' : ''}
+                      Round {round.round} — {round.prompt.slice(0, 40)}
+                      {round.prompt.length > 40 ? '...' : ''}
                     </Text>
                   ),
                   children: (
@@ -447,7 +536,12 @@ function ImageGrid({
                             {url ? (
                               <img src={url} alt={`Round ${round.round} img ${img.index + 1}`} />
                             ) : (
-                              <div className="imagegen-placeholder" ref={() => loadImageBlob(img.filename)}>...</div>
+                              <div
+                                className="imagegen-placeholder"
+                                ref={() => loadImageBlob(img.filename)}
+                              >
+                                ...
+                              </div>
                             )}
                           </div>
                         );

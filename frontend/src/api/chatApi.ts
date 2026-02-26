@@ -1,17 +1,15 @@
 import client from './client';
 import { useAuthStore } from '../stores/authStore';
-import type {
-  ChatSession,
-  PlanningMessage,
-  UpdateMessageRequest,
-} from '../types/chat';
+import type { ChatSession, PlanningMessage, UpdateMessageRequest } from '../types/chat';
 
 // Session CRUD
 export const fetchSessions = () =>
   client.get<ChatSession[]>('/api/chat/sessions').then((r) => r.data);
 
 export const createSession = (title: string = 'Planning', sessionId?: string) =>
-  client.post<ChatSession>('/api/chat/sessions', { title, session_id: sessionId ?? null }).then((r) => r.data);
+  client
+    .post<ChatSession>('/api/chat/sessions', { title, session_id: sessionId ?? null })
+    .then((r) => r.data);
 
 export const fetchSession = (sessionId: string) =>
   client.get<ChatSession>(`/api/chat/sessions/${sessionId}`).then((r) => r.data);
@@ -74,6 +72,7 @@ export function sendMessageStream(
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;

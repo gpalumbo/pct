@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from loguru import logger
 
@@ -51,7 +50,7 @@ async def execute_chat_turn(
     response or *max_tool_iterations* is reached.
     """
     messages = build_messages(context, system_prompt)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Track streamed tokens so we can record them in messages
     collected_tokens: list[str] = []
@@ -61,18 +60,18 @@ async def execute_chat_turn(
         if on_token is not None:
             await on_token(token)
 
-    tool_definitions = (
-        tool_registry.get_definitions() if tool_registry is not None else None
-    )
+    tool_definitions = tool_registry.get_definitions() if tool_registry is not None else None
     all_tool_calls: list = []
 
     start = time.monotonic()
     try:
         for _iteration in range(max_tool_iterations + 1):
-            logger.debug("Executing chat turn with {} messages and {} tools", len(messages), len(tool_definitions) if tool_definitions else 0)
-            coro = provider.execute(
-                messages, on_token=_tracking_callback, tools=tool_definitions
+            logger.debug(
+                "Executing chat turn with {} messages and {} tools",
+                len(messages),
+                len(tool_definitions or []),
             )
+            coro = provider.execute(messages, on_token=_tracking_callback, tools=tool_definitions)
             if timeout_seconds is not None:
                 result = await asyncio.wait_for(coro, timeout=timeout_seconds)
             else:
@@ -108,9 +107,7 @@ async def execute_chat_turn(
             for tc in result.tool_calls:
                 logger.info("Tool call: {}({})", tc.function_name, tc.arguments)
                 try:
-                    output = await tool_registry.execute(
-                        tc.function_name, tc.arguments
-                    )
+                    output = await tool_registry.execute(tc.function_name, tc.arguments)
                     error = None
                 except Exception as exc:
                     output = ""
@@ -131,15 +128,13 @@ async def execute_chat_turn(
                 )
         else:
             # Exhausted iterations — return what we have with an error note
-            result.error = (
-                f"Tool loop exceeded {max_tool_iterations} iterations"
-            )
+            result.error = f"Tool loop exceeded {max_tool_iterations} iterations"
             result.outcome = TaskOutcome.ERROR
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise
     except Exception as exc:
-        logger.error("LLM exception: {}", exc )
+        logger.error("LLM exception: {}", exc)
         elapsed = time.monotonic() - start
         return AgentResult(
             outcome=TaskOutcome.ERROR,
@@ -152,13 +147,8 @@ async def execute_chat_turn(
     result.tool_calls = all_tool_calls
 
     # Build message records for the conversation
-    result.messages = [
-        LLMMessage(role=m["role"], content=m.get("content", ""), timestamp=now)
-        for m in messages
-    ]
+    result.messages = [LLMMessage(role=m["role"], content=m.get("content", ""), timestamp=now) for m in messages]
     if result.output:
-        result.messages.append(
-            LLMMessage(role="assistant", content=result.output, timestamp=now)
-        )
+        result.messages.append(LLMMessage(role="assistant", content=result.output, timestamp=now))
 
     return result

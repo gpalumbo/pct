@@ -7,8 +7,9 @@ Storage layout:
 
 from __future__ import annotations
 
+import contextlib
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -16,17 +17,13 @@ import yaml
 from pct import config
 from pct.chat.models import ChatSession, PlanningMessage, UpdateMessageRequest
 
-
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
 
 
 def _chat_history_dir() -> Path:
-    if config.settings.project_root:
-        root = Path(config.settings.project_root)
-    else:
-        root = Path.cwd()
+    root = Path(config.settings.project_root) if config.settings.project_root else Path.cwd()
     base = root / ".pct" / "chat_history"
     base.mkdir(parents=True, exist_ok=True)
     return base
@@ -85,10 +82,8 @@ def create_session(
         for s in sessions:
             sid = s.get("id", "")
             if sid.startswith("planning-"):
-                try:
+                with contextlib.suppress(ValueError):
                     existing_nums.append(int(sid.split("-", 1)[1]))
-                except ValueError:
-                    pass
         next_num = max(existing_nums, default=0) + 1
         session_id = f"planning-{next_num:03d}"
 
@@ -98,9 +93,7 @@ def create_session(
     return session
 
 
-def get_or_create_session(
-    session_id: str, title: str = "", agent_id: str | None = None
-) -> ChatSession:
+def get_or_create_session(session_id: str, title: str = "", agent_id: str | None = None) -> ChatSession:
     """Return an existing session or create one with the given ID."""
     existing = get_session(session_id)
     if existing is not None:
@@ -155,9 +148,7 @@ def append_message(session_id: str, msg: PlanningMessage) -> PlanningMessage:
     return msg
 
 
-def update_message(
-    session_id: str, message_id: str, updates: UpdateMessageRequest
-) -> PlanningMessage | None:
+def update_message(session_id: str, message_id: str, updates: UpdateMessageRequest) -> PlanningMessage | None:
     """Update a message by rewriting the JSONL file."""
     messages = load_messages(session_id)
     target = None

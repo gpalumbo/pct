@@ -70,8 +70,7 @@ export function useCreateLora() {
 export function useUpdateLora() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: LoRARegistryEntry }) =>
-      api.updateLora(id, data),
+    mutationFn: ({ id, data }: { id: string; data: LoRARegistryEntry }) => api.updateLora(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
   });
 }
@@ -103,8 +102,7 @@ export function useCreateAgent() {
 export function useUpdateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: AgentConfig }) =>
-      api.updateAgent(id, data),
+    mutationFn: ({ id, data }: { id: string; data: AgentConfig }) => api.updateAgent(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
   });
 }

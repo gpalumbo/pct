@@ -48,9 +48,9 @@ class ArtifactTypeConfig(BaseModel):
 class TemplateVariable(BaseModel):
     """A user-defined template variable for stage prompt expansion."""
 
-    key: str          # e.g. "project_style"  (used as {{project_style}} in prompts)
+    key: str  # e.g. "project_style"  (used as {{project_style}} in prompts)
     description: str = ""
-    value: str = ""   # static text substituted at prompt-expansion time
+    value: str = ""  # static text substituted at prompt-expansion time
 
 
 class WorkflowStageConfig(BaseModel):

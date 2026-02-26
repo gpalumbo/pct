@@ -27,7 +27,6 @@ from pct.board.models import (
 )
 from pct.config_models import WorkflowStageConfig
 
-
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -332,12 +331,14 @@ def activate_backlog_feature(backlog_id: str) -> Feature | None:
         first_line = content.strip().split("\n", 1)[0]
         title = re.sub(r"^#+\s*", "", first_line).strip() or backlog_id
 
-    feature = create_feature(CreateFeatureRequest(
-        id=backlog_id,
-        title=title,
-        specification=content,
-        metadata=FeatureMetadata(lifecycle_stage=FeatureStage.PLANNING),
-    ))
+    feature = create_feature(
+        CreateFeatureRequest(
+            id=backlog_id,
+            title=title,
+            specification=content,
+            metadata=FeatureMetadata(lifecycle_stage=FeatureStage.PLANNING),
+        )
+    )
 
     path.unlink()
     return feature
@@ -487,12 +488,14 @@ def list_artifact_files(feature_id: str, task_id: str) -> list[dict]:
         full = _project_root() / artifact_path
         if not full.exists():
             return []
-        return [{
-            "path": artifact_path,
-            "name": full.name,
-            "size": full.stat().st_size,
-            "is_image": full.suffix.lower() in _IMAGE_EXTS,
-        }]
+        return [
+            {
+                "path": artifact_path,
+                "name": full.name,
+                "size": full.stat().st_size,
+                "is_image": full.suffix.lower() in _IMAGE_EXTS,
+            }
+        ]
 
     # Directory-based: walk recursively
     base = _project_root() / artifact_path.rstrip("/")
@@ -504,12 +507,14 @@ def list_artifact_files(feature_id: str, task_id: str) -> list[dict]:
         for fname in sorted(files):
             fp = Path(root) / fname
             rel = fp.relative_to(_project_root()).as_posix()
-            result.append({
-                "path": rel,
-                "name": fname,
-                "size": fp.stat().st_size,
-                "is_image": fp.suffix.lower() in _IMAGE_EXTS,
-            })
+            result.append(
+                {
+                    "path": rel,
+                    "name": fname,
+                    "size": fp.stat().st_size,
+                    "is_image": fp.suffix.lower() in _IMAGE_EXTS,
+                }
+            )
     return result
 
 
@@ -545,10 +550,7 @@ def move_task(
         cur_idx = enabled.index(task.status)
         new_idx = enabled.index(req.new_status)
         if abs(new_idx - cur_idx) > 1 and not req.confirm_skip:
-            raise ValueError(
-                f"Non-adjacent move from '{task.status}' to '{req.new_status}' "
-                "requires confirm_skip=true"
-            )
+            raise ValueError(f"Non-adjacent move from '{task.status}' to '{req.new_status}' requires confirm_skip=true")
 
     return update_task(feature_id, task_id, UpdateTaskRequest(status=req.new_status))
 

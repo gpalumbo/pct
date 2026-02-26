@@ -32,8 +32,8 @@ export default function StageSkipModal() {
     >
       {pendingMove && (
         <Text>
-          Move this task to <Text strong>{pendingMove.newStatus}</Text>? This skips one
-          or more intermediate stages.
+          Move this task to <Text strong>{pendingMove.newStatus}</Text>? This skips one or more
+          intermediate stages.
         </Text>
       )}
     </Modal>

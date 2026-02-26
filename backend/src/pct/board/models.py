@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
 
-class FeatureStage(str, Enum):
+class FeatureStage(StrEnum):
     """Lifecycle stages for a feature."""
 
     BACKLOG = "backlog"
@@ -25,7 +24,7 @@ class FeatureStage(str, Enum):
     COMPLETE = "complete"
 
 
-class SerializationMode(str, Enum):
+class SerializationMode(StrEnum):
     """Whether tasks within a feature run in parallel or serially."""
 
     PARALLEL = "parallel"

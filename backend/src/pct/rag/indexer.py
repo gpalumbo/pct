@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -70,10 +71,8 @@ def index_file(project_id: str, file_path: Path) -> bool:
 
     if table_name in existing_tables:
         table = db.open_table(table_name)
-        try:
+        with contextlib.suppress(Exception):
             table.delete(f'path = "{str(file_path)}"')
-        except Exception:
-            pass
         table.add([record])
     else:
         try:
@@ -93,9 +92,8 @@ def index_directory(project_id: str, directory: Path) -> int:
         return count
 
     for file_path in sorted(directory.rglob("*")):
-        if file_path.is_file() and file_path.suffix in SUPPORTED_EXTENSIONS:
-            if index_file(project_id, file_path):
-                count += 1
+        if file_path.is_file() and file_path.suffix in SUPPORTED_EXTENSIONS and index_file(project_id, file_path):
+            count += 1
     return count
 
 

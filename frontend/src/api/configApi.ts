@@ -28,8 +28,7 @@ export const createModel = (data: ModelRegistryEntry) =>
   client.post<ModelRegistryEntry>('/api/config/models', data).then((r) => r.data);
 export const updateModel = (id: string, data: ModelRegistryEntry) =>
   client.put<ModelRegistryEntry>(`/api/config/models/${id}`, data).then((r) => r.data);
-export const deleteModel = (id: string) =>
-  client.delete(`/api/config/models/${id}`);
+export const deleteModel = (id: string) => client.delete(`/api/config/models/${id}`);
 
 // LoRA Registry
 export const fetchLoras = () =>
@@ -40,8 +39,7 @@ export const createLora = (data: LoRARegistryEntry) =>
   client.post<LoRARegistryEntry>('/api/config/loras', data).then((r) => r.data);
 export const updateLora = (id: string, data: LoRARegistryEntry) =>
   client.put<LoRARegistryEntry>(`/api/config/loras/${id}`, data).then((r) => r.data);
-export const deleteLora = (id: string) =>
-  client.delete(`/api/config/loras/${id}`);
+export const deleteLora = (id: string) => client.delete(`/api/config/loras/${id}`);
 
 // Project Config
 export const fetchProjectStatus = () =>
@@ -60,8 +58,7 @@ export const createAgent = (data: AgentConfig) =>
   client.post<AgentConfig>('/api/config/agents', data).then((r) => r.data);
 export const updateAgent = (id: string, data: AgentConfig) =>
   client.put<AgentConfig>(`/api/config/agents/${id}`, data).then((r) => r.data);
-export const deleteAgent = (id: string) =>
-  client.delete(`/api/config/agents/${id}`);
+export const deleteAgent = (id: string) => client.delete(`/api/config/agents/${id}`);
 
 // Reindex
 export interface ReindexResponse {

@@ -25,10 +25,7 @@ def collect_world_artifacts() -> str:
             content = artifact.get("content", "")
             if not content:
                 continue
-            sections.append(
-                f"### {feature.title} > {task.title} "
-                f"[type: {task.artifact_type}]\n\n{content}"
-            )
+            sections.append(f"### {feature.title} > {task.title} [type: {task.artifact_type}]\n\n{content}")
 
     if not sections:
         return "_No world artifacts found._"
@@ -48,9 +45,7 @@ def collect_timeline_artifacts() -> str:
             content = artifact.get("content", "")
             if not content:
                 continue
-            sections.append(
-                f"### {feature.title} > {task.title}\n\n{content}"
-            )
+            sections.append(f"### {feature.title} > {task.title}\n\n{content}")
 
     if not sections:
         return "_No timeline artifacts found._"
@@ -72,9 +67,7 @@ def collect_story_arc_content(feature_id: str) -> str:
         artifact = board_service.read_artifact(feature.id, task.id)
         content = artifact.get("content", "")
         if content:
-            sections.append(
-                f"### {task.title} [type: {task.artifact_type}]\n\n{content}"
-            )
+            sections.append(f"### {task.title} [type: {task.artifact_type}]\n\n{content}")
 
     return "\n\n---\n\n".join(sections) if sections else "_No content found._"
 
@@ -100,13 +93,16 @@ def build_gap_analysis_prompt(feature_id: str) -> AssembledContext:
 
 Analyze the world-building and story content above. Identify:
 
-1. **Missing artifacts**: Important elements mentioned but not yet developed (characters referenced but not profiled, locations mentioned but not described, etc.)
+1. **Missing artifacts**: Important elements mentioned but not yet developed
+   (characters referenced but not profiled, locations mentioned but not described, etc.)
 2. **Underdeveloped artifacts**: Existing entries that need more detail or depth
 3. **Suggested new tasks**: Concrete work items that would strengthen the world or story
 
 For each suggestion, output in this structured format:
 
-TASK: [suggested task title] | FEATURE: [target feature id] | TYPE: [artifact type: character, location, faction, timeline, magic-system, technology, item, story-arc, chapter, or text] | REASON: [brief explanation of why this is needed]
+TASK: [suggested task title] | FEATURE: [target feature id]
+| TYPE: [character, location, faction, timeline, magic-system, technology, item, story-arc, chapter, or text]
+| REASON: [brief explanation of why this is needed]
 
 Be specific and actionable. Focus on gaps that would most improve consistency and richness of the world."""
 
@@ -139,16 +135,20 @@ def build_continuity_check_prompt(feature_id: str) -> AssembledContext:
 
 ## Instructions
 
-You are a continuity checker. Using the timeline as the authoritative chronology, cross-check all facts between artifacts and the story content. Look for:
+You are a continuity checker. Using the timeline as the authoritative chronology,
+cross-check all facts between artifacts and the story content. Look for:
 
-1. **Temporal contradictions**: Events in the story that contradict the established timeline
-2. **Factual inconsistencies**: Details that conflict between different artifacts (character descriptions, location details, faction relationships, etc.)
-3. **Logic gaps**: Events or outcomes that don't follow logically from established rules (magic systems, technology limitations, etc.)
+1. **Temporal contradictions**: Events that contradict the established timeline
+2. **Factual inconsistencies**: Details that conflict between different artifacts
+   (character descriptions, location details, faction relationships, etc.)
+3. **Logic gaps**: Events or outcomes that don't follow logically from established rules
+   (magic systems, technology limitations, etc.)
 4. **Character continuity**: Personality shifts, knowledge inconsistencies, or relationship contradictions
 
 For each issue found, output in this structured format:
 
-ISSUE: [brief description] | SEVERITY: [high/medium/low] | LOCATION: [which artifact(s) are affected] | SUGGESTION: [how to resolve the inconsistency]
+ISSUE: [brief description] | SEVERITY: [high/medium/low]
+| LOCATION: [which artifact(s) are affected] | SUGGESTION: [how to resolve the inconsistency]
 
 Be thorough but fair — flag genuine contradictions, not stylistic choices."""
 

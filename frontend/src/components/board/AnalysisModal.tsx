@@ -121,7 +121,8 @@ export default function AnalysisModal({
     >
       {!content && !streaming && (
         <Text type="secondary">
-          Click "Run Analysis" to start. This will analyze all world artifacts for the selected feature.
+          Click "Run Analysis" to start. This will analyze all world artifacts for the selected
+          feature.
         </Text>
       )}
 
@@ -167,11 +168,7 @@ export default function AnalysisModal({
                   {t.feature} / {t.type} — {t.reason}
                 </Text>
               </div>
-              <Button
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => handleCreateTask(t)}
-              >
+              <Button size="small" icon={<PlusOutlined />} onClick={() => handleCreateTask(t)}>
                 Create
               </Button>
             </div>

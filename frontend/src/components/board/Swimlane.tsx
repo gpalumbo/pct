@@ -49,7 +49,12 @@ export default function Swimlane({ feature, enabledStages }: SwimlaneProps) {
         featureId: feature.id,
         data: { title, status: firstStage, artifact_type: inferredArtifactType },
       },
-      { onSuccess: () => { setAddingTask(false); setNewTaskTitle(''); } },
+      {
+        onSuccess: () => {
+          setAddingTask(false);
+          setNewTaskTitle('');
+        },
+      },
     );
   };
 
@@ -76,7 +81,9 @@ export default function Swimlane({ feature, enabledStages }: SwimlaneProps) {
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
             onPressEnter={handleSubmitTask}
-            onKeyDown={(e) => { if (e.key === 'Escape') handleCancelTask(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') handleCancelTask();
+            }}
             autoFocus
             disabled={createTask.isPending}
           />

@@ -1,13 +1,12 @@
 """Tests for pct.agent.models — Pydantic model validation."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pct.agent.models import (
     AgentConfig,
     AgentResult,
     AgentType,
     AssembledContext,
-    ContextMetadata,
     LLMMessage,
     ProviderType,
     TaskOutcome,
@@ -57,7 +56,7 @@ class TestAssembledContext:
 class TestLLMMessage:
     def test_llm_message_serialization(self):
         """Round-trip through model_dump / model_validate."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         msg = LLMMessage(role="user", content="Hello", timestamp=now, tokens=5)
         data = msg.model_dump()
         restored = LLMMessage.model_validate(data)

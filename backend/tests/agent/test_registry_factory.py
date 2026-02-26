@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from pct.agent.tools.registry_factory import create_global_registry
-
 
 EXPECTED_TOOLS = [
     "bash",

@@ -26,6 +26,7 @@ def _isolate_config(tmp_path):
     (tmp_path / "project" / ".pct").mkdir(parents=True)
 
     from pct import config
+
     config.settings = config.Settings()
     yield
 
@@ -33,6 +34,7 @@ def _isolate_config(tmp_path):
 @pytest.fixture
 async def client():
     from pct.main import app
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -80,6 +82,7 @@ class TestProjectInitEmpty:
 
         # Check model was registered
         from pct.settings.service import list_models
+
         model_ids = {m.id for m in list_models()}
         assert "llama-7b" in model_ids
 
@@ -96,6 +99,7 @@ class TestProjectInitEmpty:
         cfg = _save_project(tmp_path)
 
         from pct.settings.service import list_models
+
         model_ids = {m.id for m in list_models()}
         assert "mistral-7b" in model_ids
 
@@ -112,6 +116,7 @@ class TestProjectInitEmpty:
         cfg = _save_project(tmp_path)
 
         from pct.settings.service import list_models
+
         model_ids = {m.id for m in list_models()}
         assert "qwen2.5-7b" in model_ids
 
@@ -140,10 +145,9 @@ class TestProjectInitEmpty:
 
     def test_task_artifact_path_uses_work(self, tmp_path):
         _save_project(tmp_path)
-        tasks_dir = (
-            tmp_path / "project" / ".pct" / "active-features" / "f1-project-setup" / "tasks"
-        )
+        tasks_dir = tmp_path / "project" / ".pct" / "active-features" / "f1-project-setup" / "tasks"
         import frontmatter
+
         for p in tasks_dir.iterdir():
             if p.suffix == ".md":
                 post = frontmatter.load(str(p))

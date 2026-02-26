@@ -24,7 +24,16 @@ interface Props {
   onCancelRefine?: () => void;
 }
 
-export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, onAgentChange, taskStage, refineTarget, onCancelRefine }: Props) {
+export default function ChatInput({
+  isStreaming,
+  onSend,
+  onStop,
+  selectedAgent,
+  onAgentChange,
+  taskStage,
+  refineTarget,
+  onCancelRefine,
+}: Props) {
   const [content, setContent] = useState('');
   const { data: agents = [] } = useAgents();
   const { data: projectConfig } = useProjectConfig();
@@ -93,9 +102,8 @@ export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, 
               options={agents
                 .filter((a) => a.provider_type !== 'user')
                 .map((a) => ({
-                  label: a.id === defaultAgentId
-                    ? `${a.id} (${a.model}) *`
-                    : `${a.id} (${a.model})`,
+                  label:
+                    a.id === defaultAgentId ? `${a.id} (${a.model}) *` : `${a.id} (${a.model})`,
                   value: a.id,
                 }))}
             />
@@ -104,7 +112,11 @@ export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, 
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={refineTarget ? `Describe changes to ${refineTarget.filename}...` : 'Type a message... (Enter to send, Shift+Enter for newline)'}
+            placeholder={
+              refineTarget
+                ? `Describe changes to ${refineTarget.filename}...`
+                : 'Type a message... (Enter to send, Shift+Enter for newline)'
+            }
             autoSize={{ minRows: 1, maxRows: 6 }}
             disabled={isStreaming}
             style={{ flex: 1 }}
@@ -114,7 +126,12 @@ export default function ChatInput({ isStreaming, onSend, onStop, selectedAgent, 
               Stop
             </Button>
           ) : (
-            <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!content.trim()}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={handleSend}
+              disabled={!content.trim()}
+            >
               Send
             </Button>
           )}

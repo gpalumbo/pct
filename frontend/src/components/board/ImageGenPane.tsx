@@ -27,7 +27,12 @@ const divergenceMarks = {
   0.9: 'Diverge',
 };
 
-export default function ImageGenPane({ featureId, taskId, taskTitle, pendingPrompt, onPromptConsumed }: ImageGenPaneProps) {
+export default function ImageGenPane({
+  featureId,
+  taskId,
+  pendingPrompt,
+  onPromptConsumed,
+}: ImageGenPaneProps) {
   const { data: session, refetch: refetchSession } = useImageGenSession(featureId, taskId);
   const startGen = useStartGeneration();
   const selectImg = useSelectImage(featureId, taskId);
@@ -36,7 +41,9 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
   const [divergence, setDivergence] = useState(0.5);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<{ round: number; filename: string } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ round: number; filename: string } | null>(
+    null,
+  );
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
   const { data: job } = useJobStatus(activeJobId);
@@ -134,27 +141,48 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 12px', gap: 8, overflow: 'auto' }}>
-      <Collapse size="small" ghost items={[{
-        key: 'neg',
-        label: <Text type="secondary" style={{ fontSize: 11 }}>Negative prompt</Text>,
-        children: (
-          <Input.TextArea
-            value={negativePrompt}
-            onChange={(e) => setNegativePrompt(e.target.value)}
-            placeholder="Things to avoid..."
-            autoSize={{ minRows: 1, maxRows: 3 }}
-            style={{ fontSize: 12 }}
-            disabled={isGenerating}
-          />
-        ),
-      }]} />
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        padding: '8px 12px',
+        gap: 8,
+        overflow: 'auto',
+      }}
+    >
+      <Collapse
+        size="small"
+        ghost
+        items={[
+          {
+            key: 'neg',
+            label: (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Negative prompt
+              </Text>
+            ),
+            children: (
+              <Input.TextArea
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+                placeholder="Things to avoid..."
+                autoSize={{ minRows: 1, maxRows: 3 }}
+                style={{ fontSize: 12 }}
+                disabled={isGenerating}
+              />
+            ),
+          },
+        ]}
+      />
 
       {/* Parameters */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         {hasRounds && (
           <div style={{ flex: 1 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>Divergence</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Divergence
+            </Text>
             <Slider
               min={0.1}
               max={0.9}
@@ -167,7 +195,9 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
           </div>
         )}
         <div style={{ width: 80 }}>
-          <Text type="secondary" style={{ fontSize: 11 }}>Guidance</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            Guidance
+          </Text>
           <Input
             size="small"
             type="number"
@@ -180,11 +210,7 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
 
       {/* Progress bar */}
       {isGenerating && job && (
-        <Progress
-          percent={Math.round(job.progress * 100)}
-          size="small"
-          status="active"
-        />
+        <Progress percent={Math.round(job.progress * 100)} size="small" status="active" />
       )}
 
       {/* Image grid — 2x2 */}
@@ -212,11 +238,7 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
 
       {/* Accept button */}
       {selectedImage && !isGenerating && (
-        <Button
-          icon={<CheckOutlined />}
-          onClick={handleAccept}
-          block
-        >
+        <Button icon={<CheckOutlined />} onClick={handleAccept} block>
           Accept Selected Image
         </Button>
       )}

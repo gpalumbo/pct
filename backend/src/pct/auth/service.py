@@ -36,10 +36,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def _get_users_file() -> Path:
-    if config.settings.user_data_dir:
-        base = Path(config.settings.user_data_dir)
-    else:
-        base = Path.home() / ".pct" / "users"
+    base = Path(config.settings.user_data_dir) if config.settings.user_data_dir else Path.home() / ".pct" / "users"
     base.mkdir(parents=True, exist_ok=True)
     return base / "users.json"
 

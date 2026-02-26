@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { Checkbox, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
-import { EditOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, RedoOutlined, ScissorOutlined, CopyOutlined } from '@ant-design/icons';
+import {
+  EditOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  RedoOutlined,
+  ScissorOutlined,
+  CopyOutlined,
+} from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { PlanningMessage } from '../../types/chat';
 
@@ -22,7 +30,15 @@ interface Props {
   isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message, onUpdate, onDelete, onReplay, onTruncateAndReplay, onCopyToArtifact, isStreaming }: Props) {
+export default function MessageBubble({
+  message,
+  onUpdate,
+  onDelete,
+  onReplay,
+  onTruncateAndReplay,
+  onCopyToArtifact,
+  isStreaming,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [editRole, setEditRole] = useState(message.role);
   const [editContent, setEditContent] = useState(message.content);
@@ -97,7 +113,10 @@ export default function MessageBubble({ message, onUpdate, onDelete, onReplay, o
             />
             <Space size={4}>
               <CheckOutlined onClick={handleSave} style={{ cursor: 'pointer', color: '#52c41a' }} />
-              <CloseOutlined onClick={handleCancel} style={{ cursor: 'pointer', color: '#ff4d4f' }} />
+              <CloseOutlined
+                onClick={handleCancel}
+                style={{ cursor: 'pointer', color: '#ff4d4f' }}
+              />
             </Space>
           </div>
         ) : message.role === 'assistant' ? (
@@ -140,7 +159,11 @@ export default function MessageBubble({ message, onUpdate, onDelete, onReplay, o
             <Tooltip title="Replay">
               <RedoOutlined
                 onClick={() => !isStreaming && onReplay(message)}
-                style={{ cursor: isStreaming ? 'not-allowed' : 'pointer', fontSize: 12, color: isStreaming ? '#d9d9d9' : '#1677ff' }}
+                style={{
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  color: isStreaming ? '#d9d9d9' : '#1677ff',
+                }}
               />
             </Tooltip>
           )}
@@ -148,7 +171,11 @@ export default function MessageBubble({ message, onUpdate, onDelete, onReplay, o
             <Tooltip title="Truncate & replay">
               <ScissorOutlined
                 onClick={() => !isStreaming && onTruncateAndReplay(message)}
-                style={{ cursor: isStreaming ? 'not-allowed' : 'pointer', fontSize: 12, color: isStreaming ? '#d9d9d9' : '#fa8c16' }}
+                style={{
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  color: isStreaming ? '#d9d9d9' : '#fa8c16',
+                }}
               />
             </Tooltip>
           )}
