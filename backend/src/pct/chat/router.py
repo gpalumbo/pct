@@ -210,9 +210,13 @@ async def send_message(
                 if artifact_type_prompt:
                     system_prompt = artifact_type_prompt + "\n\n" + system_prompt
                 if req.artifact_path:
+                    from pct.board.service import _resolve_main_artifact
+
+                    main_file = _resolve_main_artifact(req.artifact_path)
                     system_prompt = (
-                        f"You are working on a kanban task. Write your final results "
-                        f"to the artifact file at: {req.artifact_path}\n"
+                        f"You are working on a kanban task.\n"
+                        f"The task's artifact directory is: {req.artifact_path}\n"
+                        f"Write your primary text output to: {main_file}\n"
                         f'Use the file tool with action "write" to save your output there.\n\n'
                         + system_prompt
                     )

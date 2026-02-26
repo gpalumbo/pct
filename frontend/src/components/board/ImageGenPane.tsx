@@ -9,7 +9,6 @@ import {
 } from '../../hooks/useImageGenQueries';
 import { fetchImageBlob } from '../../api/imagegenApi';
 import type { GeneratedImage, GenerationRound } from '../../api/imagegenApi';
-import { useUpdateTask } from '../../hooks/useBoardQueries';
 import './sidebar.css';
 
 const { Text } = Typography;
@@ -32,7 +31,6 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
   const { data: session, refetch: refetchSession } = useImageGenSession(featureId, taskId);
   const startGen = useStartGeneration();
   const selectImg = useSelectImage(featureId, taskId);
-  const updateTask = useUpdateTask();
 
   const [negativePrompt, setNegativePrompt] = useState('');
   const [divergence, setDivergence] = useState(0.5);
@@ -126,12 +124,11 @@ export default function ImageGenPane({ featureId, taskId, taskTitle, pendingProm
 
   const handleAccept = () => {
     if (!selectedImage) return;
-    const artifactPath = `work/${featureId}/${taskId}/images/${selectedImage.filename}`;
-    updateTask.mutate(
-      { featureId, taskId, data: { artifact_path: artifactPath } },
+    selectImg.mutate(
+      { round: selectedImage.round, filename: selectedImage.filename },
       {
         onSuccess: () => message.success('Image accepted as artifact'),
-        onError: () => message.error('Failed to set artifact'),
+        onError: () => message.error('Failed to mark image as selected'),
       },
     );
   };

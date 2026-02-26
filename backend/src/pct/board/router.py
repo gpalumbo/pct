@@ -238,6 +238,16 @@ async def get_artifact(
     return service.read_artifact(feature_id, task_id)
 
 
+@router.get("/features/{feature_id}/tasks/{task_id}/files")
+async def list_artifact_files(
+    feature_id: str, task_id: str, _user: dict = Depends(get_current_user)
+):
+    task = service.get_task(feature_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return service.list_artifact_files(feature_id, task_id)
+
+
 @router.put("/features/{feature_id}/tasks/{task_id}/artifact")
 async def put_artifact(
     feature_id: str,

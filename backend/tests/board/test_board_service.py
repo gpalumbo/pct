@@ -255,6 +255,114 @@ class TestTaskCRUD:
         t = Task(id="001", title="My Cool Task!", feature="f1")
         assert t.slug == "my-cool-task"
 
+    def test_create_task_generates_directory_path(self):
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task("f1", CreateTaskRequest(title="My Task"))
+        assert task is not None
+        assert task.artifact_path.endswith("/")
+        assert not task.artifact_path.endswith(".md")
+
+    def test_read_artifact_directory_model(self, tmp_path):
+        """read_artifact reads main.md from directory-based path."""
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task("f1", CreateTaskRequest(title="Test Read"))
+        assert task is not None
+
+        # Write main.md manually into the artifact directory
+        from pct.board.service import _project_root
+        artifact_dir = _project_root() / task.artifact_path.rstrip("/")
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "main.md").write_text("# Hello", encoding="utf-8")
+
+        result = service.read_artifact("f1", "001")
+        assert result["exists"] is True
+        assert result["content"] == "# Hello"
+        assert result["path"] == task.artifact_path
+
+    def test_write_artifact_directory_model(self, tmp_path):
+        """write_artifact creates main.md inside directory-based path."""
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task("f1", CreateTaskRequest(title="Test Write"))
+        assert task is not None
+
+        result = service.write_artifact("f1", "001", "# Written Content")
+        assert result["exists"] is True
+        assert result["path"] == task.artifact_path
+
+        from pct.board.service import _project_root
+        main_file = _project_root() / task.artifact_path.rstrip("/") / "main.md"
+        assert main_file.exists()
+        assert main_file.read_text(encoding="utf-8") == "# Written Content"
+
+    def test_legacy_md_path_read_write(self, tmp_path):
+        """Legacy .md paths still work for read/write."""
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task(
+            "f1",
+            CreateTaskRequest(title="Legacy", artifact_path="work/legacy/task.md"),
+        )
+        assert task is not None
+
+        result = service.write_artifact("f1", "001", "Legacy content")
+        assert result["exists"] is True
+
+        from pct.board.service import _project_root
+        legacy_file = _project_root() / "work" / "legacy" / "task.md"
+        assert legacy_file.exists()
+        assert legacy_file.read_text(encoding="utf-8") == "Legacy content"
+
+        result = service.read_artifact("f1", "001")
+        assert result["content"] == "Legacy content"
+        assert result["exists"] is True
+
+    def test_list_artifact_files_directory(self, tmp_path):
+        """list_artifact_files returns files in directory-based artifacts."""
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task("f1", CreateTaskRequest(title="Files Test"))
+        assert task is not None
+
+        from pct.board.service import _project_root
+        artifact_dir = _project_root() / task.artifact_path.rstrip("/")
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "main.md").write_text("# Hello", encoding="utf-8")
+        images_dir = artifact_dir / "images"
+        images_dir.mkdir()
+        (images_dir / "test.png").write_text("fake png", encoding="utf-8")
+
+        files = service.list_artifact_files("f1", "001")
+        assert len(files) == 2
+        names = {f["name"] for f in files}
+        assert "main.md" in names
+        assert "test.png" in names
+        img_file = next(f for f in files if f["name"] == "test.png")
+        assert img_file["is_image"] is True
+        md_file = next(f for f in files if f["name"] == "main.md")
+        assert md_file["is_image"] is False
+
+    def test_list_artifact_files_legacy(self, tmp_path):
+        """list_artifact_files works with legacy single-file paths."""
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        task = service.create_task(
+            "f1",
+            CreateTaskRequest(title="Legacy", artifact_path="work/legacy/file.md"),
+        )
+        assert task is not None
+
+        from pct.board.service import _project_root
+        legacy_file = _project_root() / "work" / "legacy" / "file.md"
+        legacy_file.parent.mkdir(parents=True, exist_ok=True)
+        legacy_file.write_text("content", encoding="utf-8")
+
+        files = service.list_artifact_files("f1", "001")
+        assert len(files) == 1
+        assert files[0]["name"] == "file.md"
+        assert files[0]["is_image"] is False
+
+    def test_list_artifact_files_task_not_found(self):
+        service.create_feature(CreateFeatureRequest(id="f1", title="F1", specification="# F1"))
+        files = service.list_artifact_files("f1", "999")
+        assert files == []
+
 
 # ---------------------------------------------------------------------------
 # Move task

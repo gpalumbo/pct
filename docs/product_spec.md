@@ -50,13 +50,14 @@ A standalone, named configuration that defines an executor. An agent can be:
 - **LLM Agent** — an AI model (local or remote) with a configured prompt template, model, and optional LoRA
 - **User Agent** — the human does the work manually
 - **Tool Agent** — a custom tool or script (future)
+- **Image Generation Agent** — a diffusion model (HuggingFace Diffusers) that generates images from text prompts. When selected in the chat input, prompts are routed to the image generation pipeline instead of the chat pipeline.
 
 Agents are **defined in the Project Configuration page (F10)** by combining a model (from the Model Registry), an optional LoRA adapter (from the LoRA Registry), a prompt template, and provider-specific settings. Once defined, an agent is a reusable, named entity available throughout the project — workflow stages, features, tasks, and the planning chat all reference agents by ID.
 
 The agent assigned to a task is configurable **per workflow stage, per feature, and per task**. A task might use Claude Code for implementation but a local LLM for code review.
 
 ### Model Registry
-A global catalog of available models — both local (e.g., Llama 3 weights on disk) and remote (e.g., Claude Sonnet via API). Each entry records the model identifier, provider type, context length, and provider-specific details (file path for local, API endpoint for remote). The registry provides **dropdown population** in the agent configuration UI. Models are registered once and shared across all projects.
+A global catalog of available models — local (e.g., Llama 3 weights on disk), remote (e.g., Claude Sonnet via API), and HuggingFace Hub (downloaded on demand). Each entry records the model identifier, provider type, context length, and provider-specific details (file path for local/HuggingFace, API endpoint for remote). The registry also tracks **download status** for HuggingFace models (pending → downloading → ready → error). The registry provides **dropdown population** in the agent configuration UI. Models are registered once and shared across all projects. PCT can also **auto-discover** local models by scanning project and global model directories for `.gguf` and `.safetensors` files.
 
 ### LoRA Registry
 A global catalog of available LoRA adapters. Each entry records the adapter name, compatible base model, file path, and description. LoRA entries reference a Model Registry entry to enforce compatibility — the agent configuration UI only shows LoRAs compatible with the selected base model. Like the Model Registry, this is global and provides **dropdown population** in the agent configuration UI.
@@ -112,9 +113,18 @@ The planning chat is also used when:
 - The user wants to revise the project or feature spec mid-flight
 
 The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks. It acts like a chat session allowing back and forth.
+
 Capabilities:
- - User should have the ability to change the model between prompts. 
- - User can curate context either by selecting messages to be included/excluded or editing message role and content.
+- **Agent selection** — user can change the agent (and therefore model) between prompts via a dropdown in the chat input. The dropdown shows configured agents with the default agent indicated by an asterisk. Default agent resolution follows a waterfall: workflow stage agent → project `default_agent` → `planning_agent` → first available agent.
+- **Message curation controls** — each message bubble exposes:
+  - **Include/Exclude checkbox** — toggles whether the message is included in the context sent to the agent on subsequent prompts
+  - **Edit button** — opens inline editing mode where the user can modify message content and change the message role (user/assistant/system)
+  - **Delete button** — removes the message from the session
+  - **Copy-to-artifact button** (assistant messages only) — appends the assistant's response to the current task's artifact file on disk
+  - **Replay button** (user messages only) — resends the user message to the agent
+  - **Truncate & replay button** (user messages only) — deletes this message and all subsequent messages, then resends this message to get a fresh response
+- **Streaming** — agent responses stream token-by-token via Server-Sent Events (SSE), with a visual streaming indicator
+- **Image generation routing** — when an image generation agent is selected, prompts are routed to the image generation pipeline instead of the chat API
 
 ### F2: Kanban Board with Swimlanes
 The primary project view once planning is complete. Displays:
@@ -124,19 +134,66 @@ The primary project view once planning is complete. Displays:
 
 Capabilities:
 - Real-time updates as agents complete work
-- Drag-and-drop for manual task movement (with confirmation for stage skips)
+- **Drag-and-drop** for manual task movement with **stage skip confirmation** — moving a task to a non-adjacent stage shows a confirmation modal listing the skipped stages
+- **Cross-feature task reassignment** — dragging a task to a different swimlane reassigns it to that feature
 - Swimlane controls: activate, suspend, resume
+- **Swimlane collapse/expand** — each swimlane can be collapsed to save space, with state persisted across navigation
 - **Cross-swimlane dependency indicators** — visual links showing when a task in one feature is blocked by a task in another feature
-- Backlog view for features not yet started
+- **Backlog view** with **activate buttons** for promoting features to active status
 - Completed archive for finished tasks
-- Filtering by feature, agent type, status
+- **Filtering** — multi-select feature filter, toggles for suspended/complete feature visibility
+- **Inline task creation** — add tasks directly from the swimlane header, with artifact type inferred from existing tasks in the feature
+- **Task card visual indicators:**
+  - Left border color indicates agent type (LLM: blue, User: green, Tool: gold)
+  - **Artifact type color dot** — small colored indicator showing the task's artifact type
+  - Blocked tasks shown with reduced opacity
+  - Selected/dragging tasks highlighted with blue background
+- **Swimlane header controls:**
+  - Feature title and lifecycle stage badge (color-coded)
+  - Progress indicator (completed tasks / total tasks)
+  - Add Task button
+  - **Analyze dropdown** — triggers Gap Analysis or Continuity Check (see below)
+  - Suspend/Resume toggle
+- **Feature Analysis Tools** (accessible from swimlane header):
+  - **Gap Analysis** — an LLM-powered analysis that identifies missing tasks within a feature, streamed via SSE. Results include suggested tasks with title, feature, artifact type, and reasoning. Each suggestion has a one-click "Create" button.
+  - **Continuity Check** — verifies narrative/specification consistency within a feature, also streamed via SSE with the same suggestion format.
 
 ### F3: Task Detail Panel
-Slide-out panel when clicking a task card. Shows:
-- Task specification and context summary
+Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via left-edge handle) when clicking a task card. Organized into three communicating sections:
+
+**Header section:**
+- Task title
+- **Artifact type selector** — dropdown to assign/change the task's artifact type (e.g., chapter, character, timeline, code). Artifact types are configurable per project (see F10).
+- Feature and task ID display
+- **Cross-references section** — tag strip showing `cross_depends_on` references with:
+  - "Add Ref" button opening a **CrossRefPicker modal** — a feature-grouped checklist of all tasks in the project for selecting cross-dependencies
+  - Closable tags for removing references
+  - Hint about `[[wikilink]]` auto-linking in artifacts
+
+**Section 1 — Context Window** (top, scrollable, flex):
+- Chat message history with the task's agent
+- Agent output stream (real-time when running)
+- Per-message controls: include/exclude from context, edit role/content, delete, replay, truncate-and-replay
+- "Copy to artifact" button on assistant messages — appends response content to the task's text artifact
+
+**Section 2 — Input** (middle, compact):
+- Agent selector dropdown (defaults per workflow stage, overridable)
+- Text input with send/stop controls
+- Refine chip: when an image is selected for refinement, shows a thumbnail + "Refining [image]" banner with cancel option. Auto-switches agent to imagegen.
+
+**Section 3 — Artifact / Output** (bottom, split view):
+- **Text sub-section**: Rendered markdown preview of the task's text artifact (`main.md` inside the artifact directory). Edit button opens a rich text modal (TipTap). File path, reload, save controls. WikilinkStrip tag display. Collapsible. Artifacts are directory-based — each task's `artifact_path` points to a directory (e.g. `work/feature/task/`) containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
+- **Image sub-section**: Thumbnail grid of all generated images. Each image has hover actions: "Refine" (sends to input section) and "View" (opens full-size gallery modal). When imagegen agent is active, shows generation params (negative prompt, divergence, guidance). Progress bar during generation. Round history. Collapsible.
+- **Image Gallery Modal**: Full-screen viewer (80vw × 80vh) for generated images. Left/right navigation. Image metadata (seed, round, index). Refine and Accept action buttons.
+
+Cross-section communication:
+- Context → Artifact: "Copy to artifact" appends chat responses to text file
+- Artifact → Input: "Refine" on image pre-fills input and switches to imagegen agent
+- Input → Artifact: Sending prompts generates content in the active artifact type
+
+**Previously planned features (future):**
 - Agent configuration for the current stage (prompt template, model, LoRA)
 - Full execution history (all attempts, with diffs between versions)
-- Agent output stream (real-time when running)
 - **Raw message inspector** — view the actual LLM messages (system prompt, user messages, assistant responses) for full transparency
 - **Context inspector/editor** — view the full assembled context (project spec, feature spec, task spec, RAG results, retry history) with token counts per section. The user can edit, add, remove, or reorder any context section before running or retrying an agent. Essential for working with local models that have restricted context windows.
 - Controls: Run Agent, Approve, Reject (with feedback), Reassign Agent, Interrupt, Send Back to Stage
@@ -154,6 +211,7 @@ Manages the lifecycle of agent task execution:
 Agent abstraction layer supports:
 - **Remote API** — Claude Code CLI (primary), with room for other providers
 - **Local LLM** — via llama-cpp-python or similar
+- **HuggingFace** — models downloaded from HuggingFace Hub, run locally
 - **User** — PCT presents the task to the user and waits for manual completion
 - Common interface regardless of backend
 
@@ -194,17 +252,66 @@ Controls for parallel workstream management:
 - Export/import project state
 
 ### F10: Project Configuration Page
-Dedicated settings page for managing project-level configuration:
+Dedicated settings page with **six tabs** for managing project-level configuration:
+
+**General tab:**
+- **UI Preferences** — font size slider (10–20px), persisted to localStorage
+- **Project metadata** — project name, project type (Coding / Writing), project directory (read-only)
+- **Re-index work artifacts** — button to scan the work directory and rebuild the RAG index
+- **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured), auto-advance toggle
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
-- **Model registry management** — view, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, provider type (local/remote), model identifier, context length, and provider-specific details (model file path for local, API base URL for remote). The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
-- **LoRA registry management** — view, add, edit, and remove entries in the global LoRA Registry. Each entry specifies an adapter name, the compatible base model (selected from the Model Registry), file path to weights, and a description. The UI enforces base-model compatibility — only LoRAs matching the selected model appear in dropdowns.
-- **Agent configuration** — define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an agent type (LLM / User / Tool), a prompt template, and provider-specific settings. Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, duplicating, and deleting agents.
-- **Workflow stage configuration** — which stages are active for this project, stage ordering, auto-advance rules per stage. Each stage has an **assigned agent** (dropdown from the project's configured agents) that serves as the default executor for tasks entering that stage. Agent assignments are overridable per feature or per task.
-- **Planning agent** — select which configured agent handles the planning chat (F1). Defaults to the first remote LLM agent defined.
-- **Project metadata** — project name, project type, description
-- **Feature serialization** — per-feature toggle for serial vs. parallel task execution. Features producing non-mergeable artifacts (images, video, binary formats) must use serial execution since outputs cannot be git-merged.
+
+**Model Registry tab:**
+- View, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, **provider type** (Remote API / Local LLM / **HuggingFace**), model identifier, context length, and provider-specific details (model file path for local/HuggingFace, API base URL for remote). For local and HuggingFace models, a **file browser** button opens a filesystem navigation modal for selecting model paths. Context length tooltip explains that 0 = use model default. The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
+
+**LoRA Registry tab:**
+- View, add, edit, and remove entries in the global LoRA Registry. Each entry specifies an adapter name, the compatible base model (selected from the Model Registry), file path to weights, and a description. The UI enforces base-model compatibility — only LoRAs matching the selected model appear in dropdowns.
+
+**Agents tab:**
+- Define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an **agent type** (LLM / User / Tool / **Image Gen**), a **provider type** (Remote API / Local LLM / **HuggingFace** / User), a prompt template, and provider-specific settings (CLI command for remote, temperature and context length overrides). Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, and deleting agents.
+
+**Workflow Stages tab:**
+- **Drag-and-drop reorderable** stage list. Each stage has:
+  - **Name** — display label (auto-generates a slugified ID unless manually changed)
+  - **Prompt template** — optional per-stage prompt template injected into agent context
+  - **Enabled toggle** — whether this stage is active for the project
+  - **Agent selector** — default executor for tasks entering this stage (overridable per task)
+  - Inline save/cancel controls for dirty edits; delete for unused stages
+  - "Add Stage" button to create new custom stages
+- **Template Variables** (collapsible section):
+  - **Built-in variables** (read-only reference): `{{artifact}}` (full artifact content), `{{artifact_path}}` (file path), `{{task_title}}`, `{{feature_title}}`, `{{cross_refs}}` (cross-reference context)
+  - **Custom variables** — user-defined key/description/value triples that are substituted into stage prompt templates. Keys are auto-slugified (lowercase alphanumeric).
+
+**Artifact Types tab:**
+- Define custom artifact types for task categorization. Each type has:
+  - **Label** — display name (auto-generates a slugified ID)
+  - **Template hint** — instructional text injected into the agent's system prompt when working on tasks of this type
+- Built-in defaults include: timeline, location, character, faction, magic-system, technology, item, story-arc, chapter, text
+- Artifact types appear as a **color-coded dot** on task cards and as a dropdown selector in the task detail panel header
 
 All project-level settings persist to `pct.yaml` in the project repo. The Model Registry and LoRA Registry persist globally to `~/.pct/registries/`.
+
+**Feature serialization** — per-feature toggle for serial vs. parallel task execution. Features producing non-mergeable artifacts (images, video, binary formats) must use serial execution since outputs cannot be git-merged.
+
+### F11: Image Generation
+Integrated image generation for visual content creation within tasks. Image generation is triggered by selecting an image generation agent in the chat input — prompts are routed to the image generation pipeline instead of the chat API.
+
+**Image Generation Pane** (replaces the artifact pane when an imagegen agent is active):
+- **Negative prompt** — collapsible section for specifying what to exclude from generation
+- **Parameters:**
+  - **Divergence slider** (0.1–0.9, labeled Close / Balanced / Diverge) — controls img2img variation strength. Only shown when a prior generation round exists (i.e., there is a source image for img2img refinement).
+  - **Guidance scale** — numeric input (default: 7.5) controlling how closely the model follows the prompt
+- **Generation output** — 2×2 image grid showing the 4 images from the latest round. Click to select an image; selected image is highlighted with a border.
+- **"Accept Selected Image"** button — saves the selected image as the task's artifact
+- **Round history** — collapsible section showing previous generation rounds, each with the prompt used and a thumbnail grid. Selected images are marked in history.
+- **Progress bar** displayed during generation
+
+**Backend:**
+- Uses HuggingFace Diffusers (default model: `sd-legacy/stable-diffusion-v1-5`)
+- Supports both **text-to-image** (first round) and **image-to-image** (subsequent rounds using the selected image as source)
+- Generates 4 images per round with configurable parameters: prompt, negative_prompt, guidance_scale, num_inference_steps, width, height, seed, divergence
+- Asynchronous job-based execution with polling for status and progress
+- Image session metadata persisted per task at `work/{feature_id}/{task_id}/images/session.json`
 
 ---
 
@@ -359,13 +466,15 @@ All future agent invocations inherit this updated instruction. The user also sel
 | State | Interface |
 |-------|-----------|
 | Project kickoff | Chat interface only — no Kanban |
+| First launch (uninitialized) | Redirects to Settings page for initial project configuration |
 | Planning complete | Chat sidebar + Kanban board (main view) |
-| Task detail | Slide-out panel: config, history, raw messages, context editor, controls |
-| Agent running | Live output stream + raw message inspector + interrupt button |
+| Task detail | Resizable slide-out panel: three-section layout (context window, input, artifact/output). Split-view output shows markdown preview + image grid simultaneously. |
+| Agent running | Live SSE streaming + streaming indicator + stop button |
+| Feature analysis | Modal with streaming analysis output, suggested tasks with create buttons |
 | Swimlane suspended | Grayed swimlane + scoped planning chat opens |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
 | Feedback/training | Dedicated view: example browser, prompt editor, training controls |
-| Project configuration | Settings page: model registry, LoRA registry, agent configuration, workflow stages with agent assignments, concurrency limits, feature serialization |
+| Project configuration | Settings page with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
 
 ---
 

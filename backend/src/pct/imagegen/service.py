@@ -34,6 +34,24 @@ def _project_root() -> Path:
 
 
 def _images_dir(feature_id: str, task_id: str) -> Path:
+    """Resolve the images directory for a task.
+
+    Uses the task's artifact_path (directory-based) when available,
+    falling back to the legacy convention.
+    """
+    try:
+        from pct.board.service import get_task
+
+        task = get_task(feature_id, task_id)
+        if task and task.artifact_path:
+            from pathlib import PurePosixPath
+
+            p = PurePosixPath(task.artifact_path.rstrip("/"))
+            if not p.suffix:  # directory-based path
+                return _project_root() / task.artifact_path.rstrip("/") / "images"
+    except Exception:
+        pass
+    # Fallback: legacy convention
     return _project_root() / "work" / feature_id / task_id / "images"
 
 

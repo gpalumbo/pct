@@ -31,7 +31,8 @@ function slugify(label: string): string {
 /** Built-in variables resolved dynamically at runtime (read-only reference). */
 const BUILTIN_VARS: { key: string; description: string }[] = [
   { key: 'artifact', description: 'Full content of the task artifact file' },
-  { key: 'artifact_path', description: 'File path to the artifact' },
+  { key: 'artifact_path', description: 'Directory path to the task artifact folder' },
+  { key: 'artifact_main_path', description: 'Path to the main text file (e.g. main.md) inside the artifact directory' },
   { key: 'task_title', description: "The task's title" },
   { key: 'feature_title', description: "The parent feature's title" },
   { key: 'cross_refs', description: 'Cross-reference context from wikilinks' },

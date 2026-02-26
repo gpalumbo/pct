@@ -68,6 +68,17 @@ export const fetchArtifact = (featureId: string, taskId: string) =>
 export const saveArtifact = (featureId: string, taskId: string, content: string) =>
   client.put<ArtifactResponse>(`/api/board/features/${featureId}/tasks/${taskId}/artifact`, { content }).then((r) => r.data);
 
+// Artifact files (directory listing)
+export interface ArtifactFile {
+  path: string;
+  name: string;
+  size: number;
+  is_image: boolean;
+}
+
+export const fetchArtifactFiles = (featureId: string, taskId: string) =>
+  client.get<ArtifactFile[]>(`/api/board/features/${featureId}/tasks/${taskId}/files`).then((r) => r.data);
+
 // Artifact types
 export const fetchArtifactTypes = () =>
   client.get<Record<string, string>>('/api/board/artifact-types').then((r) => r.data);

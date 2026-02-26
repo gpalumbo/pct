@@ -149,6 +149,7 @@ class TestProjectInitEmpty:
                 post = frontmatter.load(str(p))
                 artifact_path = post.metadata.get("artifact_path", "")
                 assert artifact_path.startswith("work/"), f"Expected work/ prefix: {artifact_path}"
+                assert not artifact_path.endswith(".md"), f"Expected directory path (no .md): {artifact_path}"
 
 
 # ---------------------------------------------------------------------------

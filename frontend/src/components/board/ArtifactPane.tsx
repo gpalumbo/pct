@@ -108,7 +108,7 @@ export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactP
           onChange={(e) => setPath(e.target.value)}
           onBlur={handlePathSave}
           onPressEnter={handlePathSave}
-          placeholder={`work/${artifactSlug(featureId)}/${taskTitle ? artifactSlug(taskTitle) : 'task'}.md`}
+          placeholder={`work/${artifactSlug(featureId)}/${taskTitle ? artifactSlug(taskTitle) : 'task'}/`}
           style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
         />
         <Button

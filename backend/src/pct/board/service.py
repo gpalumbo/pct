@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import frontmatter
 import yaml
@@ -368,7 +369,7 @@ def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
     feature_title = _get_feature_title(feature_id)
     feature_slug = _artifact_slug(feature_title)
     task_slug = _artifact_slug(req.title)
-    artifact_path = req.artifact_path or f"work/{feature_slug}/{task_slug}.md"
+    artifact_path = req.artifact_path or f"work/{feature_slug}/{task_slug}/"
 
     task = Task(
         id=task_id,
@@ -417,6 +418,14 @@ def delete_task(feature_id: str, task_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_main_artifact(artifact_path: str) -> str:
+    """If path has a file extension, return as-is (legacy). Otherwise append /main.md."""
+    p = PurePosixPath(artifact_path.rstrip("/"))
+    if p.suffix:  # e.g. ".md" — legacy single-file
+        return artifact_path
+    return artifact_path.rstrip("/") + "/main.md"
+
+
 def read_artifact(feature_id: str, task_id: str) -> dict:
     """Read a task's artifact file. Returns {path, content, exists}."""
     task = get_task(feature_id, task_id)
@@ -427,7 +436,8 @@ def read_artifact(feature_id: str, task_id: str) -> dict:
     if not artifact_path:
         return {"path": "", "content": "", "exists": False}
 
-    full_path = _project_root() / artifact_path
+    main_file = _resolve_main_artifact(artifact_path)
+    full_path = _project_root() / main_file
     if full_path.exists():
         return {
             "path": artifact_path,
@@ -447,10 +457,60 @@ def write_artifact(feature_id: str, task_id: str, content: str) -> dict:
     if not artifact_path:
         return {"path": "", "content": "", "exists": False}
 
-    full_path = _project_root() / artifact_path
+    main_file = _resolve_main_artifact(artifact_path)
+    full_path = _project_root() / main_file
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content, encoding="utf-8")
     return {"path": artifact_path, "content": content, "exists": True}
+
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
+
+
+def list_artifact_files(feature_id: str, task_id: str) -> list[dict]:
+    """List all files under a task's artifact directory.
+
+    Returns [{path, name, size, is_image}] for each file.
+    For legacy single-file paths, returns a single-element list.
+    """
+    task = get_task(feature_id, task_id)
+    if task is None:
+        return []
+
+    artifact_path = task.artifact_path
+    if not artifact_path:
+        return []
+
+    # Legacy single-file path
+    p = PurePosixPath(artifact_path.rstrip("/"))
+    if p.suffix:
+        full = _project_root() / artifact_path
+        if not full.exists():
+            return []
+        return [{
+            "path": artifact_path,
+            "name": full.name,
+            "size": full.stat().st_size,
+            "is_image": full.suffix.lower() in _IMAGE_EXTS,
+        }]
+
+    # Directory-based: walk recursively
+    base = _project_root() / artifact_path.rstrip("/")
+    if not base.exists():
+        return []
+
+    result = []
+    for root, _dirs, files in os.walk(base):
+        for fname in sorted(files):
+            fp = Path(root) / fname
+            rel = fp.relative_to(_project_root()).as_posix()
+            result.append({
+                "path": rel,
+                "name": fname,
+                "size": fp.stat().st_size,
+                "is_image": fp.suffix.lower() in _IMAGE_EXTS,
+            })
+    return result
 
 
 # ---------------------------------------------------------------------------

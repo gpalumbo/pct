@@ -367,3 +367,55 @@ class TestTaskEndpoints:
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "code-review"
+
+
+# ---------------------------------------------------------------------------
+# Artifact files endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestArtifactFilesEndpoint:
+    @pytest.mark.anyio
+    async def test_list_files_200(self, client, auth_headers, tmp_path):
+        await client.post(
+            "/api/board/features",
+            json={"id": "f1", "title": "F1", "specification": "# F1"},
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            "/api/board/features/f1/tasks",
+            json={"title": "File Task"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        task_data = resp.json()
+        artifact_path = task_data["artifact_path"]
+
+        # Create a file inside the artifact directory
+        from pathlib import Path
+        project_root = Path(tmp_path / "project")
+        artifact_dir = project_root / artifact_path.rstrip("/")
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "main.md").write_text("# Hi", encoding="utf-8")
+
+        resp = await client.get(
+            "/api/board/features/f1/tasks/001/files",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        files = resp.json()
+        assert len(files) == 1
+        assert files[0]["name"] == "main.md"
+
+    @pytest.mark.anyio
+    async def test_list_files_task_404(self, client, auth_headers):
+        await client.post(
+            "/api/board/features",
+            json={"id": "f1", "title": "F1", "specification": "# F1"},
+            headers=auth_headers,
+        )
+        resp = await client.get(
+            "/api/board/features/f1/tasks/999/files",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404

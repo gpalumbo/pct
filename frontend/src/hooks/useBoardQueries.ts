@@ -154,6 +154,14 @@ export function useArtifact(featureId: string | null, taskId: string | null) {
   });
 }
 
+export function useArtifactFiles(featureId: string | null, taskId: string | null) {
+  return useQuery({
+    queryKey: ['artifact-files', featureId, taskId],
+    queryFn: () => api.fetchArtifactFiles(featureId!, taskId!),
+    enabled: !!featureId && !!taskId,
+  });
+}
+
 export function useSaveArtifact() {
   const qc = useQueryClient();
   return useMutation({

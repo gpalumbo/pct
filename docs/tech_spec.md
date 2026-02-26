@@ -209,27 +209,40 @@ PCT handles writing to the external execution state (`~/.pct/projects/`) — the
 project_id: "a1b2c3d4"
 project_name: "myapp"
 project_type: "code"
+project_directory: "C:/Users/gordo/projects/myapp"
 workflow_stages:
-  - refine-spec
-  - implement
-  - feature-test
-  - code-review
-  - user-approval
-  - merge
-  - full-test
-  - refactor-check
-  - push
+  - stage: "refine-spec"
+    label: "Refine Spec"
+    enabled: true
+    agent: null
+    prompt_template: ""
+  - stage: "implement"
+    label: "Implement"
+    enabled: true
+    agent: "claude-code"
+    prompt_template: "Implement the following task..."
+  # ... additional stages
+planning_agent: "claude-code"
 default_agent: "claude-code"
-auto_advance:
-  feature-test: true
-  merge: true
-  full-test: true
+auto_advance: true
 concurrency:
   remote_api_limit: 2
   local_gpu_limit: 1
 context:
   token_budget: 8000
   context_manager_model: "claude-haiku"
+template_variables:
+  - key: "style_guide"
+    description: "Project style conventions"
+    value: "Use concise prose, active voice..."
+artifact_types:
+  - id: "chapter"
+    label: "Chapter"
+    template_hint: "Write narrative prose with dialogue and pacing..."
+  - id: "character"
+    label: "Character"
+    template_hint: "Create a character profile with backstory..."
+  # ... additional artifact types
 ```
 
 `~/.pct/projects/a1b2c3d4/link.yaml` maps back:
@@ -320,7 +333,7 @@ Fast dev server, HMR, simple config. No reason to use webpack in 2026.
 | Icons | `@ant-design/icons` | 831 icons, tightly integrated with Ant Design theming. No need for react-icons — avoids redundant dependency. |
 | Forms | `Ant Design Form` | Built-in form system, native integration with all Ant Design components. Has known performance issues on very large forms (100+ fields), but PCT's forms are small configuration-oriented screens — not a concern. Avoids an extra dependency. |
 | Rich text / Markdown editing | `TipTap` + `@tiptap/extension-markdown` | For editing specs and task descriptions. Native bidirectional Markdown conversion, modular architecture (50-70KB), excellent React integration via `@tiptap/react`. Alternatives considered: Lexical (Meta) — smaller core but pre-1.0, requires custom Markdown work; Slate — slower maintenance; MDXEditor — 851KB bundle, overkill. |
-| Markdown rendering (read-only) | `react-markdown` | For displaying specs and agent output in the task detail panel. TipTap is used for editing; react-markdown for lightweight read-only rendering. |
+| Markdown rendering (read-only) | `react-markdown` | For displaying specs, agent output, **and artifact text previews** in the task detail panel. TipTap is used for editing; react-markdown for lightweight read-only rendering. |
 | Kanban drag-and-drop | `@hello-pangea/dnd` | Maintained fork of react-beautiful-dnd (which is deprecated). Accessible, smooth, supports horizontal + vertical lists for our columns + swimlanes. |
 | Routing | `React Router` | Industry standard, simple and familiar. PCT has ~5 top-level routes (Kanban, Planning Chat, Config, Feedback/Training, Task Detail). No need for TanStack Router's type-safe routing on an app this simple. |
 | State management (client) | `Zustand` | Lightweight, no boilerplate. Manages client-only state: kanban drag state, UI state, WebSocket-driven real-time updates. |
@@ -359,19 +372,36 @@ Two clear data paths — no overlap:
 - **REST data** (initial loads, config, task CRUD): `Axios → TanStack Query → components`. TanStack Query owns caching, loading states, and refetch logic.
 - **Real-time data** (agent streaming, kanban updates, stage transitions): `WebSocket → Zustand → components`. Zustand owns the live state that changes frequently via push updates.
 
-### Real-Time Communication: WebSocket
+### Frontend Architecture Notes
 
-PCT uses WebSocket for all real-time updates:
+**Task Detail Panel architecture**: The chat functionality is extracted into a `usePlanningChat` custom hook (`frontend/src/hooks/usePlanningChat.ts`), enabling the TaskDetailPanel to wire up three independent UI sections (context window, input, artifact output) from a single shared state source. This decoupling allows cross-section interactions (e.g., image refine → input pre-fill) without tight component coupling. The `PlanningChat` component uses `usePlanningChat` internally and retains its backwards-compatible API for standalone usage (e.g., the project planning chat).
 
-| Event Direction | Examples |
-|----------------|----------|
-| Server → Client | Agent output streaming, task stage changes, kanban state updates, agent completion notifications |
-| Client → Server | Agent interrupt, task approval/rejection, manual stage transitions |
+### Real-Time Communication: SSE + WebSocket
 
-Why WebSocket over SSE:
-- Bidirectional — the user needs to send interrupts and commands back to the server while agents stream
-- Single connection handles both directions
-- SSE would require a separate channel for client-to-server actions
+PCT uses **Server-Sent Events (SSE)** for streaming responses and **WebSocket** for bidirectional real-time updates:
+
+**SSE (Server → Client streaming):**
+- Chat message streaming — token-by-token agent responses via `POST /api/chat/sessions/{id}/send` (returns SSE stream)
+- Feature analysis streaming — gap analysis and continuity check results via `POST /api/board/features/{id}/gap-analysis` and `/continuity-check`
+- Image generation progress — job status polling (REST, not SSE, but serves the same purpose)
+
+SSE was chosen for chat streaming because:
+- Each chat response is a discrete request/response cycle — the client sends a message and receives a streaming response
+- No persistent connection needed between messages
+- Simpler error handling and retry semantics
+- Works naturally with REST endpoints (same URL, just returns `text/event-stream`)
+
+**WebSocket (bidirectional, future):**
+- Task stage change notifications
+- Kanban board real-time updates
+- Agent interrupt signals
+- Multi-user presence (future)
+
+| Transport | Use Case | Direction |
+|-----------|----------|-----------|
+| SSE | Chat streaming, analysis streaming | Server → Client |
+| REST | All CRUD operations, image gen polling | Bidirectional (request/response) |
+| WebSocket | Board updates, interrupts (future) | Bidirectional |
 
 ### File Parsing: YAML everywhere
 
@@ -415,7 +445,7 @@ Rationale:
   - FAISS: fastest raw search but no metadata filtering, no persistence, requires building everything yourself
   - Qdrant: requires separate server process — against local-first philosophy
 
-**Schema:** See Object Model §6 (RAG Storage Models) for the `TaskDocument` and `SpecDocument` LanceModel definitions.
+**Schema:** See Object Model §6 (RAG Storage Models) and §7 (Image Generation Models) for the `TaskDocument` and `SpecDocument` LanceModel definitions.
 
 **Usage example:**
 ```python
@@ -435,23 +465,47 @@ results = (table.search(query_vector)
 
 ### Agent Execution
 
-**Claude Code CLI (primary):**
+**Claude Code CLI (primary — stub):**
 - Invoked via `asyncio.create_subprocess_exec`
-- PCT streams stdout/stderr in real-time via WebSocket to the frontend
+- PCT streams stdout/stderr in real-time via SSE to the frontend
 - PCT captures the full transcript to the execution state directory
 - Interrupt = send SIGTERM/SIGINT to the subprocess
+- *Note: Currently a stub (`NotImplementedError`) — implementation pending*
 
-**Local LLM (future):**
+**Local LLM (active):**
 - `llama-cpp-python` for direct inference
 - Loaded in a separate process or thread pool to avoid blocking the FastAPI event loop
 - Same streaming interface as CLI — PCT normalizes the output
+- Supports tool calling via text content parsing (fallback mechanism)
+- GPU layer offloading via `n_gpu_layers` parameter
+- Configurable temperature and context length
+
+**HuggingFace models:**
+- Models downloaded from HuggingFace Hub on demand
+- Download status tracked in model registry (pending → downloading → ready → error)
+- Supports `.gguf` and `.safetensors` formats
+- Auto-discovery scans `{project_root}/models` and `~/.pct/models` directories
+
+**Image Generation (HuggingFace Diffusers):**
+- Uses `diffusers` library with Stable Diffusion models (default: `sd-legacy/stable-diffusion-v1-5`)
+- Supports text-to-image and image-to-image generation
+- Generates 4 images per round with configurable parameters
+- Asynchronous job-based execution — generation runs in background, status polled via REST
+- Session metadata persisted per task at `{artifact_path}/images/session.json` (where `artifact_path` is the task's directory, e.g. `work/{feature}/{task}/`)
+- Images stored as PNG files in `{artifact_path}/images/`
+- Text artifacts stored at `{artifact_path}/main.md`
 
 **User/Manual agent:**
 - PCT presents the task spec in the UI and waits
 - User marks the task complete (or rejects/modifies)
 - No subprocess — just a state transition
 
-**Agent abstraction interface:** See Object Model §7 (AgentProvider) for the protocol definition and implementation table. All providers implement the same `execute()` / `interrupt()` interface. PCT doesn't care which backend is executing — it assembles context, calls `execute()`, streams output, and stores results.
+**Tool System:**
+- Backend provides a tool registry with available tools: `bash`, `file_tools`, `read_tool`, `search_tool`, `todo_tool`
+- Tools are provided to agents during execution via a global singleton registry
+- Created lazily from the project root
+
+**Agent abstraction interface:** See Object Model §8 (AgentProvider) for the protocol definition and implementation table. All providers implement the same `execute()` / `interrupt()` interface. PCT doesn't care which backend is executing — it assembles context, calls `execute()`, streams output, and stores results.
 
 ### Agent Concurrency Pool
 
@@ -659,8 +713,13 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "INFO"
-    cors_origin: str = "http://localhost:5173"  # Vite dev server
-    anthropic_api_key: str = ""                 # for Claude Code API calls
+    cors_origin: str = "http://localhost:5173"    # Vite dev server
+    secret_key: str = "change-me-in-production"   # JWT signing key
+    access_token_expire_minutes: int = 1440       # 24 hours
+    google_client_id: str = ""                    # optional Google OAuth
+    project_root: str                             # required: project directory
+    registries_dir: str = ""                      # optional: defaults to ~/.pct/registries
+    user_data_dir: str = ""                       # optional: user storage location
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="PCT_")
 ```
@@ -677,7 +736,11 @@ python-frontmatter
 pydantic >= 2.0
 lancedb
 sentence-transformers
-llama-cpp-python          # future: local LLM
+llama-cpp-python          # local LLM inference
+sse-starlette             # Server-Sent Events for streaming
+diffusers                 # HuggingFace image generation
+torch                     # PyTorch (required by diffusers)
+transformers              # HuggingFace model hub
 websockets
 aiofiles
 pyyaml

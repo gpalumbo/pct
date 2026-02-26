@@ -45,12 +45,14 @@ class AgentType(str, Enum):
     LLM = "llm"
     USER = "user"
     TOOL = "tool"          # future
+    IMAGEGEN = "imagegen"  # image generation via diffusion models
 
 class ProviderType(str, Enum):
     """Agent execution backend."""
-    REMOTE_API = "remote"   # Claude Code CLI, other remote APIs
-    LOCAL_LLM = "local"     # llama-cpp-python
-    USER = "user"           # manual human execution
+    REMOTE_API = "remote"       # Claude Code CLI, other remote APIs
+    LOCAL_LLM = "local"         # llama-cpp-python
+    HUGGINGFACE = "huggingface" # HuggingFace Hub models (downloaded on demand)
+    USER = "user"               # manual human execution
 
 class TaskOutcome(str, Enum):
     """Result of a task execution attempt."""
@@ -58,6 +60,7 @@ class TaskOutcome(str, Enum):
     REJECTED = "rejected"
     INTERRUPTED = "interrupted"
     IN_PROGRESS = "in-progress"
+    ERROR = "error"            # execution failed with an error
 
 class SerializationMode(str, Enum):
     """Whether tasks in a feature can execute in parallel."""
@@ -100,19 +103,24 @@ class ProjectConfig(BaseModel):
     project_id: str
     project_name: str
     project_type: str
+    project_directory: str                     # absolute path to project root
     agents: list[AgentConfig]                  # named agents defined for this project
     workflow_stages: list[WorkflowStageConfig] # ordered list of active stages with agent assignments
+    template_variables: list[TemplateVariable] = []  # custom prompt template variables
+    artifact_types: list[ArtifactTypeConfig] = []    # configurable artifact types for tasks
     planning_agent: str                        # agent ID for the planning chat
     default_agent: str                         # agent ID fallback for unassigned stages
-    auto_advance: dict[str, bool]              # stage -> auto-advance flag
+    auto_advance: bool = False                 # whether tasks auto-advance through stages
     concurrency: ConcurrencyConfig
     context: ContextConfig
 
 class WorkflowStageConfig(BaseModel):
     """Configuration for a single workflow stage."""
-    stage: TaskStatus                          # which stage
+    stage: str                                 # stage slug ID (e.g., "refine-spec", "implement")
+    label: str = ""                            # display name (e.g., "Refine Spec", "Implement")
     enabled: bool = True                       # whether this stage is active
     agent: str | None = None                   # agent ID assigned to this stage (falls back to default_agent)
+    prompt_template: str | None = None         # optional per-stage prompt template injected into agent context
 
 class ConcurrencyConfig(BaseModel):
     remote_api_limit: int = 2
@@ -121,6 +129,18 @@ class ConcurrencyConfig(BaseModel):
 class ContextConfig(BaseModel):
     token_budget: int = 8000
     context_manager_model: str = "claude-haiku"
+
+class TemplateVariable(BaseModel):
+    """Custom variable for prompt template substitution."""
+    key: str                                   # auto-slugified (lowercase alphanumeric + hyphens)
+    description: str = ""                      # human-readable description
+    value: str = ""                            # the value substituted into templates
+
+class ArtifactTypeConfig(BaseModel):
+    """Configurable artifact type for task categorization."""
+    id: str                                    # auto-derived slug from label
+    label: str                                 # display name (e.g., "Chapter", "Character")
+    template_hint: str = ""                    # instructional text injected into agent system prompt
 ```
 
 ### Feature
@@ -176,6 +196,8 @@ class Task(BaseModel):
     tags: list[str] = []
     priority: int = 0
     attempt: int = 1                           # current attempt number
+    artifact_path: str | None = None           # directory path to task artifacts (e.g. work/slug/slug/)
+    artifact_type: str | None = None           # artifact type ID (from ArtifactTypeConfig.id)
     created: datetime
     updated: datetime
 
@@ -201,11 +223,12 @@ Global catalog of available models. Shared across all projects.
 class ModelRegistryEntry(BaseModel):
     """Persisted in ~/.pct/registries/models.yaml (list of entries)."""
     id: str                                    # e.g., "claude-sonnet-4-5", "llama-3-8b"
-    provider_type: ProviderType                # remote or local
+    provider_type: ProviderType                # remote, local, or huggingface
     model_id: str                              # provider-specific identifier (API model ID or local filename)
-    context_length: int                        # max tokens
-    model_path: str | None = None              # for local models: path to weights file
+    context_length: int                        # max tokens (0 = use model default)
+    model_path: str | None = None              # for local/huggingface models: path to weights file
     api_base: str | None = None                # for remote models: API endpoint base URL
+    download_status: str | None = None         # for huggingface: "pending" | "downloading" | "ready" | "error"
 ```
 
 ### LoRA Registry
@@ -459,7 +482,76 @@ class SpecDocument(LanceModel):
 
 ---
 
-## 7. Protocol Interfaces
+## 7. Image Generation Models
+
+Models for the image generation pipeline. Image generation sessions track multiple rounds of generation per task, with selection and refinement support.
+
+```python
+class JobStatus(str, Enum):
+    """Status of an image generation job."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class GenerateRequest(BaseModel):
+    """Request to start an image generation job."""
+    feature_id: str
+    task_id: str
+    prompt: str
+    negative_prompt: str = ""
+    guidance_scale: float = 7.5
+    num_inference_steps: int = 30
+    width: int = 512
+    height: int = 512
+    source_image: str | None = None            # base64 or path for img2img
+    divergence: float = 0.5                    # img2img strength (0.1–0.9)
+    seed: int | None = None                    # for reproducibility
+
+class GeneratedImage(BaseModel):
+    """A single generated image within a round."""
+    filename: str                              # e.g., "round_001_0.png"
+    seed: int
+    round: int
+    index: int                                 # 0–3 within the round
+
+class GenerationRound(BaseModel):
+    """One round of image generation (produces 4 images)."""
+    round: int
+    prompt: str
+    params: dict                               # generation parameters used
+    images: list[GeneratedImage]
+    selected_image: str | None = None          # filename of user-selected image
+
+class SessionMetadata(BaseModel):
+    """Persisted at work/{feature_id}/{task_id}/images/session.json"""
+    feature_id: str
+    task_id: str
+    model_id: str                              # e.g., "sd-legacy/stable-diffusion-v1-5"
+    rounds: list[GenerationRound]
+    current_round: int
+
+class JobResponse(BaseModel):
+    """Returned by job status polling."""
+    job_id: str
+    status: JobStatus
+    progress: float = 0.0                      # 0.0–1.0
+    images: list[GeneratedImage] = []
+    error: str | None = None
+
+class SelectImageRequest(BaseModel):
+    """Request to select an image from a generation round."""
+    round: int
+    filename: str
+```
+
+**Storage:** Image generation artifacts live in `work/{feature_id}/{task_id}/images/` within the project directory:
+- `session.json` — session metadata (rounds, selections, model)
+- `round_NNN_M.png` — generated image files (4 per round)
+
+---
+
+## 8. Protocol Interfaces
 
 ### AgentProvider
 
@@ -488,7 +580,7 @@ class AgentProvider(Protocol):
 
 ---
 
-## 8. State Machines
+## 9. State Machines
 
 ### Feature Lifecycle
 
@@ -541,7 +633,7 @@ class AgentProvider(Protocol):
 
 ---
 
-## 9. Model Relationships
+## 10. Model Relationships
 
 ### Domain Model Class Diagram
 
@@ -561,19 +653,36 @@ classDiagram
         +str project_id
         +str project_name
         +str project_type
+        +str project_directory
         +list~AgentConfig~ agents
         +list~WorkflowStageConfig~ workflow_stages
+        +list~TemplateVariable~ template_variables
+        +list~ArtifactTypeConfig~ artifact_types
         +str planning_agent
         +str default_agent
-        +dict auto_advance
+        +bool auto_advance
         +ConcurrencyConfig concurrency
         +ContextConfig context
     }
 
     class WorkflowStageConfig {
-        +TaskStatus stage
+        +str stage
+        +str label
         +bool enabled
         +str agent
+        +str prompt_template
+    }
+
+    class TemplateVariable {
+        +str key
+        +str description
+        +str value
+    }
+
+    class ArtifactTypeConfig {
+        +str id
+        +str label
+        +str template_hint
     }
 
     class ModelRegistryEntry {
@@ -583,6 +692,7 @@ classDiagram
         +int context_length
         +str model_path
         +str api_base
+        +str download_status
     }
 
     class LoRARegistryEntry {
@@ -639,6 +749,8 @@ classDiagram
         +list~str~ tags
         +int priority
         +int attempt
+        +str artifact_path
+        +str artifact_type
         +datetime created
         +datetime updated
         +str body
@@ -699,6 +811,7 @@ classDiagram
         REJECTED
         INTERRUPTED
         IN_PROGRESS
+        ERROR
     }
 
     class SerializationMode {
@@ -712,6 +825,8 @@ classDiagram
     Project "1" *-- "*" BacklogFeature
     ProjectConfig "1" *-- "*" AgentConfig
     ProjectConfig "1" *-- "*" WorkflowStageConfig
+    ProjectConfig "1" *-- "*" TemplateVariable
+    ProjectConfig "1" *-- "*" ArtifactTypeConfig
     ProjectConfig "1" *-- "1" ConcurrencyConfig
     ProjectConfig "1" *-- "1" ContextConfig
     AgentConfig ..> ModelRegistryEntry : model (by ID)
@@ -833,12 +948,14 @@ classDiagram
         LLM
         USER
         TOOL
+        IMAGEGEN
     }
 
     class ProviderType {
         <<enumeration>>
         REMOTE_API
         LOCAL_LLM
+        HUGGINGFACE
         USER
     }
 
@@ -957,7 +1074,7 @@ flowchart LR
 
 ---
 
-## 10. Storage Mapping
+## 11. Storage Mapping
 
 ### Git-tracked (`.pct/` in project repo)
 
@@ -966,6 +1083,8 @@ flowchart LR
 | ProjectConfig | `.pct/pct.yaml` | YAML |
 | AgentConfig (list) | `.pct/pct.yaml` (under `agents` key) | YAML |
 | WorkflowStageConfig (list) | `.pct/pct.yaml` (under `workflow_stages` key) | YAML |
+| TemplateVariable (list) | `.pct/pct.yaml` (under `template_variables` key) | YAML |
+| ArtifactTypeConfig (list) | `.pct/pct.yaml` (under `artifact_types` key) | YAML |
 | Project link | `.pct/link.yaml` | YAML |
 | Project spec | `.pct/project_spec.md` | Markdown |
 | Feature spec | `.pct/active-features/<id>/feature_spec.md` | Markdown |
@@ -988,6 +1107,15 @@ flowchart LR
 | RAG: task index | `rag/tasks.lance/` | Lance columnar |
 | RAG: spec index | `rag/specs.lance/` | Lance columnar |
 | Kanban snapshots | `kanban_snapshots/` | YAML |
+
+### Project work directory (`work/` in project repo)
+
+| Model | File | Format |
+|-------|------|--------|
+| Work index | `work/INDEX.md` | Markdown (auto-generated) |
+| Task artifact | `work/{feature_id}/{task_id}/{artifact}` | Various |
+| Image session metadata | `work/{feature_id}/{task_id}/images/session.json` | JSON |
+| Generated images | `work/{feature_id}/{task_id}/images/round_NNN_M.png` | PNG |
 
 ### User data (`~/.pct/users/`, configurable via `PCT_USER_DATA_DIR`)
 
@@ -1019,3 +1147,5 @@ flowchart LR
 | RawContext | Assembled from persisted specs + attempt records + RAG results | Input to ContextManager |
 | AssembledContext | Output of ContextManager, passed to agent | Visible in context inspector UI |
 | ContextMetadata | Token counts and tier breakdown for UI display | Part of AssembledContext |
+| GenerateRequest | Submitted to image gen pipeline | Contains prompt, params, source image |
+| JobResponse | Returned by job status polling | Contains progress, images, errors |

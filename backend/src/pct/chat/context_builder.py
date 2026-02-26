@@ -141,9 +141,16 @@ def _expand_stage_prompt(
     if feature:
         feature_title = feature.title
 
+    from pct.board.service import _resolve_main_artifact
+
+    artifact_main_path = ""
+    if task.artifact_path:
+        artifact_main_path = _resolve_main_artifact(task.artifact_path)
+
     template = stage_cfg.prompt_template
     template = template.replace("{{artifact}}", artifact_content or "(no artifact yet)")
     template = template.replace("{{artifact_path}}", task.artifact_path or "")
+    template = template.replace("{{artifact_main_path}}", artifact_main_path)
     template = template.replace("{{task_title}}", task.title or "")
     template = template.replace("{{feature_title}}", feature_title)
     template = template.replace("{{cross_refs}}", cross_ref_text or "(no cross-references)")
