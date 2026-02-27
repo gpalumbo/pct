@@ -220,10 +220,7 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 - The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting.
 
 **Stage controls:**
-- **Agent configuration** for the current stage (prompt template, model, LoRA)
-- **Full execution history** — all attempts with diffs between versions
-- **Raw message inspector** — view the actual LLM messages (system prompt, user messages, assistant responses) for full transparency
-- Controls: Run Agent, Approve, Reject (with feedback), Reassign Agent, Interrupt, Send Back to Stage
+- Controls: Run Agent, Approve, Reject (with feedback), Interrupt, Send Back to Stage
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
