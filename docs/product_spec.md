@@ -249,9 +249,10 @@ Git is universal — **all project types** use git, not just code projects. Non-
 
 ### F6: RAG & Task History
 Local storage with retrieval-augmented generation for surfacing relevant context:
-- **What gets stored**: every task execution (input context, agent output, approval/rejection, user feedback), project and feature specs, planning chat history
+- **What gets indexed**: work artifacts (the `work/{feature_id}/{task_id}/` directories — text, images, generated code), task execution metadata (input context, agent output, approval/rejection, user feedback), project and feature specs, planning chat history. Intermediate per-stage chat history is **not** indexed — artifacts are the durable output and the artifact is what gets indexed, not the conversational process that produced it.
 - **What gets retrieved**: similar past tasks, rejected approaches (especially valuable), related work from other features, previously created artifacts (code functions, story characters, design decisions)
 - **When it's used**: every agent invocation — RAG results are injected into the context assembly pipeline
+- **Agent tool access**: RAG is available to agents as part of the default tool set. Agents can query the index mid-execution to pull in related artifacts, prior task results, or project context beyond what was assembled in the initial prompt.
 - **User querying**: search and browse task history, filter by outcome, feature, agent, stage
 
 ### F7: Feedback & Training UI
