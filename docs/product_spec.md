@@ -224,20 +224,10 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
-- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget. The context inspector toggle in Section 1 of the Chat Interface allows the user to view and modify the assembled context before execution.
-- **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. The Agent Execution Engine calls the Context Manager automatically before each agent invocation. The Context Manager is also exposed as a tool/skill that agents can invoke directly during execution (e.g., to request additional context or re-summarize mid-task). The Context Manager uses a configurable model — remote models are guided via prompt skills, local models can be fine-tuned with LoRA for project-specific summarization quality. This is a core PCT differentiator: intelligent context management rather than naive truncation.
-- Invokes the configured agent (LLM call, CLI command, or user prompt)
-- Streams output in real-time to the task detail panel
-- Supports **interruption** — user can stop an agent mid-execution
-- Handles parallel execution — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
-- Each agent execution happens in an isolated environment (git worktree)
-
-Agent abstraction layer supports:
-- **Remote API** — Claude Code CLI (primary), with room for other providers
-- **Local LLM** — via llama-cpp-python or similar
-- **HuggingFace** — models downloaded from HuggingFace Hub, run locally
-- **User** — PCT presents the task to the user and waits for manual completion
-- Common interface regardless of backend
+- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget
+- **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. Called automatically before each agent invocation. Also exposed as a tool that agents can invoke mid-execution (e.g., to request additional context or re-summarize). Uses a configurable model — remote models guided via prompt skills, local models fine-tuned with LoRA. Core PCT differentiator: intelligent context management rather than naive truncation.
+- **Parallel execution** — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
+- **Worktree isolation** — each agent execution happens in an isolated git worktree
 
 ### F5: Git Integration
 Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline:
