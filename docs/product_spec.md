@@ -117,6 +117,9 @@ The Chat Interface is the unified interaction model shared by both the Planning 
   - **Replay button** (user messages only) — resends the user message to the agent
   - **Truncate & stage button** (user messages only) — deletes this message and all subsequent messages, then populates the input field with the message text without automatically sending it. The user can review, edit, or resend at their discretion.
 - **Streaming** — agent responses stream token-by-token via Server-Sent Events (SSE), with a visual streaming indicator
+- **Context inspector toggle** — a toggle button in the context window header switches between two views:
+  - **Chat view** (default) — the standard message history described above
+  - **Inspector view** — displays the full assembled context that will be sent to the agent on the next prompt. Shows each context section (project spec, feature spec, task spec, RAG results, retry history) as collapsible panels with token counts per section and a total token count. The user can edit, add, remove, or reorder any section before sending. Essential for working with local models that have restricted context windows. Changes made in the inspector are reflected in the next agent invocation without altering the source specs.
 
 **Section 2 — Input** (middle, compact):
 - **Agent selector dropdown** — user can change the agent (and therefore model) between prompts. The dropdown shows configured agents with the default agent indicated by an asterisk. Default agent resolution follows a waterfall: workflow stage agent → project `default_agent` → `planning_agent` → first available agent.
@@ -140,11 +143,6 @@ The Chat Interface is the unified interaction model shared by both the Planning 
 - **Clear on advance** — when a task advances to a new stage, the context window resets to a fresh state. The new stage's agent receives a clean assembled context (project spec, feature spec, task spec, artifact, RAG-selected history) without the previous stage's conversational back-and-forth. The artifact is the handoff mechanism between stages.
 - **Restore on return** — if a task is dragged back to a previous stage (e.g., from Code Review back to Implement), the context window for that stage is restored in full. All messages from the previous time the task was at that stage reappear exactly as they were. This makes stage transitions non-destructive — moving forward clears the view, moving backward restores it.
 - **Carry-forward override** — optional toggle on the approval action for rare cases where the user wants the next stage's agent to see the current stage's raw conversation in addition to the assembled context.
-
-**Context editor/inspector** (future, applies to all chat contexts):
-- View the full assembled context (project spec, feature spec, task spec, RAG results, retry history) with token counts per section (tier breakdown)
-- Edit, add, remove, or reorder any context section before running or retrying an agent
-- Essential for working with local models that have restricted context windows
 
 ---
 
@@ -229,7 +227,7 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
-- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget. The context editor/inspector in the Chat Interface allows the user to view and modify the assembled context before execution.
+- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget. The context inspector toggle in Section 1 of the Chat Interface allows the user to view and modify the assembled context before execution.
 - **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. The Agent Execution Engine calls the Context Manager automatically before each agent invocation. The Context Manager is also exposed as a tool/skill that agents can invoke directly during execution (e.g., to request additional context or re-summarize mid-task). The Context Manager uses a configurable model — remote models are guided via prompt skills, local models can be fine-tuned with LoRA for project-specific summarization quality. This is a core PCT differentiator: intelligent context management rather than naive truncation.
 - Invokes the configured agent (LLM call, CLI command, or user prompt)
 - Streams output in real-time to the task detail panel
