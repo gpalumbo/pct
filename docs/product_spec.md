@@ -217,7 +217,7 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 
 **Task-specific artifact scoping:**
 - The artifact directory is `work/{feature_id}/{task_id}/`, containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
-- The agent selector defaults per workflow stage but is overridable per task.
+- The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting.
 
 **Stage controls:**
 - **Agent configuration** for the current stage (prompt template, model, LoRA)
@@ -302,7 +302,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
   - **Name** — display label (auto-generates a slugified ID unless manually changed)
   - **Prompt template** — optional per-stage prompt template injected into agent context
   - **Enabled toggle** — whether this stage is active for the project
-  - **Agent selector** — default executor for tasks entering this stage (overridable per task)
+  - **Agent selector** — default executor for tasks entering this stage (user can override in the chat input at any time)
   - Inline save/cancel controls for dirty edits; delete for unused stages
   - "Add Stage" button to create new custom stages
 - **Template Variables** (collapsible section):
