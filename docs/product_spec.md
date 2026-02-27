@@ -115,7 +115,7 @@ The Chat Interface is the unified interaction model shared by both the Planning 
   - **Delete button** — removes the message from the session
   - **Copy-to-artifact button** (assistant messages only) — appends the assistant's response to the current artifact file on disk
   - **Replay button** (user messages only) — resends the user message to the agent
-  - **Truncate & replay button** (user messages only) — deletes this message and all subsequent messages, then resends this message to get a fresh response
+  - **Truncate & stage button** (user messages only) — deletes this message and all subsequent messages, then populates the input field with the message text without automatically sending it. The user can review, edit, or resend at their discretion.
 - **Streaming** — agent responses stream token-by-token via Server-Sent Events (SSE), with a visual streaming indicator
 
 **Section 2 — Input** (middle, compact):
