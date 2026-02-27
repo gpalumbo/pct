@@ -79,6 +79,8 @@ The stages a task passes through. The Kanban columns **are** the workflow stages
 
 Not all stages apply to every project type. PCT provides **workflow templates** per project type with sensible defaults for which stages are active and what agents do at each stage. Workflow stages are configurable per project via the Project Configuration page (F10).
 
+Each stage maintains its own **per-stage context window** — the chat history between the user/agent at that stage is stored independently. When a task advances, the context window clears for the new stage; when a task is sent back, the previous stage's context is restored. See "Stage transition behavior" in the Chat Interface section for details.
+
 ### Context
 The assembled information an agent receives when executing a task. Context is built from multiple layers:
 
@@ -131,6 +133,13 @@ The Chat Interface is the unified interaction model shared by both the Planning 
 - Context → Artifact: "Copy to artifact" appends chat responses to text file
 - Artifact → Input: "Refine" on image pre-fills input and switches to imagegen agent
 - Input → Artifact: Sending prompts generates content in the active artifact type
+
+**Stage transition behavior** (applies to Task Detail Panel context windows):
+- **Per-stage context storage** — the context window (chat history) is stored separately for each workflow stage. Each stage maintains its own conversation history with its own agent.
+- **Advance on approval** — when work at a stage is approved, the task card automatically advances to the next workflow stage. Whether the next stage's agent auto-runs is controlled by the `auto_advance` toggle (F10 General tab). Advancing state and auto-running the agent are independent: the card always moves, but agent execution can wait for user initiation.
+- **Clear on advance** — when a task advances to a new stage, the context window resets to a fresh state. The new stage's agent receives a clean assembled context (project spec, feature spec, task spec, artifact, RAG-selected history) without the previous stage's conversational back-and-forth. The artifact is the handoff mechanism between stages.
+- **Restore on return** — if a task is dragged back to a previous stage (e.g., from Code Review back to Implement), the context window for that stage is restored in full. All messages from the previous time the task was at that stage reappear exactly as they were. This makes stage transitions non-destructive — moving forward clears the view, moving backward restores it.
+- **Carry-forward override** — optional toggle on the approval action for rare cases where the user wants the next stage's agent to see the current stage's raw conversation in addition to the assembled context.
 
 **Context editor/inspector** (future, applies to all chat contexts):
 - View the full assembled context (project spec, feature spec, task spec, RAG results, retry history) with token counts per section (tier breakdown)
