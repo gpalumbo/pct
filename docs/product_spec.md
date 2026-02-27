@@ -221,9 +221,9 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 - The artifact directory is `work/{feature_id}/{task_id}/`, containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
 - The agent selector defaults per workflow stage but is overridable per task.
 
-**Previously planned features (future):**
-- Agent configuration for the current stage (prompt template, model, LoRA)
-- Full execution history (all attempts, with diffs between versions)
+**Stage controls:**
+- **Agent configuration** for the current stage (prompt template, model, LoRA)
+- **Full execution history** — all attempts with diffs between versions
 - **Raw message inspector** — view the actual LLM messages (system prompt, user messages, assistant responses) for full transparency
 - Controls: Run Agent, Approve, Reject (with feedback), Reassign Agent, Interrupt, Send Back to Stage
 
