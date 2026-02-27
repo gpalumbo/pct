@@ -340,6 +340,7 @@ Fast dev server, HMR, simple config. No reason to use webpack in 2026.
 | State management (server) | `TanStack Query` | Handles all REST data fetching — automatic caching, deduplication, background refetch, loading/error states. Zustand manages client-only state; TanStack Query manages server state (initial data loads, config reads, task fetches). Clear separation of concerns. |
 | HTTP client | `Axios` | Request/response interceptors (auth headers, error normalization), automatic JSON parsing, request cancellation. Paired with TanStack Query — Axios handles the transport, TanStack Query handles caching and state. |
 | WebSocket client | `native WebSocket` + reconnect wrapper | No need for socket.io overhead. We control both ends. A small wrapper handles reconnection. Real-time data flows through WebSocket → Zustand; REST data flows through Axios → TanStack Query. |
+| Image gallery / lightbox | `yet-another-react-lightbox` | For the Image Gallery Modal in the Chat Interface (fullscreen viewer with left/right navigation, keyboard/touch support). Plugin architecture provides Thumbnails, Fullscreen, and Zoom out of the box. Custom toolbar button API (`toolbar.buttons` prop + `IconButton`/`createIcon` helpers) allows adding PCT-specific "Refine" and "Accept" action buttons. TypeScript built-in, ~200K weekly downloads, actively maintained. |
 | Code diff view | `react-diff-viewer` | For code review stage — showing what the agent changed. |
 | Date handling | `Day.js` | Ant Design's default date library. Lightweight (2KB), immutable API, Moment.js-compatible interface. |
 
@@ -769,6 +770,7 @@ axios
 zustand
 react-markdown
 react-diff-viewer-continued
+yet-another-react-lightbox
 dayjs
 eslint                    # dev
 @typescript-eslint/eslint-plugin  # dev
