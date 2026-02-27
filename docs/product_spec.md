@@ -271,7 +271,10 @@ Controls for parallel workstream management:
 - **Impact analysis on resume**: PCT identifies which tasks may be affected by spec changes during suspension
 
 ### F9: Session & Project Management
-- Project creation and configuration
+- **Project creation** — new project wizard:
+  1. **Project template selector** — choose a project type template that pre-populates workflow stages, default agents, artifact types, and stage prompt templates. Built-in templates include Coding, Writing, D&D Campaign, Business Deck, Research Paper, and a Blank template. Templates are JSON definitions stored in a `templates/` directory and can be user-created or community-shared.
+  2. **Project name and directory** — set the project name and select/create the project directory
+  3. **Review & customize** — preview the pre-populated configuration before creating. The user can adjust anything before confirming. All template-provided defaults are fully editable in F10 after creation.
 - Session persistence — close and reopen PCT without losing state
 - Export/import project state
 
@@ -280,7 +283,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 
 **General tab:**
 - **UI Preferences** — font size slider (10–20px), persisted to localStorage
-- **Project metadata** — project name, project type (Coding / Writing), project directory (read-only)
+- **Project metadata** — project name, project type (from template selected at creation, read-only), project directory (read-only)
 - **Re-index work artifacts** — button to scan the work directory and rebuild the RAG index
 - **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured), auto-advance toggle
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
