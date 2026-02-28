@@ -150,15 +150,19 @@ The Chat Interface is the unified interaction model shared by both the Planning 
 
 The Artifact Strategy governs how work products are organized, stored, and merged across all project types. Like the Chat Interface, it's a cross-cutting concern referenced by multiple features (F1, F3, F5, F11).
 
+**Feature-level documents**
+Each feature will have one central document.  It may have others.  The documents will be kept directly under the directory `work/{feature_id}/`.  The action that created the feature will create this directory and at least one main file as described below.  The file should have at least a main Header and feature overview.  It will also create at least one task called "Refine Feature" that is expected to be used to refine the purpose and tasks of this feature with associated sub-headers for each task.  This is not a hard limit.  The planning process may create more sections and tasks if the information is available. In addition other tasks may alter the feature by adding dependencies and/or sections/tasks.
+- **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document) usually named `{feature_id}.md`. This document is expected to be the final work product.
+- **Code projects** will produce a `{feature_id}.md` file that acts as a specification document.  It should also create `implemention_paln.md` which will serve as a tech spec and build plan.  This can be blank and fleshed out by "Refine Feature" task.  Code source files will live under `src/` not under `work/` 
+
 **Task work directory:**
 Each task has a dedicated work directory at `work/{feature_id}/{task_id}/`. This directory provides naming isolation and contains all artifacts produced during the task:
 - `main.md` — the primary text artifact (task output, section draft, code, etc.)
-- `images/` — generated images (drafts and accepted finals), with `session.json` for image generation metadata
-- Additional files — any auxiliary files the user or agent creates during the task (e.g., alternative drafts, reference materials, supporting code). When the user requests output to a file other than the main feature document, it is written here for naming isolation.
+- generated images (drafts and accepted finals), with `session.json` for image generation metadata
+- Additional files — any auxiliary files the user or agent creates during the task (e.g., alternative drafts, reference materials, supporting code). When the user requests output to a file other than the main feature document, it is written here for naming isolation.  This includes mermaid files or pdfs or test data that are reference/included from the main documents.
 
-**Feature-level documents vs. per-task files:**
-- **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document). The planning stage creates the document structure with section headings. Individual tasks edit their assigned section(s) of this shared document. The task work directory holds the task's working copy, drafts, and auxiliary files — not the feature document itself.
-- **Code projects** produce independent files per task (modules, functions, configs). The work directory contains the task's output directly. There is no shared feature-level document — code files are naturally scoped to tasks.
+**Code Source**
+- Source code for programming projects are shared artifacts that features span across.  It shall be kept under `src/`
 
 **Work index:**
 `work/INDEX.md` is the auto-generated master reference for all project artifacts (see F1). It catalogs features, tasks, and artifact paths, and is regenerated after task completion and on manual re-index.
