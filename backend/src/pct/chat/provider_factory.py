@@ -23,7 +23,7 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
     if agent_cfg is None:
         raise ValueError(f"Agent not found: {agent_id}")
 
-    if agent_cfg.provider_type == ProviderType.LOCAL_LLM:
+    if agent_cfg.provider_type in (ProviderType.LOCAL_LLM, ProviderType.HUGGINGFACE):
         model_entry = settings_service.get_model(agent_cfg.model)
         if model_entry is None:
             raise ValueError(f"Model '{agent_cfg.model}' not found in registry (referenced by agent '{agent_id}')")
