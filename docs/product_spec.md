@@ -79,6 +79,8 @@ The stages a task passes through. The Kanban columns **are** the workflow stages
 
 Not all stages apply to every project type. PCT provides **workflow templates** per project type with sensible defaults for which stages are active and what agents do at each stage. Workflow stages are configurable per project via the Project Configuration page (F10).
 
+Each stage maintains its own **per-stage context window** — the chat history between the user/agent at that stage is stored independently. When a task advances, the context window clears for the new stage; when a task is sent back, the previous stage's context is restored. See "Stage transition behavior" in the Chat Interface section for details.
+
 ### Context
 The assembled information an agent receives when executing a task. Context is built from multiple layers:
 
@@ -101,30 +103,73 @@ When a task output is rejected (by a review agent or by the user):
 
 ## 3. Features
 
-### F1: Planning Chat
-The entry point for every project. A persistent chat interface where the user collaborates with a planning agent to define:
-- Project scope and specification
-- Feature breakdown
-- Initial task decomposition
+### Chat Interface (shared foundation)
+The Chat Interface is the unified interaction model shared by both the Planning Window (F1) and the Task Detail Panel (F3). Both present the same three-section layout: a scrollable context/message window, a compact input section, and an artifact/output section. The only differences are what context is scoped to (project-level vs. task-level) and what additional chrome surrounds the chat.
 
-The planning chat is also used when:
-- A new feature is being specified
-- A swimlane is suspended for re-planning
-- The user wants to revise the project or feature spec mid-flight
-
-The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks. It acts like a chat session allowing back and forth.
-
-Capabilities:
-- **Agent selection** — user can change the agent (and therefore model) between prompts via a dropdown in the chat input. The dropdown shows configured agents with the default agent indicated by an asterisk. Default agent resolution follows a waterfall: workflow stage agent → project `default_agent` → `planning_agent` → first available agent.
+**Section 1 — Context Window** (top, scrollable):
+- Chat message history with the active agent
+- Agent output stream (real-time when running)
 - **Message curation controls** — each message bubble exposes:
   - **Include/Exclude checkbox** — toggles whether the message is included in the context sent to the agent on subsequent prompts
   - **Edit button** — opens inline editing mode where the user can modify message content and change the message role (user/assistant/system)
   - **Delete button** — removes the message from the session
-  - **Copy-to-artifact button** (assistant messages only) — appends the assistant's response to the current task's artifact file on disk
+  - **Copy-to-artifact button** (assistant messages only) — appends the assistant's response to the current artifact file on disk
   - **Replay button** (user messages only) — resends the user message to the agent
-  - **Truncate & replay button** (user messages only) — deletes this message and all subsequent messages, then resends this message to get a fresh response
+  - **Truncate & stage button** (user messages only) — deletes this message and all subsequent messages, then populates the input field with the message text without automatically sending it. The user can review, edit, or resend at their discretion.
 - **Streaming** — agent responses stream token-by-token via Server-Sent Events (SSE), with a visual streaming indicator
+- **Context inspector toggle** — a toggle button in the context window header switches between two views:
+  - **Chat view** (default) — the standard message history described above
+  - **Inspector view** — displays the full assembled context that will be sent to the agent on the next prompt. Shows each context section (project spec, feature spec, task spec, RAG results, retry history) as collapsible panels with token counts per section and a total token count. The user can edit, add, remove, or reorder any section before sending. Essential for working with local models that have restricted context windows. Changes made in the inspector are reflected in the next agent invocation without altering the source specs.
+
+**Section 2 — Input** (middle, compact):
+- **Agent selector dropdown** — user can change the agent (and therefore model) between prompts. The dropdown shows configured agents with the default agent indicated by an asterisk. Default agent resolution follows a waterfall: workflow stage agent → project `default_agent` → `planning_agent` → first available agent.
+- Text input with send/stop controls
+- **Refine chip** — when an image is selected for refinement, shows a thumbnail + "Refining [image]" banner with cancel option. Auto-switches agent to imagegen.
 - **Image generation routing** — when an image generation agent is selected, prompts are routed to the image generation pipeline instead of the chat API
+
+**Section 3 — Artifact / Output** (bottom, split view):
+- **Text sub-section**: Rendered markdown preview of the active text artifact. Edit button opens a rich text modal (TipTap). File path, reload, save controls. WikilinkStrip tag display. Collapsible. Artifacts are directory-based — each artifact path points to a directory containing `main.md` for text and `images/` for generated images.
+- **Image sub-section**: Thumbnail grid of all generated images. Each image has hover actions: "Refine" (sends to input section) and "View" (opens full-size gallery modal). When imagegen agent is active, shows generation params (negative prompt, divergence, guidance). Progress bar during generation. Round history. Collapsible.
+- **Image Gallery Modal**: Full-screen viewer (80vw × 80vh) for generated images. Left/right navigation. Image metadata (seed, round, index). Refine and Accept action buttons.
+
+**Cross-section communication** (identical in all contexts):
+- Context → Artifact: "Copy to artifact" appends chat responses to text file
+- Artifact → Input: "Refine" on image pre-fills input and switches to imagegen agent
+- Input → Artifact: Sending prompts generates content in the active artifact type
+
+**Stage transition behavior** (applies to Task Detail Panel context windows):
+- **Per-stage context storage** — the context window (chat history) is stored separately for each workflow stage. Each stage maintains its own conversation history with its own agent.
+- **Advance on approval** — when work at a stage is approved, the task card automatically advances to the next workflow stage. Whether the next stage's agent auto-runs is controlled by the `auto_advance` toggle (F10 General tab). Advancing state and auto-running the agent are independent: the card always moves, but agent execution can wait for user initiation.
+- **Clear on advance** — when a task advances to a new stage, the context window resets to a fresh state. The new stage's agent receives a clean assembled context (project spec, feature spec, task spec, artifact, RAG-selected history) without the previous stage's conversational back-and-forth. The artifact is the handoff mechanism between stages.
+- **Restore on return** — if a task is dragged back to a previous stage (e.g., from Code Review back to Implement), the context window for that stage is restored in full. All messages from the previous time the task was at that stage reappear exactly as they were. This makes stage transitions non-destructive — moving forward clears the view, moving backward restores it.
+- **Carry-forward override** — optional toggle on the approval action for rare cases where the user wants the next stage's agent to see the current stage's raw conversation in addition to the assembled context.
+
+---
+
+### F1: Planning Window
+The entry point for every project. A **Chat Interface** (see above) where the user collaborates with a planning agent to define:
+- Project scope and specification
+- Feature breakdown
+- Initial task decomposition
+
+The Planning Window is also used when:
+- A new feature is being specified
+- A swimlane is suspended for re-planning (scoped to that feature)
+- The user wants to revise the project or feature spec mid-flight
+
+The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks. Once the Kanban board appears, the Planning Window persists as a sidebar.
+
+**Main artifact — `work/INDEX.md`:**
+The Planning Window's artifact section displays the **project index** — an auto-generated markdown file that serves as the master reference for all work in the project. The index contains:
+- **Project overview** — top-level project spec reference
+- **Feature catalog** — a header for each feature with links to feature specs
+- **Task index** — organized by feature, with links to all task artifacts
+- **Work products catalog** — paths to all generated artifacts (text, images)
+- **Cross-references** — WikiLink support for inter-artifact connections
+
+The index is auto-regenerated after task completion, on "Re-index work artifacts" (F10 General tab), and on project sync/refresh. This makes the Planning Window the central navigation hub — it shows the full project landscape just as a task pane shows a single task's output.
+
+Image generation and artifact editing work identically to the task pane: when an imagegen agent is selected, images are generated into the project-level artifact directory; the text artifact (INDEX.md) can be edited via TipTap; the "Copy to artifact" action appends to the index.
 
 ### F2: Kanban Board with Swimlanes
 The primary project view once planning is complete. Displays:
@@ -159,9 +204,9 @@ Capabilities:
   - **Continuity Check** — verifies narrative/specification consistency within a feature, also streamed via SSE with the same suggestion format.
 
 ### F3: Task Detail Panel
-Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via left-edge handle) when clicking a task card. Organized into three communicating sections:
+Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via left-edge handle) when clicking a task card. Contains a full **Chat Interface** (see above) plus a task-specific header. The three-section layout (context window, input, artifact/output) is identical to the shared Chat Interface — the only difference is that context and artifacts are scoped to a single task.
 
-**Header section:**
+**Header section** (above the Chat Interface):
 - Task title
 - **Artifact type selector** — dropdown to assign/change the task's artifact type (e.g., chapter, character, timeline, code). Artifact types are configurable per project (see F10).
 - Feature and task ID display
@@ -170,64 +215,41 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
   - Closable tags for removing references
   - Hint about `[[wikilink]]` auto-linking in artifacts
 
-**Section 1 — Context Window** (top, scrollable, flex):
-- Chat message history with the task's agent
-- Agent output stream (real-time when running)
-- Per-message controls: include/exclude from context, edit role/content, delete, replay, truncate-and-replay
-- "Copy to artifact" button on assistant messages — appends response content to the task's text artifact
+**Task-specific artifact scoping:**
+- The artifact directory is `work/{feature_id}/{task_id}/`, containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
+- The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting.
 
-**Section 2 — Input** (middle, compact):
-- Agent selector dropdown (defaults per workflow stage, overridable)
-- Text input with send/stop controls
-- Refine chip: when an image is selected for refinement, shows a thumbnail + "Refining [image]" banner with cancel option. Auto-switches agent to imagegen.
-
-**Section 3 — Artifact / Output** (bottom, split view):
-- **Text sub-section**: Rendered markdown preview of the task's text artifact (`main.md` inside the artifact directory). Edit button opens a rich text modal (TipTap). File path, reload, save controls. WikilinkStrip tag display. Collapsible. Artifacts are directory-based — each task's `artifact_path` points to a directory (e.g. `work/feature/task/`) containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
-- **Image sub-section**: Thumbnail grid of all generated images. Each image has hover actions: "Refine" (sends to input section) and "View" (opens full-size gallery modal). When imagegen agent is active, shows generation params (negative prompt, divergence, guidance). Progress bar during generation. Round history. Collapsible.
-- **Image Gallery Modal**: Full-screen viewer (80vw × 80vh) for generated images. Left/right navigation. Image metadata (seed, round, index). Refine and Accept action buttons.
-
-Cross-section communication:
-- Context → Artifact: "Copy to artifact" appends chat responses to text file
-- Artifact → Input: "Refine" on image pre-fills input and switches to imagegen agent
-- Input → Artifact: Sending prompts generates content in the active artifact type
-
-**Previously planned features (future):**
-- Agent configuration for the current stage (prompt template, model, LoRA)
-- Full execution history (all attempts, with diffs between versions)
-- **Raw message inspector** — view the actual LLM messages (system prompt, user messages, assistant responses) for full transparency
-- **Context inspector/editor** — view the full assembled context (project spec, feature spec, task spec, RAG results, retry history) with token counts per section. The user can edit, add, remove, or reorder any context section before running or retrying an agent. Essential for working with local models that have restricted context windows.
-- Controls: Run Agent, Approve, Reject (with feedback), Reassign Agent, Interrupt, Send Back to Stage
+**Stage controls:**
+- Controls: Run Agent, Approve, Reject (with feedback), Interrupt, Send Back to Stage
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
-- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget. The context inspector/editor in F3 allows the user to view and modify the assembled context before execution.
-- **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. The Agent Execution Engine calls the Context Manager automatically before each agent invocation. The Context Manager is also exposed as a tool/skill that agents can invoke directly during execution (e.g., to request additional context or re-summarize mid-task). The Context Manager uses a configurable model — remote models are guided via prompt skills, local models can be fine-tuned with LoRA for project-specific summarization quality. This is a core PCT differentiator: intelligent context management rather than naive truncation.
-- Invokes the configured agent (LLM call, CLI command, or user prompt)
-- Streams output in real-time to the task detail panel
-- Supports **interruption** — user can stop an agent mid-execution
-- Handles parallel execution — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
-- Each agent execution happens in an isolated environment (git worktree)
-
-Agent abstraction layer supports:
-- **Remote API** — Claude Code CLI (primary), with room for other providers
-- **Local LLM** — via llama-cpp-python or similar
-- **HuggingFace** — models downloaded from HuggingFace Hub, run locally
-- **User** — PCT presents the task to the user and waits for manual completion
-- Common interface regardless of backend
+- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget
+- **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. Called automatically before each agent invocation. Also exposed as a tool that agents can invoke mid-execution (e.g., to request additional context or re-summarize). Uses a configurable model — remote models guided via prompt skills, local models fine-tuned with LoRA. Core PCT differentiator: intelligent context management rather than naive truncation.
+- **Parallel execution** — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
+- **Worktree isolation** — each agent execution happens in an isolated git worktree
 
 ### F5: Git Integration
-Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline:
-- **Branch-per-task**: each task gets a branch (e.g., `feature/core-server/define-data-models`)
-- **Worktree-per-task**: agents work in isolated worktrees, not the main working directory
-- **Merge stage**: automated merge attempt with conflict detection
-- **User escalation on merge failure**: PCT flags the conflict on the task card, notifies the user, and waits for the user to resolve using their own editor and merge tools (VS Code, vim, meld, etc.). No built-in diff/merge UI — the user signals PCT when resolution is complete.
-- Worktree cleanup after successful merge and push
+Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline.
+
+**Artifact strategy:** Writing tasks produce one document per feature, not per task. The planning stage creates the document structure (outline with section headings); each task edits its assigned section(s). Code tasks produce files as normal — functions and modules are naturally scoped to tasks.
+
+**Worktree lifecycle:**
+- **Spawn at execution start** — F4 creates a worktree from the feature branch when it dequeues a task
+- **Agent works in the worktree** — CWD is the worktree root; tools and agents are unaware of the isolation (see Design Principle 7)
+- **Merge back on completion** — serialized per feature branch to avoid races. Conflicts are rare when tasks edit separate sections/files; when they occur, a lightweight resolution agent handles them
+- **Cleanup** — worktree removed after successful merge; preserved on failure for retry/inspection
+
+**RAG interaction:** The RAG index (F6) covers the main tree only, not individual worktrees. Agents access their own in-progress files directly via the filesystem. When a task merges back, F4 triggers an incremental re-index of changed files so subsequent tasks see completed work.
+
+**Editorial/integration stage:** When all tasks in a feature complete and merge, the workflow's integration stage runs as a single-threaded join point — editorial smoothing for writing projects, integration testing for code projects. This is a normal workflow stage, not special-cased machinery.
 
 ### F6: RAG & Task History
 Local storage with retrieval-augmented generation for surfacing relevant context:
-- **What gets stored**: every task execution (input context, agent output, approval/rejection, user feedback), project and feature specs, planning chat history
+- **What gets indexed**: work artifacts (the `work/{feature_id}/{task_id}/` directories — text, images, generated code), task execution metadata (input context, agent output, approval/rejection, user feedback), project and feature specs, planning chat history. Intermediate per-stage chat history is **not** indexed — artifacts are the durable output and the artifact is what gets indexed, not the conversational process that produced it.
 - **What gets retrieved**: similar past tasks, rejected approaches (especially valuable), related work from other features, previously created artifacts (code functions, story characters, design decisions)
 - **When it's used**: every agent invocation — RAG results are injected into the context assembly pipeline
+- **Agent tool access**: RAG is available to agents as part of the default tool set. Agents can query the index mid-execution to pull in related artifacts, prior task results, or project context beyond what was assembled in the initial prompt.
 - **User querying**: search and browse task history, filter by outcome, feature, agent, stage
 
 ### F7: Feedback & Training UI
@@ -247,7 +269,10 @@ Controls for parallel workstream management:
 - **Impact analysis on resume**: PCT identifies which tasks may be affected by spec changes during suspension
 
 ### F9: Session & Project Management
-- Project creation and configuration
+- **Project creation** — new project wizard:
+  1. **Project template selector** — choose a project type template that pre-populates workflow stages, default agents, artifact types, and stage prompt templates. Built-in templates include Coding, Writing, D&D Campaign, Business Deck, Research Paper, and a Blank template. Templates are JSON definitions stored in a `templates/` directory and can be user-created or community-shared.
+  2. **Project name and directory** — set the project name and select/create the project directory
+  3. **Review & customize** — preview the pre-populated configuration before creating. The user can adjust anything before confirming. All template-provided defaults are fully editable in F10 after creation.
 - Session persistence — close and reopen PCT without losing state
 - Export/import project state
 
@@ -256,7 +281,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 
 **General tab:**
 - **UI Preferences** — font size slider (10–20px), persisted to localStorage
-- **Project metadata** — project name, project type (Coding / Writing), project directory (read-only)
+- **Project metadata** — project name, project type (from template selected at creation, read-only), project directory (read-only)
 - **Re-index work artifacts** — button to scan the work directory and rebuild the RAG index
 - **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured), auto-advance toggle
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
@@ -275,7 +300,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
   - **Name** — display label (auto-generates a slugified ID unless manually changed)
   - **Prompt template** — optional per-stage prompt template injected into agent context
   - **Enabled toggle** — whether this stage is active for the project
-  - **Agent selector** — default executor for tasks entering this stage (overridable per task)
+  - **Agent selector** — default executor for tasks entering this stage (user can override in the chat input at any time)
   - Inline save/cancel controls for dirty edits; delete for unused stages
   - "Add Stage" button to create new custom stages
 - **Template Variables** (collapsible section):
@@ -465,13 +490,13 @@ All future agent invocations inherit this updated instruction. The user also sel
 
 | State | Interface |
 |-------|-----------|
-| Project kickoff | Chat interface only — no Kanban |
+| Project kickoff | Planning Window (full Chat Interface with INDEX.md artifact) — no Kanban |
 | First launch (uninitialized) | Redirects to Settings page for initial project configuration |
-| Planning complete | Chat sidebar + Kanban board (main view) |
-| Task detail | Resizable slide-out panel: three-section layout (context window, input, artifact/output). Split-view output shows markdown preview + image grid simultaneously. |
-| Agent running | Live SSE streaming + streaming indicator + stop button |
+| Planning complete | Planning Window sidebar + Kanban board (main view) |
+| Task detail | Resizable slide-out Task Detail Panel (full Chat Interface scoped to task, plus header with artifact type, cross-refs) |
+| Agent running | Live SSE streaming + streaming indicator + stop button (same in both Planning Window and Task Detail) |
 | Feature analysis | Modal with streaming analysis output, suggested tasks with create buttons |
-| Swimlane suspended | Grayed swimlane + scoped planning chat opens |
+| Swimlane suspended | Grayed swimlane + Planning Window opens scoped to feature |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
 | Feedback/training | Dedicated view: example browser, prompt editor, training controls |
 | Project configuration | Settings page with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
@@ -486,3 +511,4 @@ All future agent invocations inherit this updated instruction. The user also sel
 4. **Project-type agnostic** — The core workflow (plan, decompose, execute, review, iterate) works for code, content, and creative projects alike.
 5. **Local-first** — Runs on the user's machine. No cloud dependency required (though remote LLM APIs are supported).
 6. **Configurable workflow** — Stages, agents, auto-advance rules, and approval gates are all configurable per project, feature, and task type.
+7. **Worktree-transparent tooling** — Agents and tools operate against `$PCT_PROJECT_ROOT` (the worktree directory during execution, the main tree otherwise). Tools use relative paths or this variable, never hardcoded repo locations. This makes worktree isolation invisible to agents — they see a normal git checkout.
