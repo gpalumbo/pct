@@ -75,7 +75,7 @@ The stages a task passes through. The Kanban columns **are** the workflow stages
 | **Merge** | Merge the task branch into the development branch | Automated |
 | **Full Test Suite** | Run the complete project test suite post-merge | Automated |
 | **Refactoring Check** | Agent scans for refactoring opportunities, may spawn new tasks | LLM |
-| **Push** | Push to remote | User-confirmed (always) |
+| **Push** | Push to remote | Automated / User |
 
 Not all stages apply to every project type. PCT provides **workflow templates** per project type with sensible defaults for which stages are active and what agents do at each stage. Workflow stages are configurable per project via the Project Configuration page (F10).
 
@@ -122,7 +122,7 @@ The Chat Interface is the unified interaction model shared by both the Planning 
   - **Inspector view** — displays the full assembled context that will be sent to the agent on the next prompt. Shows each context section (project spec, feature spec, task spec, RAG results, retry history) as collapsible panels with token counts per section and a total token count. The user can edit, add, remove, or reorder any section before sending. Essential for working with local models that have restricted context windows. Changes made in the inspector are reflected in the next agent invocation without altering the source specs.
 
 **Section 2 — Input** (middle, compact):
-- **Agent selector dropdown** — user can change the agent (and therefore model) between prompts. The dropdown shows configured agents with the default agent indicated by an asterisk. Default agent resolution follows a waterfall: workflow stage agent → project `default_agent` → `planning_agent` → first available agent.
+- **Agent selector dropdown** — user can change the agent (and therefore model) between prompts. The dropdown shows configured agents with the default agent indicated by an asterisk. The **last-used agent is sticky** — once the user selects an agent in a given context (planning chat or task), that selection persists for subsequent prompts in the same context. Default agent resolution for a fresh context follows a waterfall: workflow stage agent → project `default_agent` → first available agent.
 - Text input with send/stop controls
 - **Refine chip** — when an image is selected for refinement, shows a thumbnail + "Refining [image]" banner with cancel option. Auto-switches agent to imagegen.
 - **Image generation routing** — when an image generation agent is selected, prompts are routed to the image generation pipeline instead of the chat API
@@ -139,10 +139,29 @@ The Chat Interface is the unified interaction model shared by both the Planning 
 
 **Stage transition behavior** (applies to Task Detail Panel context windows):
 - **Per-stage context storage** — the context window (chat history) is stored separately for each workflow stage. Each stage maintains its own conversation history with its own agent.
-- **Advance on approval** — when work at a stage is approved, the task card automatically advances to the next workflow stage. Whether the next stage's agent auto-runs is controlled by the `auto_advance` toggle (F10 General tab). Advancing state and auto-running the agent are independent: the card always moves, but agent execution can wait for user initiation.
+- **Advance on approval** — when work at a stage is approved, the task card automatically advances to the next workflow stage. Whether the next stage's agent auto-runs is controlled by the **Auto-Run toggle** on each workflow stage (F10 Workflow Stages tab). Advancing and auto-running are independent: the card always moves, but agent execution only starts automatically for stages with Auto-Run enabled (default: off for all stages).
 - **Clear on advance** — when a task advances to a new stage, the context window resets to a fresh state. The new stage's agent receives a clean assembled context (project spec, feature spec, task spec, artifact, RAG-selected history) without the previous stage's conversational back-and-forth. The artifact is the handoff mechanism between stages.
 - **Restore on return** — if a task is dragged back to a previous stage (e.g., from Code Review back to Implement), the context window for that stage is restored in full. All messages from the previous time the task was at that stage reappear exactly as they were. This makes stage transitions non-destructive — moving forward clears the view, moving backward restores it.
 - **Carry-forward override** — optional toggle on the approval action for rare cases where the user wants the next stage's agent to see the current stage's raw conversation in addition to the assembled context.
+
+---
+
+### Artifact Strategy (shared foundation)
+
+The Artifact Strategy governs how work products are organized, stored, and merged across all project types. Like the Chat Interface, it's a cross-cutting concern referenced by multiple features (F1, F3, F5, F11).
+
+**Task work directory:**
+Each task has a dedicated work directory at `work/{feature_id}/{task_id}/`. This directory provides naming isolation and contains all artifacts produced during the task:
+- `main.md` — the primary text artifact (task output, section draft, code, etc.)
+- `images/` — generated images (drafts and accepted finals), with `session.json` for image generation metadata
+- Additional files — any auxiliary files the user or agent creates during the task (e.g., alternative drafts, reference materials, supporting code). When the user requests output to a file other than the main feature document, it is written here for naming isolation.
+
+**Feature-level documents vs. per-task files:**
+- **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document). The planning stage creates the document structure with section headings. Individual tasks edit their assigned section(s) of this shared document. The task work directory holds the task's working copy, drafts, and auxiliary files — not the feature document itself.
+- **Code projects** produce independent files per task (modules, functions, configs). The work directory contains the task's output directly. There is no shared feature-level document — code files are naturally scoped to tasks.
+
+**Work index:**
+`work/INDEX.md` is the auto-generated master reference for all project artifacts (see F1). It catalogs features, tasks, and artifact paths, and is regenerated after task completion and on manual re-index.
 
 ---
 
@@ -232,7 +251,7 @@ Manages the lifecycle of agent task execution:
 ### F5: Git Integration
 Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline.
 
-**Artifact strategy:** Writing tasks produce one document per feature, not per task. The planning stage creates the document structure (outline with section headings); each task edits its assigned section(s). Code tasks produce files as normal — functions and modules are naturally scoped to tasks.
+**Artifact strategy:** See the Artifact Strategy shared foundation section for how work products are organized per project type. Writing tasks produce one document per feature (tasks edit assigned sections); code tasks produce files per task. All tasks work within their isolated `work/{feature_id}/{task_id}/` directory, which provides naming isolation for drafts, images, and auxiliary files.
 
 **Worktree lifecycle:**
 - **Spawn at execution start** — F4 creates a worktree from the feature branch when it dequeues a task
@@ -269,10 +288,10 @@ Controls for parallel workstream management:
 - **Impact analysis on resume**: PCT identifies which tasks may be affected by spec changes during suspension
 
 ### F9: Session & Project Management
-- **Project creation** — new project wizard:
+- **Project creation** — on first launch (or when creating a new project), PCT redirects to the **Project Configuration page (F10)** for initial setup:
   1. **Project template selector** — choose a project type template that pre-populates workflow stages, default agents, artifact types, and stage prompt templates. Built-in templates include Coding, Writing, D&D Campaign, Business Deck, Research Paper, and a Blank template. Templates are JSON definitions stored in a `templates/` directory and can be user-created or community-shared.
   2. **Project name and directory** — set the project name and select/create the project directory
-  3. **Review & customize** — preview the pre-populated configuration before creating. The user can adjust anything before confirming. All template-provided defaults are fully editable in F10 after creation.
+  3. The user can then review and customize all template-provided defaults across the F10 tabs before proceeding to the Planning Window.
 - Session persistence — close and reopen PCT without losing state
 - Export/import project state
 
@@ -283,7 +302,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 - **UI Preferences** — font size slider (10–20px), persisted to localStorage
 - **Project metadata** — project name, project type (from template selected at creation, read-only), project directory (read-only)
 - **Re-index work artifacts** — button to scan the work directory and rebuild the RAG index
-- **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured), auto-advance toggle
+- **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured)
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
 
 **Model Registry tab:**
@@ -301,6 +320,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
   - **Prompt template** — optional per-stage prompt template injected into agent context
   - **Enabled toggle** — whether this stage is active for the project
   - **Agent selector** — default executor for tasks entering this stage (user can override in the chat input at any time)
+  - **Auto-Run toggle** — when enabled, the assigned agent automatically begins execution using the stage prompt template and task description when a task enters this stage. Default: off for all stages. When off, the task waits in the stage for the user to initiate the agent conversation.
   - Inline save/cancel controls for dirty edits; delete for unused stages
   - "Add Stage" button to create new custom stages
 - **Template Variables** (collapsible section):
@@ -315,8 +335,6 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 - Artifact types appear as a **color-coded dot** on task cards and as a dropdown selector in the task detail panel header
 
 All project-level settings persist to `pct.yaml` in the project repo. The Model Registry and LoRA Registry persist globally to `~/.pct/registries/`.
-
-**Feature serialization** — per-feature toggle for serial vs. parallel task execution. Features producing non-mergeable artifacts (images, video, binary formats) must use serial execution since outputs cannot be git-merged.
 
 ### F11: Image Generation
 Integrated image generation for visual content creation within tasks. Image generation is triggered by selecting an image generation agent in the chat input — prompts are routed to the image generation pipeline instead of the chat API.
@@ -342,9 +360,9 @@ Integrated image generation for visual content creation within tasks. Image gene
 
 ## 4. User Narrative: Building PCT with PCT
 
-### Act 1: Project Kickoff — The Planning Chat
+### Act 1: Project Kickoff
 
-The user launches PCT. The screen shows a **chat interface** — no Kanban board yet.
+The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration page (F10)**. The user selects the "Coding" project template, names the project "PCT", and reviews the pre-populated workflow stages, agents, and artifact types. After confirming the configuration, PCT opens the **Planning Window** — a chat interface with no Kanban board yet.
 
 > **User:** I want to build a Project Construction Tool. It's a Python/React app that uses LLM agents to execute project tasks on a Kanban board. Here's my rough idea...
 
