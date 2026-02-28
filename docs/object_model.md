@@ -99,7 +99,7 @@ Maps directly to `pct.yaml`. This is the primary persisted configuration.
 
 ```python
 class ProjectConfig(BaseModel):
-    """Persisted as .pct/pct.yaml"""
+    """Persisted as $PCT_PROJECT_ROOT/pct.yaml"""
     project_id: str
     project_name: str
     project_type: str
@@ -251,7 +251,7 @@ Standalone, named configuration that defines an executor. Agents are defined per
 
 ```python
 class AgentConfig(BaseModel):
-    """Persisted in .pct/pct.yaml under the agents list."""
+    """Persisted in $PCT_PROJECT_ROOT/pct.yaml under the agents list."""
     id: str                                    # e.g., "claude-code", "local-reviewer"
     agent_type: AgentType
     provider_type: ProviderType
@@ -462,7 +462,7 @@ LanceDB models for vector search. These extend `LanceModel` (which extends Pydan
 from lancedb.pydantic import Vector, LanceModel
 
 class TaskDocument(LanceModel):
-    """Indexed in ~/.pct/projects/<id>/rag/tasks.lance/"""
+    """Indexed in $PCT_PROJECT_ROOT/.pct/rag/tasks.lance/"""
     task_id: str
     feature: str
     stage: str
@@ -472,7 +472,7 @@ class TaskDocument(LanceModel):
     vector: Vector(384)                        # all-MiniLM-L6-v2 output dimension
 
 class SpecDocument(LanceModel):
-    """Indexed in ~/.pct/projects/<id>/rag/specs.lance/"""
+    """Indexed in $PCT_PROJECT_ROOT/.pct/rag/specs.lance/"""
     spec_id: str
     spec_type: Literal["project", "feature", "task"]
     feature: str | None = None
@@ -1076,37 +1076,35 @@ flowchart LR
 
 ## 11. Storage Mapping
 
-### Git-tracked (`.pct/` in project repo)
+### Git-tracked — project root + `pct-admin/`
 
 | Model | File | Format |
 |-------|------|--------|
-| ProjectConfig | `.pct/pct.yaml` | YAML |
-| AgentConfig (list) | `.pct/pct.yaml` (under `agents` key) | YAML |
-| WorkflowStageConfig (list) | `.pct/pct.yaml` (under `workflow_stages` key) | YAML |
-| TemplateVariable (list) | `.pct/pct.yaml` (under `template_variables` key) | YAML |
-| ArtifactTypeConfig (list) | `.pct/pct.yaml` (under `artifact_types` key) | YAML |
-| Project link | `.pct/link.yaml` | YAML |
-| Project spec | `.pct/project_spec.md` | Markdown |
-| Feature spec | `.pct/active-features/<id>/feature_spec.md` | Markdown |
-| FeatureMetadata | `.pct/active-features/<id>/metadata.yaml` | YAML |
-| Task | `.pct/active-features/<id>/tasks/<nnn>-<slug>.md` | YAML frontmatter + Markdown |
-| Backlog feature spec | `.pct/feature_backlog/<name>.md` | Markdown |
+| ProjectConfig | `pct.yaml` | YAML |
+| AgentConfig (list) | `pct.yaml` (under `agents` key) | YAML |
+| WorkflowStageConfig (list) | `pct.yaml` (under `workflow_stages` key) | YAML |
+| TemplateVariable (list) | `pct.yaml` (under `template_variables` key) | YAML |
+| ArtifactTypeConfig (list) | `pct.yaml` (under `artifact_types` key) | YAML |
+| Project spec | `pct-admin/project_spec.md` | Markdown |
+| Feature spec | `pct-admin/active-features/<id>/feature_spec.md` | Markdown |
+| FeatureMetadata | `pct-admin/active-features/<id>/metadata.yaml` | YAML |
+| Task | `pct-admin/active-features/<id>/tasks/<nnn>-<slug>.md` | YAML frontmatter + Markdown |
+| Backlog feature spec | `pct-admin/feature_backlog/<name>.md` | Markdown |
 
-### Not git-tracked (`~/.pct/projects/<project-id>/`)
+### Git-ignored — `.pct/`
 
 | Model | File | Format |
 |-------|------|--------|
-| Project link (reverse) | `link.yaml` | YAML |
-| AttemptMetadata | `execution/active-tasks/<task>/attempt-<nnn>/metadata.yaml` | YAML |
-| Attempt output | `execution/active-tasks/<task>/attempt-<nnn>/output.md` | Markdown |
-| Attempt feedback | `execution/active-tasks/<task>/attempt-<nnn>/feedback.md` | Markdown |
-| LLM transcript | `execution/active-tasks/<task>/attempt-<nnn>/agent_log.jsonl` | JSONL |
-| Completed attempts | `execution/completed-tasks/<task>/...` | Same structure |
-| Integration test | `execution/features/<feature>/integration-test/attempt-<nnn>/...` | Same structure |
-| Planning chat | `chat_history/planning-<nnn>.jsonl` | JSONL |
-| RAG: task index | `rag/tasks.lance/` | Lance columnar |
-| RAG: spec index | `rag/specs.lance/` | Lance columnar |
-| Kanban snapshots | `kanban_snapshots/` | YAML |
+| AttemptMetadata | `.pct/execution/active-tasks/<task>/attempt-<nnn>/metadata.yaml` | YAML |
+| Attempt output | `.pct/execution/active-tasks/<task>/attempt-<nnn>/output.md` | Markdown |
+| Attempt feedback | `.pct/execution/active-tasks/<task>/attempt-<nnn>/feedback.md` | Markdown |
+| LLM transcript | `.pct/execution/active-tasks/<task>/attempt-<nnn>/agent_log.jsonl` | JSONL |
+| Completed attempts | `.pct/execution/completed-tasks/<task>/...` | Same structure |
+| Integration test | `.pct/execution/features/<feature>/integration-test/attempt-<nnn>/...` | Same structure |
+| Planning chat | `.pct/chat_history/planning-<nnn>.jsonl` | JSONL |
+| RAG: task index | `.pct/rag/tasks.lance/` | Lance columnar |
+| RAG: spec index | `.pct/rag/specs.lance/` | Lance columnar |
+| Kanban snapshots | `.pct/kanban_snapshots/` | YAML |
 
 ### Project work directory (`work/` in project repo)
 

@@ -6,38 +6,40 @@
 
 ### Overview
 
-PCT uses a **hybrid storage model** with three locations, each serving a distinct purpose:
+All PCT project state lives under `$PCT_PROJECT_ROOT`. Within the project root, items are split into two categories:
 
-1. **Project repo** (`.pct/`) — thin presence: specs, task definitions, lightweight kanban state
-2. **PCT project state** (`~/.pct/projects/<project-id>/`) — heavy execution artifacts: agent logs, attempt history, RAG index, chat transcripts
-3. **PCT global** (`~/.pct/curation/`) — cross-project reusable data: prompt templates, LoRAs, training examples, agent configs
+1. **`pct-admin/`** (checked into git) — specs, task definitions, project-level configuration that humans and AI both read/write
+2. **`.pct/`** (git-ignored) — execution artifacts, RAG index, chat transcripts, kanban snapshots — large or machine-generated data
+
+Outside the project, only cross-project reusable data lives at a global location:
+
+3. **`~/.pct/`** — curation data (prompt templates, training examples, LoRAs), registries, user config
 
 ### Design Principles
 
-- **Specs are authoritative and live in the project repo.** The AI reads and writes specs and task definitions directly in `.pct/`. These are small, human-readable, and useful to keep with the project.
-- **Execution artifacts live outside the project repo.** Agent logs, full attempt outputs, and RAG embeddings are large and machine-consumed. They don't belong in git.
-- **No duplication.** Each piece of data has exactly one home. Specs and status live in the project repo. Execution details live in the external state. They reference each other by task ID, not by copying data.
-- **PCT is the orchestrator.** AI agents don't need to know the directory structure. PCT assembles paths and context for each invocation.
+- **All project state is local.** Everything PCT needs for a project lives under `$PCT_PROJECT_ROOT`. No symlinks, no `~/.pct/projects/` indirection. The project directory is self-contained.
+- **Checked-in vs. ignored is an explicit boundary.** `pct-admin/` is committed — specs, tasks, and metadata travel with the repo. `.pct/` is ignored — execution artifacts, embeddings, and transcripts stay local.
+- **Specs are authoritative.** The AI reads and writes specs and task definitions in `pct-admin/`. These are small, human-readable, and useful to keep with the project.
+- **No duplication.** Each piece of data has exactly one home. Specs and status live in `pct-admin/`. Execution details live in `.pct/`. They reference each other by task ID.
+- **PCT is the orchestrator.** AI agents don't need to know the directory structure. PCT assembles paths and context for each invocation. RAG is the primary interface agents use to query project data — specs, task history, and execution artifacts are indexed and retrieved through vector search rather than direct file access.
 
 ### Directory Structure
 
-#### Project Repo: `.pct/`
+#### Project Root: `$PCT_PROJECT_ROOT`
 
 ```
-<project-root>/
-  .pct/
-    link.yaml                         # pointer to ~/.pct/projects/<project-id>/
-    pct.yaml                          # project config: project ID, workflow stages,
-                                      #   agent defaults, auto-advance rules,
-                                      #   concurrency limits, context token budget
-    project_spec.md                   # project-level specification
-    active-features/                  # features with a defined spec and swimlane
+$PCT_PROJECT_ROOT/
+  pct.yaml                              # project config (checked in)
+
+  pct-admin/                            # ── CHECKED INTO GIT ──
+    project_spec.md                     # project-level specification
+    active-features/
       001-core-server/
-        feature_spec.md               # feature-level specification
-        metadata.yaml                 # machine-consumable: lifecycle stage, dependencies,
-                                      #   swimlane info, worktree path, branch, commits
+        feature_spec.md                 # feature-level specification
+        metadata.yaml                   # lifecycle stage, dependencies,
+                                        #   worktree path, branch, commits
         tasks/
-          001-define-data-models.md    # task definition + current status
+          001-define-data-models.md     # task definition + current status
           002-design-api-routes.md
           003-setup-scaffold.md
       002-frontend-kanban/
@@ -46,165 +48,50 @@ PCT uses a **hybrid storage model** with three locations, each serving a distinc
         tasks/
           001-design-component-tree.md
     feature_backlog/
-      agent-execution-engine.md       # feature specs for backlogged features
-      git-integration.md              #   (no tasks/ dir until activated)
-```
+      agent-execution-engine.md         # feature specs not yet activated
+      git-integration.md                #   (no tasks/ dir until activated)
 
-**What lives here:**
-- `link.yaml` — pointer to the external state directory for this project
-- `pct.yaml` — project configuration: project ID, workflow stage definitions, default agent assignments, auto-advance rules, concurrency limits, context token budget
-- `project_spec.md` — top-level project specification
-- `active-features/<nnn>-<name>/feature_spec.md` — feature-level specifications
-- `active-features/<nnn>-<name>/metadata.yaml` — feature lifecycle stage, cross-feature dependencies, swimlane state, worktree path, branch name, commit references
-- `active-features/<nnn>-<name>/tasks/<nnn>-<slug>.md` — task definitions including: description, current status/stage, assigned agent, dependencies (intra- and cross-feature), tags, priority
-- `feature_backlog/` — feature specs for features not yet started (no `metadata.yaml` or `tasks/` dir until activated)
-
-Feature lifecycle state is encoded at two levels: the directory location (`active-features/` vs `feature_backlog/`) and the `metadata.yaml` lifecycle stage field (Planning, Active, Suspended, Integration Test, Complete).
-
-**What does NOT live here:**
-- Agent execution logs
-- Full attempt outputs (rejected or approved)
-- RAG embeddings
-- Planning chat transcripts
-- Anything large or machine-generated
-
-**Size expectation:** A few KB per task, a few hundred KB total for a large project. Negligible git impact.
-
-#### Task File Format
-
-The full field specification for tasks is defined in the Object Model (§3, Task). The frontmatter is YAML; the body is human-readable Markdown. The AI reads and writes both. Attempt details are brief references — full outputs live in the execution state.
-
-**Example task file:**
-
-```markdown
----
-id: "001"
-title: "Define data models"
-feature: "001-core-server"
-status: "code-review"
-agent: "claude-code"
-branch: "feature/core-server/define-data-models"
-depends_on: ["003"]
-cross_depends_on:
-  - "002-frontend-kanban/001"
-tags: ["backend", "models"]
-priority: 1
-attempt: 3
-created: "2026-02-12T10:00:00Z"
-updated: "2026-02-12T14:30:00Z"
----
-
-# Define Data Models
-
-## Spec
-Define Pydantic models for Project, Feature, Task, Agent, and WorkflowStage.
-Models should be persisted to JSON files. Do not use SQLAlchemy or any ORM.
-
-## Acceptance Criteria
-- All core models defined with full field specifications
-- JSON serialization/deserialization methods
-- Validation rules for required fields
-
-## Notes
-- Attempt 1 rejected: used SQLAlchemy (see execution log for details)
-- Attempt 2 rejected at code review: missing status_history field
-- Attempt 3 in progress
-```
-
-#### External State: `~/.pct/projects/<project-id>/`
-
-```
-~/.pct/
-  projects/
-    <project-id>/
-      link.yaml                       # {"project_path": "~/projects/myapp"}
-      execution/
-        active-tasks/                 # tasks currently in progress
-          001-define-data-models/
+  .pct/                                 # ── GIT-IGNORED ──
+    execution/
+      active-tasks/                     # tasks currently in progress
+        001-define-data-models/
+          attempt-001/
+            agent_log.jsonl             # raw LLM messages
+            output.md                   # agent's produced output
+            feedback.md                 # rejection feedback (if rejected)
+            metadata.yaml               # timestamp, agent, model, duration, tokens
+          attempt-002/
+            ...
+      completed-tasks/                  # archived after task reaches done
+        001-design-component-tree/
+          attempt-001/
+            ...
+      features/                         # feature-level execution artifacts
+        001-core-server/
+          integration-test/
             attempt-001/
-              agent_log.jsonl         # raw LLM messages (streaming transcript)
-              output.md               # agent's produced output
-              feedback.md             # rejection feedback (if rejected)
-              metadata.yaml           # timestamp, agent, model, duration, tokens
-            attempt-002/
-              ...
-            attempt-003/
-              ...
-        completed-tasks/              # archived after task reaches done
-          001-design-component-tree/
-            attempt-001/
-              ...
-        features/                     # feature-level execution artifacts
-          001-core-server/
-            integration-test/         # feature integration test attempts
-              attempt-001/
-                agent_log.jsonl
-                output.md
-                metadata.yaml
-      chat_history/
-        planning-001.jsonl            # initial project planning session
-        planning-002.jsonl            # feature re-planning after swimlane suspend
-      rag/
-        tasks.lance/                  # LanceDB table: task execution embeddings
-        specs.lance/                  # LanceDB table: spec/feature embeddings
-      kanban_snapshots/               # periodic snapshots for timeline/history view
-```
+              agent_log.jsonl
+              output.md
+              metadata.yaml
+    chat_history/
+      planning-001.jsonl                # planning session transcripts
+      planning-002.jsonl
+    rag/
+      tasks.lance/                      # LanceDB table: task execution embeddings
+      specs.lance/                      # LanceDB table: spec/feature embeddings
+    kanban_snapshots/                    # periodic board state captures
 
-**What lives here:**
-- `link.yaml` — maps this state dir back to the project path
-- `execution/active-tasks/` — execution artifacts for in-progress tasks, each with attempt subdirectories
-- `execution/completed-tasks/` — archived execution artifacts for finished tasks (moved from `active-tasks/` when task reaches done)
-- `execution/features/` — feature-level execution artifacts, primarily integration test attempts that run when all tasks in a feature complete
-- `chat_history/` — planning session transcripts (JSONL of messages)
-- `rag/` — LanceDB tables (Lance columnar files) for vector search over task history and specs
-- `kanban_snapshots/` — periodic captures of the full board state (for history/timeline features)
-
-**Size expectation:** Can grow to many MB over the life of a project. No git overhead — this is never committed.
-
-#### Global Curation: `~/.pct/curation/`
-
-```
-~/.pct/
-  curation/
-    prompt_templates/
-      v1/
-        refine-spec.md
-        implement-code.md
-        implement-content.md
-        code-review.md
-        refactor-check.md
-      v2/
+  work/                                 # ── TASK OUTPUT ARTIFACTS ──
+    INDEX.md                            # auto-generated index
+    001-core-server/
+      001-define-data-models/
         ...
-    training_data/
-      positive/
-      negative/
-    loras/
-      code-style-v1/
-    agent_configs/
-      claude-code.yaml
-      local-llama.yaml
 ```
 
-**What lives here:**
-- Versioned prompt templates (reusable across projects)
-- Curated training examples (positive and negative, from any project)
-- Trained LoRA weights
-- Agent configuration presets
+#### `pct.yaml` (project root, checked in)
 
-### How AI Agents Interact with Storage
+Project configuration: project ID, workflow stages, agent defaults, auto-advance rules, concurrency limits, context token budget. See Object Model §3 (ProjectConfig) for the full schema.
 
-| Session Type | AI reads from | AI writes to |
-|-------------|---------------|--------------|
-| **Planning** | `.pct/` in project repo (specs, existing tasks) | `.pct/` in project repo (new/updated specs and task files) |
-| **Implementation** | `.pct/` (task spec) + worktree (existing code) | Worktree (new code) |
-| **Code Review** | `.pct/` (task spec) + worktree (diff/changes) | `.pct/` (review notes appended to task file) |
-| **Refactoring Check** | `.pct/` (project spec) + project repo (merged code) | `.pct/` (new task files if opportunities found) |
-
-PCT handles writing to the external execution state (`~/.pct/projects/`) — the AI doesn't touch it directly. PCT captures the agent's output stream and stores it after execution completes.
-
-### Linking Project Repo to External State
-
-`pct.yaml` in the project repo contains the project ID and all project-level configuration (see Object Model §3, ProjectConfig for the full schema):
 ```yaml
 project_id: "a1b2c3d4"
 project_name: "myapp"
@@ -245,14 +132,121 @@ artifact_types:
   # ... additional artifact types
 ```
 
-`~/.pct/projects/a1b2c3d4/link.yaml` maps back:
-```yaml
-project_path: "C:/Users/gordo/projects/myapp"
-project_name: "myapp"
+#### `pct-admin/` — checked into git
+
+**What lives here:**
+- `project_spec.md` — top-level project specification
+- `active-features/<nnn>-<name>/feature_spec.md` — feature-level specifications
+- `active-features/<nnn>-<name>/metadata.yaml` — feature lifecycle stage, cross-feature dependencies, swimlane state, worktree path, branch name, commit references
+- `active-features/<nnn>-<name>/tasks/<nnn>-<slug>.md` — task definitions including: description, current status/stage, assigned agent, dependencies, tags, priority
+- `feature_backlog/` — feature specs for features not yet started (no `metadata.yaml` or `tasks/` dir until activated)
+
+Feature lifecycle state is encoded at two levels: the directory location (`active-features/` vs `feature_backlog/`) and the `metadata.yaml` lifecycle stage field (Planning, Active, Suspended, Integration Test, Complete).
+
+**What does NOT live here:** agent execution logs, attempt outputs, RAG embeddings, chat transcripts — anything large or machine-generated.
+
+**Size expectation:** A few KB per task, a few hundred KB total for a large project. Negligible git impact.
+
+#### `.pct/` — git-ignored
+
+**What lives here:**
+- `execution/active-tasks/` — execution artifacts for in-progress tasks, each with attempt subdirectories
+- `execution/completed-tasks/` — archived execution artifacts for finished tasks (moved from `active-tasks/` when task reaches done)
+- `execution/features/` — feature-level execution artifacts, primarily integration test attempts
+- `chat_history/` — planning session transcripts (JSONL of messages)
+- `rag/` — LanceDB tables (Lance columnar files) for vector search over task history and specs
+- `kanban_snapshots/` — periodic captures of the full board state (for history/timeline features)
+
+**Size expectation:** Can grow to many MB over the life of a project. Never committed.
+
+#### Task File Format
+
+The full field specification for tasks is defined in the Object Model (§3, Task). The frontmatter is YAML; the body is human-readable Markdown. The AI reads and writes both. Attempt details are brief references — full outputs live in `.pct/execution/`.
+
+**Example task file:**
+
+```markdown
+---
+id: "001"
+title: "Define data models"
+feature: "001-core-server"
+status: "code-review"
+agent: "claude-code"
+branch: "feature/core-server/define-data-models"
+depends_on: ["003"]
+cross_depends_on:
+  - "002-frontend-kanban/001"
+tags: ["backend", "models"]
+priority: 1
+attempt: 3
 created: "2026-02-12T10:00:00Z"
+updated: "2026-02-12T14:30:00Z"
+---
+
+# Define Data Models
+
+## Spec
+Define Pydantic models for Project, Feature, Task, Agent, and WorkflowStage.
+Models should be persisted to JSON files. Do not use SQLAlchemy or any ORM.
+
+## Acceptance Criteria
+- All core models defined with full field specifications
+- JSON serialization/deserialization methods
+- Validation rules for required fields
+
+## Notes
+- Attempt 1 rejected: used SQLAlchemy (see execution log for details)
+- Attempt 2 rejected at code review: missing status_history field
+- Attempt 3 in progress
 ```
 
-PCT resolves the link on startup. If the project path has moved, PCT prompts the user to re-link.
+#### Global: `~/.pct/`
+
+```
+~/.pct/
+  curation/
+    prompt_templates/
+      v1/
+        refine-spec.md
+        implement-code.md
+        implement-content.md
+        code-review.md
+        refactor-check.md
+      v2/
+        ...
+    training_data/
+      positive/
+      negative/
+    loras/
+      code-style-v1/
+    agent_configs/
+      claude-code.yaml
+      local-llama.yaml
+  registries/
+    models.yaml                       # model registry entries
+    loras.yaml                        # LoRA adapter registry
+  users/
+    users.json                        # user authentication data
+```
+
+**What lives here:**
+- Versioned prompt templates (reusable across projects)
+- Curated training examples (positive and negative, from any project)
+- Trained LoRA weights
+- Agent configuration presets
+- Model and LoRA registries (cross-project)
+- User authentication data
+
+### How AI Agents Interact with Storage
+
+| Session Type | AI reads from | AI writes to |
+|-------------|---------------|--------------|
+| **Planning** | `pct-admin/` (specs, existing tasks) | `pct-admin/` (new/updated specs and task files) |
+| **Implementation** | `pct-admin/` (task spec) + worktree (existing code) | Worktree (new code) |
+| **Code Review** | `pct-admin/` (task spec) + worktree (diff/changes) | `pct-admin/` (review notes appended to task file) |
+| **Refactoring Check** | `pct-admin/` (project spec) + project repo (merged code) | `pct-admin/` (new task files if opportunities found) |
+
+PCT handles writing to `.pct/execution/` — the AI doesn't touch it directly. PCT captures the agent's output stream and stores it after execution completes.
 
 ---
 
@@ -274,7 +268,10 @@ pct/
     tests/                      # Vitest (unit + component)
   playwright/                   # E2E tests (span both backend + frontend)
   docs/                         # Specs, object model, tech spec
-  .pct/                         # PCT project state (specs, tasks, config)
+  pct.yaml                      # Project configuration (checked in)
+  pct-admin/                    # Specs, tasks, feature definitions (checked in)
+  .pct/                         # Execution artifacts, RAG, chat history (git-ignored)
+  work/                         # Task output artifacts
 ```
 
 **Rationale:**
@@ -408,7 +405,7 @@ SSE was chosen for chat streaming because:
 
 PCT uses **YAML as the single configuration/metadata format** for consistency:
 - Task files (`.md`): YAML frontmatter parsed by `python-frontmatter`
-- Config files (`pct.yaml`, `link.yaml`): plain YAML parsed by `PyYAML`
+- Config files (`pct.yaml`): plain YAML parsed by `PyYAML`
 - Feature metadata (`metadata.yaml`): plain YAML parsed by `PyYAML`
 - Agent configs (`~/.pct/curation/agent_configs/*.yaml`): plain YAML parsed by `PyYAML`
 
@@ -462,7 +459,7 @@ results = (table.search(query_vector)
 
 **Embedding model:** `all-MiniLM-L6-v2` via sentence-transformers (runs locally, fast, 384-dimensional output, good quality for retrieval). Can be swapped for API-based embeddings if preferred.
 
-**Storage location:** `~/.pct/projects/<project-id>/rag/` — Lance files live alongside other execution state, never committed to the project repo.
+**Storage location:** `$PCT_PROJECT_ROOT/.pct/rag/` — Lance files live alongside other execution state in the git-ignored `.pct/` directory, never committed to the project repo.
 
 ### Agent Execution
 
