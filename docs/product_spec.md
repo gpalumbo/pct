@@ -230,12 +230,19 @@ Manages the lifecycle of agent task execution:
 - **Worktree isolation** — each agent execution happens in an isolated git worktree
 
 ### F5: Git Integration
-Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline:
-- **Branch-per-task**: each task gets a branch (e.g., `feature/core-server/define-data-models`)
-- **Worktree-per-task**: agents work in isolated worktrees, not the main working directory
-- **Merge stage**: automated merge attempt with conflict detection
-- **User escalation on merge failure**: PCT flags the conflict on the task card, notifies the user, and waits for the user to resolve using their own editor and merge tools (VS Code, vim, meld, etc.). No built-in diff/merge UI — the user signals PCT when resolution is complete.
-- Worktree cleanup after successful merge and push
+Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline.
+
+**Artifact strategy:** Writing tasks produce one document per feature, not per task. The planning stage creates the document structure (outline with section headings); each task edits its assigned section(s). Code tasks produce files as normal — functions and modules are naturally scoped to tasks.
+
+**Worktree lifecycle:**
+- **Spawn at execution start** — F4 creates a worktree from the feature branch when it dequeues a task
+- **Agent works in the worktree** — CWD is the worktree root; tools and agents are unaware of the isolation (see Design Principle 7)
+- **Merge back on completion** — serialized per feature branch to avoid races. Conflicts are rare when tasks edit separate sections/files; when they occur, a lightweight resolution agent handles them
+- **Cleanup** — worktree removed after successful merge; preserved on failure for retry/inspection
+
+**RAG interaction:** The RAG index (F6) covers the main tree only, not individual worktrees. Agents access their own in-progress files directly via the filesystem. When a task merges back, F4 triggers an incremental re-index of changed files so subsequent tasks see completed work.
+
+**Editorial/integration stage:** When all tasks in a feature complete and merge, the workflow's integration stage runs as a single-threaded join point — editorial smoothing for writing projects, integration testing for code projects. This is a normal workflow stage, not special-cased machinery.
 
 ### F6: RAG & Task History
 Local storage with retrieval-augmented generation for surfacing relevant context:
@@ -504,3 +511,4 @@ All future agent invocations inherit this updated instruction. The user also sel
 4. **Project-type agnostic** — The core workflow (plan, decompose, execute, review, iterate) works for code, content, and creative projects alike.
 5. **Local-first** — Runs on the user's machine. No cloud dependency required (though remote LLM APIs are supported).
 6. **Configurable workflow** — Stages, agents, auto-advance rules, and approval gates are all configurable per project, feature, and task type.
+7. **Worktree-transparent tooling** — Agents and tools operate against `$PCT_PROJECT_ROOT` (the worktree directory during execution, the main tree otherwise). Tools use relative paths or this variable, never hardcoded repo locations. This makes worktree isolation invisible to agents — they see a normal git checkout.
