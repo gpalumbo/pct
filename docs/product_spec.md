@@ -27,6 +27,10 @@
    - [F5: Git Integration](#f5-git-integration)
    - [F6: RAG & Task History](#f6-rag--task-history)
    - [F7: Feedback & Training UI](#f7-feedback--training-ui)
+     - [Phase 1: Data Collection](#phase-1-data-collection-in-chat-interface)
+     - [Phase 2: Training Data Browser & Curation](#phase-2-training-data-browser--curation-f7-training-data-tab)
+     - [Phase 3: Dataset Builder & Training Kickoff](#phase-3-dataset-builder--training-kickoff)
+     - [Phase 4: Post-Training — Evaluation & Agent Integration](#phase-4-post-training--evaluation--agent-integration)
    - [F8: Swimlane Management](#f8-swimlane-management)
    - [F9: Session & Project Management](#f9-session--project-management)
    - [F10: Project Configuration Page](#f10-project-configuration-page)
@@ -34,13 +38,14 @@
 4. [User Narrative: Building PCT with PCT](#4-user-narrative-building-pct-with-pct)
    - [Act 1: Project Kickoff](#act-1-project-kickoff)
    - [Act 2: The Kanban Appears](#act-2-the-kanban-appears)
-   - [Act 3: First Agent Run — Spec Refinement](#act-3-first-agent-run--spec-refinement)
-   - [Act 4: Parallel Work](#act-4-parallel-work)
-   - [Act 5: Code Review — Agent Reviews Agent](#act-5-code-review--agent-reviews-agent)
-   - [Act 6: Swimlane Suspension & Impact Analysis](#act-6-swimlane-suspension--impact-analysis)
-   - [Act 7: Merge, Test, Push](#act-7-merge-test-push)
-   - [Act 8: RAG in Action](#act-8-rag-in-action)
-   - [Act 9: Prompt Curation](#act-9-prompt-curation)
+   - [Act 3: Refine Feature — Task Decomposition](#act-3-refine-feature--task-decomposition)
+   - [Act 4: First Agent Run — Spec Refinement](#act-4-first-agent-run--spec-refinement)
+   - [Act 5: Parallel Execution](#act-5-parallel-execution)
+   - [Act 6: Code Review — Agent Reviews Agent](#act-6-code-review--agent-reviews-agent)
+   - [Act 7: Spec Change & Impact Analysis](#act-7-spec-change--impact-analysis)
+   - [Act 8: Merge Through Push](#act-8-merge-through-push)
+   - [Act 9: RAG in Action](#act-9-rag-in-action)
+   - [Act 10: Prompt Curation & Training](#act-10-prompt-curation--training)
 5. [UI States Summary](#5-ui-states-summary)
 6. [Design Principles](#6-design-principles)
 
@@ -96,7 +101,7 @@ A standalone, named configuration that defines an executor. An agent can be:
 
 Agents are **defined in the Project Configuration page (F10)** by combining a model (from the Model Registry), an optional LoRA adapter (from the LoRA Registry), a prompt template, and provider-specific settings. Once defined, an agent is a reusable, named entity available throughout the project — workflow stages, features, tasks, and the planning chat all reference agents by ID.
 
-The agent assigned to a task is configurable **per workflow stage, per feature, and per task**. A task might use Claude Code for implementation but a local LLM for code review.
+The agent assigned to a task defaults from the **workflow stage** configuration (F10), with the project's `default_agent` as fallback. The user can manually select a different agent in the chat input at any time — this selection is sticky within the same task and stage but is not a persistent task-level setting (see Chat Interface, Section 2). A task might use Claude Code for implementation but a local model for code review.
 
 ### Model Registry
 A global catalog of available models — local (e.g., Llama 3 weights on disk), remote (e.g., Claude Sonnet via API), and HuggingFace Hub (downloaded on demand). Each entry records the model identifier, provider type, context length, and provider-specific details (file path for local/HuggingFace, API endpoint for remote). The registry also tracks **download status** for HuggingFace models (pending → downloading → ready → error). The registry provides **dropdown population** in the agent configuration UI. Models are registered once and shared across all projects. PCT can also **auto-discover** local models by scanning project and global model directories for `.gguf` and `.safetensors` files.
@@ -114,7 +119,7 @@ The stages a task passes through. The Kanban columns **are** the workflow stages
 | **Feature Test** | Run tests scoped to this task/feature | Automated / LLM |
 | **Code Review** | Another agent reviews the work for quality and correctness | LLM (different from implementer) |
 | **User Approval** | Human reviews and approves or rejects | User (always) |
-| **Merge** | Merge the task branch into the development branch | Automated |
+| **Merge** | Merge the task branch into the feature branch | Automated |
 | **Full Test Suite** | Run the complete project test suite post-merge | Automated |
 | **Refactoring Check** | Agent scans for refactoring opportunities, may spawn new tasks | LLM |
 | **Push** | Push to remote | Automated / User |
@@ -170,7 +175,7 @@ The Chat Interface is the unified interaction model shared by both the Planning 
 - **Image generation routing** — when an image generation agent is selected, prompts are routed to the image generation pipeline instead of the chat API
 
 **Section 3 — Artifact / Output** (bottom, split view):
-- **Text sub-section**: Rendered markdown preview of the active text artifact. Edit button opens a rich text modal (TipTap). File path, reload, save controls. WikilinkStrip tag display. Collapsible. Artifacts are directory-based — each artifact path points to a directory containing `main.md` for text and `images/` for generated images.
+- **Text sub-section**: Rendered markdown preview of the active text artifact. Edit button opens a rich text modal (TipTap). File path, reload, save controls. WikiLink tag strip (displays `[[feature_id#task_id]]` references found in the artifact as clickable tags). Collapsible. Artifacts are directory-based — each artifact path points to a directory containing `main.md` for text and `images/` for generated images.
 - **Image sub-section**: Thumbnail grid of all generated images. Each image has hover actions: "Refine" (sends to input section) and "View" (opens full-size gallery modal). When imagegen agent is active, shows generation params (negative prompt, divergence, guidance). Progress bar during generation. Round history. Collapsible.
 - **Image Gallery Modal**: Full-screen viewer (80vw × 80vh) for generated images. Left/right navigation. Image metadata (seed, round, index). Refine and Accept action buttons.
 
@@ -195,7 +200,7 @@ The Artifact Strategy governs how work products are organized, stored, and merge
 **Feature-level documents**
 Each feature will have one central document.  It may have others.  The documents will be kept directly under the directory `work/{feature_id}/`.  The action that created the feature will create this directory and at least one main file as described below.  The file should have at least a main Header and feature overview.  It will also create at least one task called "Refine Feature" that is expected to be used to refine the purpose and tasks of this feature with associated sub-headers for each task.  This is not a hard limit.  The planning process may create more sections and tasks if the information is available. In addition other tasks may alter the feature by adding dependencies and/or sections/tasks.
 - **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document) usually named `{feature_id}.md`. This document is expected to be the final work product.
-- **Code projects** will produce a `{feature_id}.md` file that acts as a specification document.  It should also create `implemention_paln.md` which will serve as a tech spec and build plan.  This can be blank and fleshed out by "Refine Feature" task.  Code source files will live under `src/` not under `work/` 
+- **Code projects** will produce a `{feature_id}.md` file that acts as a specification document.  It should also create `implementation_plan.md` which will serve as a tech spec and build plan.  This can be blank and fleshed out by "Refine Feature" task.  Code source files will live under `src/` not under `work/` 
 
 **Task work directory:**
 Each task has a dedicated work directory at `work/{feature_id}/{task_id}/`. This directory provides naming isolation and contains all artifacts produced during the task:
@@ -232,7 +237,7 @@ The Planning Window's artifact section displays the **project index** — an aut
 - **Feature catalog** — a header for each feature with links to feature specs
 - **Task index** — organized by feature, with links to all task artifacts
 - **Work products catalog** — paths to all generated artifacts (text, images)
-- **Cross-references** — WikiLink support for inter-artifact connections
+- **Cross-references** — WikiLink support for inter-artifact connections. WikiLinks use the syntax `[[feature_id#task_id]]`, mirroring the `work/` directory structure. `[[feature_id]]` links to a feature-level artifact (`work/{feature_id}/`); `[[feature_id#task_id]]` links to a task artifact (`work/{feature_id}/{task_id}/`). WikiLinks are resolved at render time and displayed as clickable links that open the referenced artifact.
 
 The index is auto-regenerated after task completion, on "Re-index work artifacts" (F10 General tab), and on project sync/refresh. This makes the Planning Window the central navigation hub — it shows the full project landscape just as a task pane shows a single task's output.
 
@@ -281,19 +286,20 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 - **Cross-references section** — tag strip showing `cross_depends_on` references with:
   - "Add Ref" button opening a **CrossRefPicker modal** — a feature-grouped checklist of all tasks in the project for selecting cross-dependencies
   - Closable tags for removing references
-  - Hint about `[[wikilink]]` auto-linking in artifacts
+  - Hint about `[[feature_id#task_id]]` WikiLink syntax for cross-referencing artifacts
 
 **Task-specific artifact scoping:**
-- The artifact directory is `work/{feature_id}/{task_id}/`, containing `main.md` for text and `images/` for generated images. Legacy single-file `.md` paths are still supported.
-- The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting.
+- The task is expected to update appropriate section in the main associated feature document or source code depending on project type.
+- The additional artifact directory is `work/{feature_id}/{task_id}/`, containing `main.md` for text and `images/` for generated images.
+- The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting — however, reopening the same task at the same workflow stage restores the last user-selected agent rather than reverting to the stage default.
 
 **Stage controls:**
-- Controls: Run Agent, Approve, Reject (with feedback), Interrupt, Send Back to Stage
+- Controls: Run Agent (calls agent with full context plus the prompt to update artifacts), Approve (Advance Stage), Reject (with feedback, falls into chat mode waiting on user), Stop (like chat interrupt, task falls into chat mode waiting on user), Send Back to Stage
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
 - **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget
-- **Context Manager** — an LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. Called automatically before each agent invocation. Also exposed as a tool that agents can invoke mid-execution (e.g., to request additional context or re-summarize). Uses a configurable model — remote models guided via prompt skills, local models fine-tuned with LoRA. Core PCT differentiator: intelligent context management rather than naive truncation.
+- **Context Manager** — an **optional** LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. Called automatically before agent invocation, compressing context when the assembled context length reaches 75% of the target model's max context size. Also exposed as a tool that agents can invoke mid-execution (e.g., to request additional context or re-summarize). Uses a configurable model and prompt (set in F10 General tab) — remote models guided via prompt skills, local models fine-tuned with LoRA. Core PCT differentiator: intelligent context management rather than naive truncation.
 - **Parallel execution** — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
 - **Worktree isolation** — each agent execution happens in an isolated git worktree
 
@@ -310,7 +316,7 @@ Git is universal — **all project types** use git, not just code projects. Non-
 
 **RAG interaction:** The RAG index (F6) covers the main tree only, not individual worktrees. Agents access their own in-progress files directly via the filesystem. When a task merges back, F4 triggers an incremental re-index of changed files so subsequent tasks see completed work.
 
-**Editorial/integration stage:** When all tasks in a feature complete and merge, the workflow's integration stage runs as a single-threaded join point — editorial smoothing for writing projects, integration testing for code projects. This is a normal workflow stage, not special-cased machinery.
+**Integration stage:** When all tasks in a feature complete and merge, the feature enters the **Integration Test** lifecycle stage (see Feature Lifecycle). A feature-level agent run verifies that all merged outputs work together — editorial smoothing for writing projects, integration testing for code projects. This is a feature lifecycle event, not a per-task workflow stage.
 
 ### F6: RAG & Task History
 Local storage with retrieval-augmented generation for surfacing relevant context:
@@ -321,21 +327,213 @@ Local storage with retrieval-augmented generation for surfacing relevant context
 - **User querying**: search and browse task history, filter by outcome, feature, agent, stage
 
 ### F7: Feedback & Training UI
-Dedicated interface for improving agent quality over time:
-- **Example browser**: view all positive and negative task executions
-- **Prompt template editor**: versioned agent prompt templates, editable per task type and workflow stage
-- **Training data curation**: select and annotate examples for LoRA fine-tuning
-- **Training execution**: PCT kicks off LoRA training runs using curated data
-- **A/B comparison**: view before/after when a prompt template or LoRA is updated
+Dedicated interface for improving agent quality over time through a full LoRA training pipeline: collecting training data from chat interactions, curating and augmenting it, kicking off LoRA training, and deploying the result back into an agent.
+
+**Key design decisions:**
+- **Context storage:** Hybrid — snapshot the full assembled context only when the user flags a message (not every turn), avoiding per-turn storage overhead while capturing exactly what the model saw
+- **Training methods:** SFT + KTO in v1. No DPO (requires strict paired data). KTO handles unpaired thumbs-up/down naturally, even when the same prompt has both good and bad responses
+- **Training data scope:** Project-scoped. LoRA output can be saved project-local or registered globally
+- **LoRA updates:** Supported via continued fine-tuning. At training start, user chooses "create new" or "update existing" (picker shows both project-local and global registry LoRAs, filtered by compatible base model)
+- **Local models only:** LoRA training targets local/HuggingFace models only. Remote API models use prompt template refinement. The UI greys out remote models in the training target selector with a tooltip
+- **Training infrastructure:** PCT shells out to standard tooling (`transformers` + `peft` + `trl` for KTO) — simpler, more flexible, and benefits from upstream improvements
+
+**F7 tab structure:**
+
+| Tab | Purpose |
+|-----|---------|
+| **Training Data** | Browser + curation panel (Phase 2) |
+| **Datasets** | Named collections, validation, format preview (Phase 3a) |
+| **Training** | Create/update LoRA, config, monitor (Phase 3b) |
+| **Evaluation** | A/B comparison of base vs. LoRA (Phase 4) |
+| **Prompt Templates** | Versioned prompt template editor (applies to all models including remote) |
+
+---
+
+#### Phase 1: Data Collection (in Chat Interface)
+
+Controls added to the **existing Chat Interface** message bubbles (both Planning Window and Task Detail Panel), alongside the existing Edit/Delete/Copy-to-artifact buttons:
+
+**Per-assistant-message controls:**
+- **Thumbs up / Thumbs down toggle** — flags the user→assistant turn pair
+- **Annotation tag** (appears on flag) — quick category: `style`, `accuracy`, `completeness`, `format`, `instruction-following`, `other`
+- **Note field** (optional) — free-text explaining what was good/bad
+- **Visual indicator** — flagged messages get a colored left-border (green = positive, red = negative) and a small badge
+
+**What gets stored per flag:**
+- Reference to the chat session (task_id + stage, or planning session ID)
+- Message index range (the user turn + assistant response)
+- **Context snapshot** — the full assembled context the model received for this turn, captured at flag time
+- Agent ID and Model ID
+- Flag type (positive / negative)
+- Annotation category + user note
+- Timestamp
+
+**Design note on context reconstruction:** Flagging captures exactly what the model saw at flag time. Trade-off: users can't retroactively flag old messages after specs have changed and get accurate context — acceptable since flagging should happen during or shortly after the interaction.
+
+**Negative examples and training methods:** SFT trains on positive examples only. Negative flags in SFT serve as curation aids — the user edits the bad response into an ideal one, converting it to a positive example. KTO natively uses both positive and negative examples without requiring pairing. The same prompt can have both a thumbs-up and thumbs-down response — KTO processes them independently.
+
+---
+
+#### Phase 2: Training Data Browser & Curation (F7 Training Data tab)
+
+Two-panel layout: **browser on left, detail/editor on right**.
+
+**Browser panel (left):**
+- **Table of all flagged examples** across the project
+  - Columns: source (task title + stage), agent, model, flag type (thumbs icon), category tag, date, curation status (`raw` → `curated` → `in-dataset`)
+  - Row click opens detail in right panel
+- **Filters:** agent, model, flag type, category, feature, curation status
+- **Sort:** date, category, source
+- **Bulk selection** with batch actions: bulk-tag, bulk-status, bulk-add-to-dataset, bulk-delete
+- **Stats bar** at top: total examples, positive/negative split, per-model counts, per-category distribution. Warnings when data volume is low (<50 examples)
+
+**Detail / Curation panel (right):**
+- **Context viewer** — collapsible panels showing the full context snapshot (system prompt, project spec, feature spec, task spec, RAG results). Read-only reference
+- **Conversation excerpt** — the flagged user message + assistant response, in chat-bubble format
+- **Editable response field** — user rewrites the response to be the "ideal" version. Core curation action. For negative examples in SFT mode, this converts them to positive training data. For KTO, negative examples can be used as-is or edited
+- **Context trimming controls** — checkboxes to include/exclude specific context sections from the training example
+- **Annotation editor** — edit category tags and notes
+- **Status selector** — mark as `curated` when done
+- **"Add to Dataset" button** — adds to a named dataset
+
+**Manual example creation:**
+- **"New Example" button** — create a training example from scratch (write prompt + ideal response). For teaching behavior that hasn't come up organically
+
+**Data amplification tools** (action buttons in the curation panel, available on any flagged example):
+
+- **"Generate Alternatives" (multi-agent):**
+  - Opens a sub-panel below the flagged example
+  - **Agent multi-selector** — pick which agents to run against this prompt/context (e.g., Llama-local, Mistral-local, Claude-remote)
+  - Each selected agent produces a response to the same assembled context
+  - Results displayed in a stacked list, each with:
+    - Agent/model label
+    - The generated response (scrollable)
+    - **Rating controls:** thumbs up (include as positive), thumbs down (include as negative for KTO), or "Exclude" (skip — too similar or not useful)
+    - **Similarity warning** — if cosine similarity to an existing dataset entry exceeds a threshold, shows "Similar to existing example" badge. User can still include if they choose
+  - Rated responses become new training data entries linked to the original flag's context snapshot
+  - Good for KTO: naturally produces genuine good/bad responses to the same prompt without manual pairing
+
+- **"Generate Variations" (temperature sweep):**
+  - Opens a sub-panel below the flagged example
+  - **Agent selector** — single agent to use for generation
+  - **Temperature spread** — configurable set of temperature values. Default: `0.1, 0.2, 0.4, 0.6, 0.8, 0.99`. User can edit, add, or remove values
+  - Generates one response per temperature value (runs sequentially or in parallel depending on concurrency limits)
+  - Results displayed in a list ordered by temperature, each with:
+    - Temperature label + the generated response
+    - Same rating controls as above (thumbs up / down / exclude)
+    - Same similarity warning against existing dataset entries
+  - Low temperatures → precise/conservative responses; high temperatures → creative/divergent. Gives natural diversity in training data
+
+**Similarity detection** (shared by both amplification tools):
+- Cosine similarity computed on response text against all existing examples in the target dataset
+- Configurable threshold (default: 0.85) — responses above this are flagged as "too similar"
+- Flagged responses default to "Exclude" but user can override to include
+
+---
+
+#### Phase 3: Dataset Builder & Training Kickoff
+
+**Dataset management (F7 Datasets tab):**
+- **Named datasets** — collections of curated examples grouped by purpose (e.g., "code-style-preferences", "concise-responses")
+- **Dataset contents** — list of examples with remove/reorder
+- **Dataset stats** — example count, avg token length, category distribution, positive/negative ratio, data volume warnings
+- **Validation checks** — too short, too long (exceeds model context), duplicates, unedited negative examples (warning for SFT)
+- **Format preview** — sample example in training format (ChatML, etc.)
+
+**Training kickoff (F7 Training tab):**
+
+Step 1 — **Create new or update existing?**
+- **"New LoRA"** or **"Update existing LoRA"** toggle
+- If updating: LoRA picker showing both project-local and global registry entries, filtered by compatible base model
+
+Step 2 — **Configuration:**
+- **Target base model** — dropdown from Model Registry, filtered to local/HuggingFace only (remote greyed out with tooltip)
+- **Training method** — SFT or KTO. KTO auto-suggested when dataset contains negative examples. SFT auto-suggested when dataset is positive-only
+- **Dataset selector** — which dataset(s) to train on
+- **Training name** — name for the output LoRA (auto-suggested)
+- **Hyperparameters** (collapsible, sensible defaults):
+  - LoRA rank (default: 16)
+  - LoRA alpha (default: 32)
+  - Learning rate (default: 2e-4)
+  - Epochs (default: 3)
+  - Batch size (default: 4)
+  - Max sequence length (auto from model context)
+- **Hardware check** — detected GPU, VRAM, estimated training time
+- **"Start Training" button** — disabled with tooltip if dataset empty, no GPU, or validation errors
+
+Step 3 — **Monitor:**
+- Active/completed training jobs list
+- Per job: progress bar, current epoch, loss value, elapsed time, ETA
+- Loss curve chart (live-updating)
+- Log stream (scrollable training output)
+- Cancel button with confirmation
+
+Step 4 — **On completion: "Save where?"**
+- **Project-local only** — LoRA saved to project directory
+- **Register globally** — also added to the global LoRA Registry (`~/.pct/registries/`)
+
+---
+
+#### Phase 4: Post-Training — Evaluation & Agent Integration
+
+**A/B evaluation (F7 Evaluation tab):**
+- Select test prompts (pull from flagged examples, or write new)
+- Run base model vs. base+LoRA side-by-side
+- Blind mode option (don't label which is which)
+- Rate each response, see aggregate scores
+- **Verdict actions:** "Accept LoRA" / "Reject & Delete" / "Need More Data"
+
+**Agent integration (on accept):**
+- Check if an agent exists with this base model + this LoRA
+  - If yes: show the agent, offer to update it
+  - If no: prompt "Create a new agent with this LoRA?" — pre-fill agent config
+- New/updated agent immediately available in all agent dropdowns
+
+**Version history:**
+- LoRA Registry tracks versions when updating an existing LoRA
+- Agent config shows which version is active
+- Roll back to previous version supported
+
+---
+
+#### F7 Data Flow Summary
+
+```
+Chat interaction
+  → User flags message pair (thumbs up/down + annotation)
+  → Context snapshot captured and stored with flag
+
+F7 Training Data tab
+  → User reviews, edits response to ideal, trims context
+  → Marks as curated
+  → OPTIONAL: Amplify data via:
+     → "Generate Alternatives" — run multiple agents on same prompt, rate outputs
+     → "Generate Variations" — temperature sweep on same prompt, rate outputs
+     → Similarity check prevents near-duplicate flooding
+
+F7 Datasets tab
+  → User groups curated examples into named datasets
+  → Validation checks pass
+
+F7 Training tab
+  → Create new or update existing LoRA
+  → Select base model + training method (SFT or KTO) + dataset
+  → Configure hyperparameters → Start training → Monitor
+  → On completion: save project-local and/or register globally
+
+F7 Evaluation tab
+  → A/B comparison: base vs. base+LoRA
+  → Accept → create/update agent with new LoRA
+```
 
 ### F8: Swimlane Management
 Controls for parallel workstream management, feature prioritization, and project consistency.
 
 **Ideas List:**
-A running list of potential features maintained in the Planning Window's artifact (INDEX.md). Each idea is a lightweight text entry (title + description) — not a feature, no directory, no tasks. Ideas serve as the project's "someday/maybe" list. When the user decides to pursue an idea, a "Create Feature" action promotes it: creates the feature directory, generates the Refine Feature task, and adds the swimlane to the Kanban board. The idea entry in INDEX.md is updated to reference the created feature.
+See F1 Planning Window — Ideas List. The Ideas List is maintained in the Planning Window's artifact (INDEX.md) and serves as the source for feature creation via the "Create Feature" promotion action.
 
 **Feature Priority & Ordering:**
-Swimlanes on the Kanban board are ordered by priority via drag-to-reorder. Position determines priority — top swimlanes are highest priority. Swimlanes below a configurable threshold (default: top 5) are auto-collapsed to header-only view. Users can expand any swimlane or adjust the collapse threshold. Priority ordering is persisted to project configuration.
+See F2 Kanban Board — Priority ordering. Swimlane position on the board determines feature priority via drag-to-reorder.
 
 **Feature Creation:**
 Features are created either by promoting an idea from the Ideas List, or directly from the Planning Window. On creation:
@@ -396,16 +594,17 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 - **Project metadata** — project name, project type (from template selected at creation, read-only), project directory (read-only)
 - **Re-index work artifacts** — button to scan the work directory and rebuild the RAG index
 - **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured)
+- **Context Manager** — agent selector for the Context Manager (see F4) and a default prompt template for context summarization/compression. The Context Manager is optional; when no agent is selected, context is passed to target models without compression.
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
 
 **Model Registry tab:**
-- View, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, **provider type** (Remote API / Local LLM / **HuggingFace**), model identifier, context length, and provider-specific details (model file path for local/HuggingFace, API base URL for remote). For local and HuggingFace models, a **file browser** button opens a filesystem navigation modal for selecting model paths. Context length tooltip explains that 0 = use model default. The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
+- View, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, **provider type** (Remote API / Local / **HuggingFace**), model identifier, context length, and provider-specific details (model file path for local/HuggingFace, API base URL for remote). For local and HuggingFace models, a **file browser** button opens a filesystem navigation modal for selecting model paths. Context length tooltip explains that 0 = use model default. The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
 
 **LoRA Registry tab:**
 - View, add, edit, and remove entries in the global LoRA Registry. Each entry specifies an adapter name, the compatible base model (selected from the Model Registry), file path to weights, and a description. The UI enforces base-model compatibility — only LoRAs matching the selected model appear in dropdowns.
 
 **Agents tab:**
-- Define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an **agent type** (LLM / User / Tool / **Image Gen**), a **provider type** (Remote API / Local LLM / **HuggingFace** / User), a prompt template, and provider-specific settings (CLI command for remote, temperature and context length overrides). Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, and deleting agents.
+- Define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an **agent type** (LLM / User / Tool / **Image Gen**), a **provider type** (Remote API / Local / **HuggingFace** / User), a prompt template, and provider-specific settings (CLI command for remote, temperature and context length overrides). Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, and deleting agents.
 
 **Workflow Stages tab:**
 - **Drag-and-drop reorderable** stage list. Each stage has:
@@ -442,11 +641,13 @@ Integrated image generation for visual content creation within tasks. Image gene
 - **Round history** — collapsible section showing previous generation rounds, each with the prompt used and a thumbnail grid. Selected images are marked in history.
 - **Progress bar** displayed during generation
 
-**Backend:**
-- Uses HuggingFace Diffusers (default model: `sd-legacy/stable-diffusion-v1-5`)
-- Supports both **text-to-image** (first round) and **image-to-image** (subsequent rounds using the selected image as source)
-- Generates 4 images per round with configurable parameters: prompt, negative_prompt, guidance_scale, num_inference_steps, width, height, seed, divergence
-- Asynchronous job-based execution with polling for status and progress
+**Backend — provider-type behavior:**
+Image generation behavior depends on the image generation agent's provider type:
+- **HuggingFace / Local** — uses HuggingFace Diffusers (default model: `sd-legacy/stable-diffusion-v1-5`). Diffusers supports both HuggingFace Hub models (downloaded on demand) and local model weights on disk. Supports **text-to-image** (first round) and **image-to-image** (subsequent rounds using the selected image as source). Generates 4 images per round with configurable parameters: prompt, negative_prompt, guidance_scale, num_inference_steps, width, height, seed, divergence. Asynchronous job-based execution with polling for status and progress.
+- **User** — no automated generation. The user produces images externally and copies them directly into the task's `work/{feature_id}/{task_id}/images/` directory. PCT displays images found in the directory and supports the same selection and acceptance workflow.
+- **Remote API** — PCT sends the prompt to the remote API endpoint and expects image data in the response. Compatibility is not enforced — the project administrator is responsible for ensuring the remote endpoint supports image generation. Results are displayed in the same image grid UI.
+
+**Common:**
 - Image session metadata persisted per task at `work/{feature_id}/{task_id}/images/session.json`
 
 ---
@@ -455,11 +656,11 @@ Integrated image generation for visual content creation within tasks. Image gene
 
 ### Act 1: Project Kickoff
 
-The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration page (F10)**. The user selects the "Coding" project template, names the project "PCT", and reviews the pre-populated workflow stages, agents, and artifact types. After confirming the configuration, PCT opens the **Planning Window** — a chat interface with no Kanban board yet.
+The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration Page (F10)**. The user selects the "Coding" project template, names the project "PCT", and reviews the pre-populated settings across the six tabs — workflow stages (all nine stages enabled, Auto-Run off for all), a Claude Code agent as the default, code-oriented artifact types. After confirming, PCT opens the **Planning Window (F1)** — a Chat Interface with the INDEX.md artifact. No Kanban board yet.
 
 > **User:** I want to build a Project Construction Tool. It's a Python/React app that uses LLM agents to execute project tasks on a Kanban board. Here's my rough idea...
 
-The **planning agent** (Claude Code) engages in back-and-forth, asking about deployment model, workflow stages, project types, and agent execution. The conversation is persistent — it becomes the project's base context.
+The **planning agent** (Claude Code, selected as the project's default) engages in back-and-forth, asking about deployment model, workflow stages, project types, and agent execution. The conversation is persistent — it becomes the project's base context.
 
 After several exchanges, the planning agent proposes a project specification and feature breakdown:
 
@@ -472,130 +673,142 @@ After several exchanges, the planning agent proposes a project specification and
 > 6. RAG & Storage
 > 7. Feedback & Training UI
 >
-> Shall I create the Kanban with these as swimlanes?
+> Shall I create features for these?
 
-> **User:** Yes, create features 1-3 now. Add 4-7 to the Ideas List — we'll promote them later.
+> **User:** Yes, create features 1–3 now. Add 4–7 to the Ideas List — we'll promote them later.
+
+For each of the three features, PCT creates a feature directory at `work/{feature_id}/`, a feature spec file, and a **Refine Feature** task. The Ideas List in INDEX.md gains four entries: Agent Execution Engine, Git Integration, RAG & Storage, Feedback UI — lightweight text entries, no directories or tasks.
 
 ### Act 2: The Kanban Appears
 
-The chat slides to a sidebar and the Kanban board materializes:
+The Planning Window slides to a sidebar and the Kanban board (F2) materializes. Three swimlanes, each in the **Planning** lifecycle stage, each with a single task card:
 
 ```
-SWIMLANE: Core Server & API                                         [Active]
- Refine Spec        | Implement | Test | Review | Approval | Merge | Push
- [Define data models]
- [Design API routes]
- [Setup scaffold]
+SWIMLANE: Core Server & API                                      [Planning]
+ Refine Spec | Implement | Feature Test | Code Review | User Approval | ...
+ [Refine Feature]
 
-SWIMLANE: React Frontend — Kanban                                   [Active]
- [Design component tree]
+SWIMLANE: React Frontend — Kanban                                [Planning]
+ [Refine Feature]
 
-SWIMLANE: Planning Chat UI                                          [Active]
- [Define chat protocol]
+SWIMLANE: Planning Chat UI                                       [Planning]
+ [Refine Feature]
 ```
 
-The Ideas List in INDEX.md shows: Agent Execution Engine, Git Integration, RAG & Storage, Feedback UI — ready to be promoted to features when the user is ready.
+Each Refine Feature task sits in the **Refine Spec** workflow stage, waiting for the user to begin spec refinement.
 
-Each task card shows its title, assigned agent, and feature tag.
+### Act 3: Refine Feature — Task Decomposition
 
-### Act 3: First Agent Run — Spec Refinement
+The user clicks the **Refine Feature** card for "Core Server & API." The Task Detail Panel (F3) slides out — a full Chat Interface scoped to this task, with the feature spec as its artifact.
 
-The user clicks **"Define data models"**. The task detail panel slides out showing:
-- **Stage:** Refine Spec
-- **Agent:** Claude Code (auto)
-- **Prompt template:** "Given the project spec and feature spec for {feature}, define the data models for: {task_description}"
-- **Context:** Project spec + Feature spec for "Core Server & API"
+The planning agent proposes a task breakdown and dependency graph:
 
-The user clicks **"Run Agent"**. PCT creates a git branch and worktree, then invokes Claude Code. The user watches the agent's raw messages stream in real-time.
+> **Agent:** For Core Server & API, I propose the following tasks:
+> 1. Define data models (no dependencies)
+> 2. Design API routes (depends on #1)
+> 3. Setup project scaffold (no dependencies)
+>
+> Here's the dependency graph and detailed specs for each...
 
-The agent produces a spec proposing SQLAlchemy ORM models. The user opens the raw message inspector, sees the full conversation, and clicks **Reject**:
+The user reviews, edits the specs, and approves. PCT creates the three tasks on the board, each entering at **Refine Spec**. The Refine Feature task itself completes — the feature transitions from **Planning** to **Active**. The swimlane header updates:
+
+```
+SWIMLANE: Core Server & API                                       [Active]
+ [Define data models]  [Design API routes (blocked)]  [Setup scaffold]
+```
+
+"Design API routes" shows with reduced opacity — it depends on "Define data models" and cannot proceed until that task completes.
+
+### Act 4: First Agent Run — Spec Refinement
+
+The user clicks **"Define data models"** in Refine Spec. The Task Detail Panel shows the assembled context in the inspector: project spec, feature spec, task spec — plus RAG-injected history (empty for now, this is the first task). The agent selector shows Claude Code (the Refine Spec stage's configured default).
+
+The user clicks **Run Agent**. The agent's response streams token-by-token via SSE. It proposes SQLAlchemy ORM models. The user clicks **Reject** and provides feedback:
 
 > **User feedback:** "Don't use SQLAlchemy. We're doing local file storage. Rethink as Pydantic models persisted to JSON files."
 
-PCT stores the rejection, re-runs the agent with the original context plus the full rejection history. The agent revises. User approves. Card advances to **Implement**.
+The rejection and feedback are stored. PCT re-runs the agent with the full retry history: original context + first attempt + rejection feedback. The agent revises its approach, proposing Pydantic models with JSON persistence. The user approves. The task advances to **Implement** — the per-stage context window clears, and the artifact (`main.md`) carries the approved spec forward.
 
-### Act 4: Parallel Work
+### Act 5: Parallel Execution
 
-Three tasks are now ready for implementation:
+"Setup scaffold" has also been refined and approved. Two tasks are now in Implement. The user also enters Implement on a manual task:
 
 ```
- Implement
- [Data models] .......  Agent: Claude Code (running)
- [Scaffold] ..........  Agent: User (manual)
- [Component tree] ....  Agent: Claude Code (running)
+SWIMLANE: Core Server & API                                       [Active]
+ Refine Spec        | Implement
+                      [Data models] ......  Claude Code (running)
+                      [Scaffold] .........  User (manual)
+
+SWIMLANE: React Frontend — Kanban                                 [Active]
+ Refine Spec        | Implement
+                      [Component tree] ..  Claude Code (running)
 ```
 
-Two LLM agents run in parallel in separate worktrees. The user works on the scaffold manually. The Kanban updates in real-time — spinning indicators on agent tasks, a user icon on the manual task.
+F4 launches two LLM agents in parallel, each in an isolated git worktree (F5). The user works on the scaffold manually. The Kanban updates in real-time — spinning indicators on agent tasks, a user icon on the manual task.
 
-The user clicks into the running "Data models" task and watches the raw LLM conversation. They notice the agent heading in a wrong direction and click **Interrupt**. The agent stops. The user adds guidance and re-runs.
+The user clicks into the running "Data models" task and watches the agent's output stream. They notice the agent heading in a wrong direction and click **Interrupt**. The agent completes its current generation step and stops. The user adds guidance in the chat and re-runs.
 
-### Act 5: Code Review — Agent Reviews Agent
+### Act 6: Code Review — Agent Reviews Agent
 
-"Data models" implementation completes and auto-advances through Feature Test (pytest passes) to **Code Review**.
+"Data models" completes implementation. The user approves, and the task advances through **Feature Test** (Auto-Run is off, so the user triggers the test agent manually — pytest passes) to **Code Review**.
 
-The review stage uses a **different agent and prompt** — configured to check correctness, adherence to project conventions, and spec compliance. The reviewing agent flags:
+The Code Review stage uses a **different agent** — configured in F10 to use a review-focused prompt template. The agent reviews the implementation against the spec:
 
-> "The Task model is missing a `status_history` field mentioned in the spec."
+> **Review Agent:** The Task model is missing a `status_history` field mentioned in the spec. The JSON serialization helper doesn't handle datetime fields.
 
-The task stays in Code Review. The user sees the review, agrees, and sends the task **back to Implement** with the review feedback attached. The implementing agent receives the full history (original spec, first implementation, review feedback) and produces a corrected version.
+The task stays in Code Review. The user agrees with the findings and clicks **Send Back to Stage → Implement**. The Implement stage's context window is **restored in full** — all messages from the previous implementation session reappear. The review feedback is added to the retry history. The agent receives everything: original spec, prior implementation, review feedback.
 
 The corrected version passes review. The task advances to **User Approval**.
 
-### Act 6: Swimlane Suspension & Impact Analysis
+### Act 7: Spec Change & Impact Analysis
 
-While tasks are flowing, the user realizes the API design needs WebSockets instead of REST polling.
+While tasks are flowing, the user realizes the API design needs WebSockets instead of REST polling. They open the feature spec for "Core Server & API" and edit it directly — **no suspension required** (Feature Lifecycle, line 76).
 
-> **User clicks "Suspend" on "Core Server & API".**
-
-PCT immediately:
-1. Halts running agents on the swimlane (graceful stop — agents complete current generation step and write checkpoint notes)
-2. The swimlane displays with muted/warning treatment — tasks are visually marked as paused
-3. Auto-execution is disabled; no agents auto-run on new or waiting tasks
-
-The user is **not locked out**. They open the feature's Refine Feature task in the Task Detail Panel and edit the feature spec to incorporate WebSockets. They can also chat with agents, review existing work, and drag tasks between stages — all while the swimlane is suspended.
-
-After updating the spec, the user clicks **"Analyze Impact"** from the swimlane header. PCT runs impact analysis — an LLM-powered consistency check that compares the updated spec against each task's spec and outputs. Results stream in a modal:
+After saving, PCT offers to run impact analysis. The user accepts. PCT runs **Impact Analysis** (F8) — an LLM-powered comparison of the updated spec against each task's spec and outputs. Results stream in a modal via SSE:
 
 > **Impact Analysis — Core Server & API:**
-> - "Design API routes" — **Contradicted**: spec now requires WebSocket endpoints, task output uses REST
-> - "Setup scaffold" — **Possibly affected**: may need WebSocket dependencies
+> - "Design API routes" — **Contradicted**: spec now requires WebSocket endpoints, task output uses REST only
+> - "Setup scaffold" — **Possibly affected**: may need WebSocket dependencies added
 > - "Define data models" — **Unchanged**: data models are transport-agnostic
 >
-> **Actions:** [Restart] [Flag] [Dismiss] per task — [Restart all contradicted] [Dismiss all unchanged]
+> **Actions:** [Restart] [Flag] [Dismiss] per task
 
-The user clicks "Restart all contradicted" and dismisses the unchanged task. Affected tasks are sent back to Refine Spec with updated context. The user clicks **Resume** — auto-execution re-enables and agents pick up where they left off.
+The user clicks **"Restart all contradicted"** — the API routes task is sent back to Refine Spec with the updated feature spec in its context. They dismiss the unchanged task and flag the scaffold for review.
 
-### Act 7: Merge, Test, Push
+### Act 8: Merge Through Push
 
-"Design component tree" (Frontend) completes all stages and reaches **Merge**:
+"Design component tree" (React Frontend) has passed all stages. It reaches **Merge**:
 
-1. PCT runs `git merge feature/frontend/component-tree` into the development branch
-2. No conflicts — merge succeeds
-3. **Full Test Suite** runs — all tests pass
-4. **Refactoring Check** — an agent scans the merged code, finds no issues (or spawns new tasks if it does)
-5. Card reaches **Push** — PCT prompts the user for confirmation
+1. **Merge** — PCT merges the task's worktree branch into the feature branch. No conflicts.
+2. **Full Test Suite** — the complete project test suite runs post-merge. All tests pass.
+3. **Refactoring Check** — an agent scans the merged code for refactoring opportunities. It finds a duplicated utility function and spawns a new task back at Refine Spec.
+4. **Push** — the user confirms, and PCT pushes to the remote.
 
-> **User clicks Push.**
+The task card moves to the completed archive. F4 triggers an incremental RAG re-index of the changed files so subsequent agents see the completed work.
 
-The branch is pushed. The card moves to the completed archive.
+### Act 9: RAG in Action
 
-### Act 8: RAG in Action
+Later, the user promotes **"Agent Execution Engine"** from the Ideas List in INDEX.md. PCT creates the feature directory, a Refine Feature task, and adds the swimlane in **Planning** stage.
 
-Later, the user promotes the "Agent Execution Engine" idea from the Ideas List, creating a new feature and swimlane. A task for "implement agent abstraction layer" enters Refine Spec.
+The user runs the Refine Feature task. PCT's context assembly pipeline (F4) queries RAG (F6), which injects relevant history:
 
-PCT's RAG automatically injects into the agent's context:
+> *Related prior work: The "Define data models" task went through 2 iterations. The first was rejected for using SQLAlchemy — the approved approach uses Pydantic models with JSON persistence. Relevant models: Project, Feature, Task, Agent [excerpts]. The API feature was revised mid-project to use WebSockets — see updated feature spec. The "Design component tree" task produced a React component hierarchy [excerpt].*
 
-> *Related prior work: The data model task went through 2 iterations. The first was rejected for using SQLAlchemy — the approved approach uses Pydantic models with JSON persistence. Relevant models: [excerpts]. The API was revised mid-project to use WebSockets — see updated feature spec.*
+The planning agent starts with the right assumptions because it has access to the project's full history — including the mistakes and revisions.
 
-The agent starts with the right assumptions because it learned from the project's history — including the mistakes.
+### Act 10: Prompt Curation & Training
 
-### Act 9: Prompt Curation
+After several features, the user notices agents keep proposing overly complex solutions. They open the **Feedback & Training UI (F7)**. In the Training Data tab, they browse negative examples flagged during earlier interactions, filter by the `completeness` annotation category, and spot the pattern.
 
-After several features, the user notices agents keep proposing overly complex solutions. They open the **Feedback & Training UI**, browse negative examples, and spot the pattern. They edit the base prompt template:
+First, they open the **Prompt Templates** tab and edit the project-level agent instructions:
 
-> *Added to project-level agent instructions: "Prefer simple, minimal implementations. Avoid ORMs, complex abstractions, and over-engineering. Use Pydantic models with JSON file persistence unless explicitly directed otherwise."*
+> *"Prefer simple, minimal implementations. Avoid ORMs, complex abstractions, and over-engineering. Use Pydantic models with JSON file persistence unless explicitly directed otherwise."*
 
-All future agent invocations inherit this updated instruction. The user also selects 5 rejected examples and 5 approved examples and kicks off a LoRA fine-tuning run to bake this preference into the local model.
+All future agent invocations inherit this updated instruction — both local and remote models.
+
+For the local model, the user goes further. They select 5 rejected examples and 5 approved examples in the Training Data tab, curate each one (editing responses to be ideal), and add them to a dataset called "simplicity-preferences" in the Datasets tab. In the Training tab, they select the local Llama model from the Model Registry, choose KTO as the training method (auto-suggested since the dataset has both positive and negative examples), and kick off a LoRA fine-tuning run.
+
+Training completes. In the Evaluation tab, the user runs an A/B comparison — base model vs. base+LoRA on test prompts. The LoRA consistently produces simpler, more focused responses. The user accepts the LoRA and creates a new agent combining the base model with the trained adapter. The new agent is immediately available in all agent dropdowns throughout the project.
 
 ---
 
@@ -604,16 +817,16 @@ All future agent invocations inherit this updated instruction. The user also sel
 | State | Interface |
 |-------|-----------|
 | Project kickoff | Planning Window (full Chat Interface with INDEX.md artifact) — no Kanban |
-| First launch (uninitialized) | Redirects to Settings page for initial project configuration |
+| First launch (uninitialized) | Redirects to Project Configuration Page (F10) for initial project configuration |
 | Planning complete | Planning Window sidebar + Kanban board (main view) |
 | Task detail | Resizable slide-out Task Detail Panel (full Chat Interface scoped to task, plus header with artifact type, cross-refs) |
-| Agent running | Live SSE streaming + streaming indicator + stop button (same in both Planning Window and Task Detail) |
+| Agent running | Live SSE streaming + streaming indicator + Interrupt button (same in both Planning Window and Task Detail) |
 | Feature analysis | Modal with streaming analysis output, suggested tasks with create buttons |
 | Swimlane suspended | Swimlane tasks shown with muted/warning treatment. User can still interact. Auto-execution paused. |
 | Impact analysis running | Modal with streaming analysis output, per-task findings with action buttons |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
-| Feedback/training | Dedicated view: example browser, prompt editor, training controls |
-| Project configuration | Settings page with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
+| Feedback/training | Dedicated view with 5 tabs: Training Data (browser + curation), Datasets (named collections + validation), Training (LoRA config + monitoring), Evaluation (A/B comparison), Prompt Templates (versioned editor) |
+| Project configuration | Project Configuration Page (F10) with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
 
 ---
 
@@ -624,5 +837,5 @@ All future agent invocations inherit this updated instruction. The user also sel
 3. **Context continuity** — Project knowledge accumulates and is shared. Agents learn from the project's history, including mistakes.
 4. **Project-type agnostic** — The core workflow (plan, decompose, execute, review, iterate) works for code, content, and creative projects alike.
 5. **Local-first** — Runs on the user's machine. No cloud dependency required (though remote LLM APIs are supported).
-6. **Configurable workflow** — Stages, agents, auto-advance rules, and approval gates are all configurable per project, feature, and task type.
+6. **Configurable workflow** — Stages, agents, auto-advance rules, and approval gates are all configurable per project and task type. Users can override the active agent per task in the chat input.
 7. **Worktree-transparent tooling** — Agents and tools operate against `$PCT_PROJECT_ROOT` (the worktree directory during execution, the main tree otherwise). Tools use relative paths or this variable, never hardcoded repo locations. This makes worktree isolation invisible to agents — they see a normal git checkout.
