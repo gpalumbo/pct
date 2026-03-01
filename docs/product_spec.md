@@ -29,21 +29,20 @@ Features have their own lifecycle stages, separate from the task workflow stages
 
 | Feature Stage | Description |
 |--------------|-------------|
-| **Backlog** | Feature spec exists but no task breakdown yet. Not visible on the Kanban board. |
-| **Planning** | Feature is being decomposed into tasks via the planning chat. The planning agent proposes a task breakdown and dependency graph; the user reviews and edits specs at any level (project, feature, task). Feature moves to Active only when the user approves the spec and task breakdown. |
-| **Active** | Tasks are flowing through the Kanban workflow. The swimlane header shows progress (e.g., `[Active — 4/7 tasks complete]`). |
-| **Suspended** | All agents halted, in-flight state preserved. Planning chat reopens scoped to this feature for re-specification. On resume, impact analysis identifies affected tasks. (See F8.) |
+| **Planning** | Feature has been created with a Refine Feature task. The planning agent (via the Refine Feature task in the Task Detail Panel) proposes a task breakdown and dependency graph; the user reviews and edits specs. Feature moves to Active when the Refine Feature task completes. |
+| **Active** | Tasks are flowing through the Kanban workflow. Swimlane header shows progress. |
+| **Suspended** | Auto-execution paused on this swimlane. No agents auto-run. User can still open tasks, chat with agents, and manually trigger runs. Tasks display with a visual warning treatment. On resume, auto-execution re-enables. (See F8.) |
 | **Integration Test** | All tasks in the feature have completed the task workflow. A feature-level agent run verifies that all merged task outputs work together. If integration testing fails, new tasks are spawned back at Refine Spec. |
 | **Complete** | Feature has passed integration testing. Swimlane moves to the completed archive. |
 
-The feature lifecycle governs **when decomposition and re-planning happen**: specs are created and edited during the Planning and Suspended stages. Mid-flight spec changes require suspending the feature first.
+The feature lifecycle governs **when decomposition and re-planning happen**: specs are created and refined via the Refine Feature task during the Planning stage. Mid-flight spec changes do not require suspending — the user can edit specs at any time and run impact analysis independently (see F8).
 
 ### Task
 A single unit of work within a feature. Tasks flow through the Kanban workflow stages. Each task is assigned to an **agent** (LLM or user) and executes within a specific context assembled from the project spec, feature spec, RAG history, and prior attempts.
 
 Tasks support **explicit dependencies** — both within a feature and across features. The planning agent proposes an initial dependency graph during task decomposition; the user can review and edit it. Tasks with unmet dependencies remain blocked in their current column. Cross-feature dependencies are modeled as task-level blocks across swimlanes (e.g., "Task X in Feature B is blocked by Task Y in Feature A").
 
-Tasks can be added mid-flight to an active swimlane — by the user manually, or by agents (e.g., the refactoring-check agent or integration test failures spawning new tasks). New tasks always enter at the Refine Spec workflow stage.
+Tasks can be added mid-flight to an active swimlane — by the user manually, or by any agent during execution. Any agent can create new tasks during execution (e.g., a code review agent spawning a bug-fix task, a planning agent spawning feature tasks, or integration test failures generating regression tasks). New tasks always enter at the Refine Spec workflow stage.
 
 ### Agent
 A standalone, named configuration that defines an executor. An agent can be:
@@ -176,11 +175,13 @@ The entry point for every project. A **Chat Interface** (see above) where the us
 - Initial task decomposition
 
 The Planning Window is also used when:
-- A new feature is being specified
-- A swimlane is suspended for re-planning (scoped to that feature)
-- The user wants to revise the project or feature spec mid-flight
+- A new feature is being specified (project-level planning that creates features)
+- The user wants to revise the project-level spec
 
 The planning conversation becomes part of the project's permanent context. There is no Kanban board until planning produces features and tasks. Once the Kanban board appears, the Planning Window persists as a sidebar.
+
+**Ideas List:**
+The Planning Window's artifact (INDEX.md) maintains a running list of potential features and concepts — the project's "someday/maybe" list. Each idea is a lightweight text entry (title + brief description), not a feature — no directory, no tasks. Ideas serve as a holding area for concepts that haven't been committed to yet. When the user decides to pursue an idea, a "Create Feature" action promotes it: creates the feature directory, generates the Refine Feature task, and adds the swimlane to the Kanban board. The idea entry in INDEX.md is updated to reference the created feature.
 
 **Main artifact — `work/INDEX.md`:**
 The Planning Window's artifact section displays the **project index** — an auto-generated markdown file that serves as the master reference for all work in the project. The index contains:
@@ -204,10 +205,11 @@ Capabilities:
 - Real-time updates as agents complete work
 - **Drag-and-drop** for manual task movement with **stage skip confirmation** — moving a task to a non-adjacent stage shows a confirmation modal listing the skipped stages
 - **Cross-feature task reassignment** — dragging a task to a different swimlane reassigns it to that feature
-- Swimlane controls: activate, suspend, resume
+- Swimlane controls: suspend/resume toggle
+- **Priority ordering** — swimlanes are drag-to-reorder. Position = priority. Higher = more important. Priority ordering is persisted to project configuration.
+- **Auto-collapse** — swimlanes below a configurable threshold (default: top 5) are collapsed to headers only. User can expand any swimlane or adjust the threshold.
 - **Swimlane collapse/expand** — each swimlane can be collapsed to save space, with state persisted across navigation
 - **Cross-swimlane dependency indicators** — visual links showing when a task in one feature is blocked by a task in another feature
-- **Backlog view** with **activate buttons** for promoting features to active status
 - Completed archive for finished tasks
 - **Filtering** — multi-select feature filter, toggles for suspended/complete feature visibility
 - **Inline task creation** — add tasks directly from the swimlane header, with artifact type inferred from existing tasks in the feature
@@ -220,8 +222,8 @@ Capabilities:
   - Feature title and lifecycle stage badge (color-coded)
   - Progress indicator (completed tasks / total tasks)
   - Add Task button
-  - **Analyze dropdown** — triggers Gap Analysis or Continuity Check (see below)
-  - Suspend/Resume toggle
+  - **Analyze dropdown** — triggers Gap Analysis, Continuity Check, or Impact Analysis (see below and F8)
+  - Suspend/Resume toggle — suspended swimlanes display with a visual warning treatment (muted colors + suspended badge)
 - **Feature Analysis Tools** (accessible from swimlane header):
   - **Gap Analysis** — an LLM-powered analysis that identifies missing tasks within a feature, streamed via SSE. Results include suggested tasks with title, feature, artifact type, and reasoning. Each suggestion has a one-click "Create" button.
   - **Continuity Check** — verifies narrative/specification consistency within a feature, also streamed via SSE with the same suggestion format.
@@ -284,12 +286,56 @@ Dedicated interface for improving agent quality over time:
 - **A/B comparison**: view before/after when a prompt template or LoRA is updated
 
 ### F8: Swimlane Management
-Controls for parallel workstream management:
-- **Activate**: start a feature from the backlog, create initial tasks
-- **Suspend**: immediately halt all running agents on the swimlane, preserve in-flight task state, open the planning chat scoped to this feature for re-specification
-- **Resume**: restart suspended tasks (optionally clearing state and restarting from an earlier stage)
-- **Clear & Restart**: invalidate all in-flight tasks on a swimlane and restart them from Refine Spec with updated context
-- **Impact analysis on resume**: PCT identifies which tasks may be affected by spec changes during suspension
+Controls for parallel workstream management, feature prioritization, and project consistency.
+
+**Ideas List:**
+A running list of potential features maintained in the Planning Window's artifact (INDEX.md). Each idea is a lightweight text entry (title + description) — not a feature, no directory, no tasks. Ideas serve as the project's "someday/maybe" list. When the user decides to pursue an idea, a "Create Feature" action promotes it: creates the feature directory, generates the Refine Feature task, and adds the swimlane to the Kanban board. The idea entry in INDEX.md is updated to reference the created feature.
+
+**Feature Priority & Ordering:**
+Swimlanes on the Kanban board are ordered by priority via drag-to-reorder. Position determines priority — top swimlanes are highest priority. Swimlanes below a configurable threshold (default: top 5) are auto-collapsed to header-only view. Users can expand any swimlane or adjust the collapse threshold. Priority ordering is persisted to project configuration.
+
+**Feature Creation:**
+Features are created either by promoting an idea from the Ideas List, or directly from the Planning Window. On creation:
+1. Feature directory is created at `work/{feature_id}/`
+2. A **Refine Feature** task is auto-created — this is the canonical planning mechanism for the feature
+3. The swimlane appears on the Kanban board in Planning stage
+4. The Refine Feature task opens in the Task Detail Panel for the user to begin spec refinement
+
+The Refine Feature task uses the standard Task Detail Panel and workflow stages. The planning agent proposes task breakdowns as part of the spec refinement; approved tasks are created on the board. When the Refine Feature task completes, the feature transitions to Active.
+
+**Suspend (pause toggle):**
+Pauses auto-execution on a swimlane. When suspended:
+- Agents with Auto-Run enabled do not start on new or waiting tasks
+- Currently running agents are halted (graceful stop — agent completes current generation step, writes a checkpoint note, then stops)
+- User activity is **not blocked** — the user can still open tasks, chat with agents, manually trigger agent runs, approve/reject work, and drag tasks between stages
+- Tasks in suspended swimlanes display with a **visual warning treatment** (muted colors + suspended badge) so the user knows they're working in a paused feature
+- Resume re-enables auto-execution; agents with Auto-Run pick up where they left off
+
+**Project-wide Suspend:**
+A global pause button that suspends all active swimlanes simultaneously. Same mechanics as per-swimlane suspend, applied globally. Resume can be global or per-swimlane.
+
+**Impact Analysis (consistency check):**
+A general-purpose mechanism for detecting when in-flight or completed work has drifted from current specs. Impact analysis is an LLM-powered agent that compares the current state of project/feature specs against each task's spec, context, and outputs.
+
+*Trigger points:*
+- **On spec edit** — when a project or feature spec is saved, PCT offers to run impact analysis on affected features
+- **On merge** — after a task merges, optionally check whether the merged output shifts assumptions for other in-flight tasks
+- **Ad-hoc** — user triggers "Analyze Impact" from the swimlane header (or project-wide from the Planning Window) at any time
+- **On resume** — if specs changed while a swimlane was suspended, PCT prompts for impact analysis (but does not require it)
+
+*Analysis output:*
+Results are presented in a modal (similar to Gap Analysis / Continuity Check in F2), streamed via SSE. Each finding includes:
+- The affected task and its current stage
+- Severity: **Contradicted** (spec directly conflicts with task output/spec), **Possibly affected** (related changes that may need review), **Unchanged** (confirmed consistent)
+- Explanation of the inconsistency
+- Suggested action: Restart from Refine Spec, Flag for review, No action needed
+
+*User response:*
+The user reviews findings and selects per-task actions:
+- **Restart** — task is sent back to Refine Spec with updated context
+- **Flag** — task gets a visual indicator that it needs review but continues in its current stage
+- **Dismiss** — no action, finding is acknowledged
+- **Bulk actions** — "Restart all contradicted" / "Dismiss all unchanged" for efficiency
 
 ### F9: Session & Project Management
 - **Project creation** — on first launch (or when creating a new project), PCT redirects to the **Project Configuration page (F10)** for initial setup:
@@ -385,7 +431,7 @@ After several exchanges, the planning agent proposes a project specification and
 >
 > Shall I create the Kanban with these as swimlanes?
 
-> **User:** Yes, but start with features 1-3 as active. Keep 4-7 in the backlog.
+> **User:** Yes, create features 1-3 now. Add 4-7 to the Ideas List — we'll promote them later.
 
 ### Act 2: The Kanban Appears
 
@@ -403,9 +449,9 @@ SWIMLANE: React Frontend — Kanban                                   [Active]
 
 SWIMLANE: Planning Chat UI                                          [Active]
  [Define chat protocol]
-
-BACKLOG: Agent Execution Engine, Git Integration, RAG & Storage, Feedback UI
 ```
+
+The Ideas List in INDEX.md shows: Agent Execution Engine, Git Integration, RAG & Storage, Feedback UI — ready to be promoted to features when the user is ready.
 
 Each task card shows its title, assigned agent, and feature tag.
 
@@ -452,27 +498,29 @@ The task stays in Code Review. The user sees the review, agrees, and sends the t
 
 The corrected version passes review. The task advances to **User Approval**.
 
-### Act 6: Swimlane Suspension
+### Act 6: Swimlane Suspension & Impact Analysis
 
 While tasks are flowing, the user realizes the API design needs WebSockets instead of REST polling.
 
 > **User clicks "Suspend" on "Core Server & API".**
 
 PCT immediately:
-1. Halts all running agents on the swimlane
-2. Preserves in-flight task state
-3. Grays out the swimlane
-4. Opens the planning chat scoped to this feature
+1. Halts running agents on the swimlane (graceful stop — agents complete current generation step and write checkpoint notes)
+2. The swimlane displays with muted/warning treatment — tasks are visually marked as paused
+3. Auto-execution is disabled; no agents auto-run on new or waiting tasks
 
-The user revises the feature spec with the planning agent. When done, PCT runs impact analysis:
+The user is **not locked out**. They open the feature's Refine Feature task in the Task Detail Panel and edit the feature spec to incorporate WebSockets. They can also chat with agents, review existing work, and drag tasks between stages — all while the swimlane is suspended.
 
-> **PCT:** These tasks may be affected by the spec change:
-> - "Design API routes" — directly contradicted
-> - "Setup scaffold" — may need WebSocket dependencies
+After updating the spec, the user clicks **"Analyze Impact"** from the swimlane header. PCT runs impact analysis — an LLM-powered consistency check that compares the updated spec against each task's spec and outputs. Results stream in a modal:
+
+> **Impact Analysis — Core Server & API:**
+> - "Design API routes" — **Contradicted**: spec now requires WebSocket endpoints, task output uses REST
+> - "Setup scaffold" — **Possibly affected**: may need WebSocket dependencies
+> - "Define data models" — **Unchanged**: data models are transport-agnostic
 >
-> Clear and restart? [Yes / Selective / No]
+> **Actions:** [Restart] [Flag] [Dismiss] per task — [Restart all contradicted] [Dismiss all unchanged]
 
-The user selects "Yes." Affected tasks reset to Refine Spec with updated context. Swimlane resumes.
+The user clicks "Restart all contradicted" and dismisses the unchanged task. Affected tasks are sent back to Refine Spec with updated context. The user clicks **Resume** — auto-execution re-enables and agents pick up where they left off.
 
 ### Act 7: Merge, Test, Push
 
@@ -490,7 +538,7 @@ The branch is pushed. The card moves to the completed archive.
 
 ### Act 8: RAG in Action
 
-Later, the "Agent Execution Engine" feature is activated from the backlog. A task for "implement agent abstraction layer" enters Refine Spec.
+Later, the user promotes the "Agent Execution Engine" idea from the Ideas List, creating a new feature and swimlane. A task for "implement agent abstraction layer" enters Refine Spec.
 
 PCT's RAG automatically injects into the agent's context:
 
@@ -518,7 +566,8 @@ All future agent invocations inherit this updated instruction. The user also sel
 | Task detail | Resizable slide-out Task Detail Panel (full Chat Interface scoped to task, plus header with artifact type, cross-refs) |
 | Agent running | Live SSE streaming + streaming indicator + stop button (same in both Planning Window and Task Detail) |
 | Feature analysis | Modal with streaming analysis output, suggested tasks with create buttons |
-| Swimlane suspended | Grayed swimlane + Planning Window opens scoped to feature |
+| Swimlane suspended | Swimlane tasks shown with muted/warning treatment. User can still interact. Auto-execution paused. |
+| Impact analysis running | Modal with streaming analysis output, per-task findings with action buttons |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
 | Feedback/training | Dedicated view: example browser, prompt editor, training controls |
 | Project configuration | Settings page with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
