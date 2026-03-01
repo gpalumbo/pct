@@ -3,6 +3,49 @@
 
 ---
 
+## Table of Contents
+
+1. [Vision](#1-vision)
+2. [Core Concepts](#2-core-concepts)
+   - [Project](#project)
+   - [Feature](#feature)
+   - [Feature Lifecycle](#feature-lifecycle)
+   - [Task](#task)
+   - [Agent](#agent)
+   - [Model Registry](#model-registry)
+   - [LoRA Registry](#lora-registry)
+   - [Workflow Stage (Kanban Column)](#workflow-stage-kanban-column)
+   - [Context](#context)
+   - [Feedback Loop](#feedback-loop)
+3. [Features](#3-features)
+   - [Chat Interface (shared foundation)](#chat-interface-shared-foundation)
+   - [Artifact Strategy (shared foundation)](#artifact-strategy-shared-foundation)
+   - [F1: Planning Window](#f1-planning-window)
+   - [F2: Kanban Board with Swimlanes](#f2-kanban-board-with-swimlanes)
+   - [F3: Task Detail Panel](#f3-task-detail-panel)
+   - [F4: Agent Execution Engine](#f4-agent-execution-engine)
+   - [F5: Git Integration](#f5-git-integration)
+   - [F6: RAG & Task History](#f6-rag--task-history)
+   - [F7: Feedback & Training UI](#f7-feedback--training-ui)
+   - [F8: Swimlane Management](#f8-swimlane-management)
+   - [F9: Session & Project Management](#f9-session--project-management)
+   - [F10: Project Configuration Page](#f10-project-configuration-page)
+   - [F11: Image Generation](#f11-image-generation)
+4. [User Narrative: Building PCT with PCT](#4-user-narrative-building-pct-with-pct)
+   - [Act 1: Project Kickoff](#act-1-project-kickoff)
+   - [Act 2: The Kanban Appears](#act-2-the-kanban-appears)
+   - [Act 3: First Agent Run — Spec Refinement](#act-3-first-agent-run--spec-refinement)
+   - [Act 4: Parallel Work](#act-4-parallel-work)
+   - [Act 5: Code Review — Agent Reviews Agent](#act-5-code-review--agent-reviews-agent)
+   - [Act 6: Swimlane Suspension & Impact Analysis](#act-6-swimlane-suspension--impact-analysis)
+   - [Act 7: Merge, Test, Push](#act-7-merge-test-push)
+   - [Act 8: RAG in Action](#act-8-rag-in-action)
+   - [Act 9: Prompt Curation](#act-9-prompt-curation)
+5. [UI States Summary](#5-ui-states-summary)
+6. [Design Principles](#6-design-principles)
+
+---
+
 ## 1. Vision
 
 PCT is a local-first project management tool that uses LLM agents to plan, execute, review, and iterate on project tasks. It replaces the traditional "human does everything" workflow with a hybrid model where configurable AI agents handle tasks across a Kanban board, with the user maintaining full transparency and control.
@@ -335,7 +378,7 @@ The user reviews findings and selects per-task actions:
 - **Restart** — task is sent back to Refine Spec with updated context
 - **Flag** — task gets a visual indicator that it needs review but continues in its current stage
 - **Dismiss** — no action, finding is acknowledged
-- **Bulk actions** — "Restart all contradicted" / "Dismiss all unchanged" for efficiency
+- **Bulk actions** — "Restart A" / "Restart all contradicted or possibly affected" / "Dismiss all unchanged" / "Dismiss All" for efficiency
 
 ### F9: Session & Project Management
 - **Project creation** — on first launch (or when creating a new project), PCT redirects to the **Project Configuration page (F10)** for initial setup:
