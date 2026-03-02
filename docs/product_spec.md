@@ -48,6 +48,10 @@
    - [Act 10: Prompt Curation & Training](#act-10-prompt-curation--training)
 5. [UI States Summary](#5-ui-states-summary)
 6. [Design Principles](#6-design-principles)
+7. [Project Types & Templates](#7-project-types--templates)
+   - [Coding](#coding)
+   - [Writing (World Building + Story)](#writing-world-building--story)
+   - [Future Templates](#future-templates)
 
 ---
 
@@ -123,8 +127,9 @@ The stages a task passes through. The Kanban columns **are** the workflow stages
 | **Full Test Suite** | Run the complete project test suite post-merge | Automated |
 | **Refactoring Check** | Agent scans for refactoring opportunities, may spawn new tasks | LLM |
 | **Push** | Push to remote | Automated / User |
+| **Done** | Terminal stage — task is complete and archived | — |
 
-Not all stages apply to every project type. PCT provides **workflow templates** per project type with sensible defaults for which stages are active and what agents do at each stage. Workflow stages are configurable per project via the Project Configuration page (F10).
+The table above is a **reference catalog** of built-in stages. Not all stages apply to every project type. PCT provides **workflow templates** per project type with sensible defaults for which stages are active and what agents do at each stage (see Section 7 — Project Types & Templates). Workflow stages are configurable per project via the Project Configuration Page (F10).
 
 Each stage maintains its own **per-stage context window** — the chat history between the user/agent at that stage is stored independently. When a task advances, the context window clears for the new stage; when a task is sent back, the previous stage's context is restored. See "Stage transition behavior" in the Chat Interface section for details.
 
@@ -199,8 +204,8 @@ The Artifact Strategy governs how work products are organized, stored, and merge
 
 **Feature-level documents**
 Each feature will have one central document.  It may have others.  The documents will be kept directly under the directory `work/{feature_id}/`.  The action that created the feature will create this directory and at least one main file as described below.  The file should have at least a main Header and feature overview.  It will also create at least one task called "Refine Feature" that is expected to be used to refine the purpose and tasks of this feature with associated sub-headers for each task.  This is not a hard limit.  The planning process may create more sections and tasks if the information is available. In addition other tasks may alter the feature by adding dependencies and/or sections/tasks.
-- **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document) usually named `{feature_id}.md`. This document is expected to be the final work product.
-- **Code projects** will produce a `{feature_id}.md` file that acts as a specification document.  It should also create `implementation_plan.md` which will serve as a tech spec and build plan.  This can be blank and fleshed out by "Refine Feature" task.  Code source files will live under `src/` not under `work/` 
+- **Writing/content projects** produce a single document per feature (e.g., one chapter file, one adventure document) usually named `{feature_id}.md`. This document is expected to be the final work product. See Section 7 — Writing template for artifact types and initial features.
+- **Code projects** will produce a `{feature_id}.md` file that acts as a specification document.  It should also create `implementation_plan.md` which will serve as a tech spec and build plan.  This can be blank and fleshed out by "Refine Feature" task.  Code source files will live under `src/` not under `work/`. See Section 7 — Coding template for workflow stages and initial features.
 
 **Task work directory:**
 Each task has a dedicated work directory at `work/{feature_id}/{task_id}/`. This directory provides naming isolation and contains all artifacts produced during the task:
@@ -258,7 +263,7 @@ Capabilities:
 - **Auto-collapse** — swimlanes below a configurable threshold (default: top 5) are collapsed to headers only. User can expand any swimlane or adjust the threshold.
 - **Swimlane collapse/expand** — each swimlane can be collapsed to save space, with state persisted across navigation
 - **Cross-swimlane dependency indicators** — visual links showing when a task in one feature is blocked by a task in another feature
-- Completed archive for finished tasks
+- **Completed archive** — features in the **Complete** lifecycle stage are moved to a collapsible "Completed" section at the bottom of the board, auto-collapsed by default. The section header shows the count of completed features. Expanding it reveals completed swimlanes in read-only mode (tasks visible but not draggable). Individual completed features can be expanded to inspect their task history and artifacts.
 - **Filtering** — multi-select feature filter, toggles for suspended/complete feature visibility
 - **Inline task creation** — add tasks directly from the swimlane header, with artifact type inferred from existing tasks in the feature
 - **Task card visual indicators:**
@@ -580,7 +585,7 @@ The user reviews findings and selects per-task actions:
 
 ### F9: Session & Project Management
 - **Project creation** — on first launch (or when creating a new project), PCT redirects to the **Project Configuration page (F10)** for initial setup:
-  1. **Project template selector** — choose a project type template that pre-populates workflow stages, default agents, artifact types, and stage prompt templates. Built-in templates include Coding, Writing, D&D Campaign, Business Deck, Research Paper, and a Blank template. Templates are JSON definitions stored in a `templates/` directory and can be user-created or community-shared.
+  1. **Project template selector** — choose a project type template (see Section 7) that pre-populates workflow stages, default agents, artifact types, and stage prompt templates.
   2. **Project name and directory** — set the project name and select/create the project directory
   3. The user can then review and customize all template-provided defaults across the F10 tabs before proceeding to the Planning Window.
 - Session persistence — close and reopen PCT without losing state
@@ -623,7 +628,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 - Define custom artifact types for task categorization. Each type has:
   - **Label** — display name (auto-generates a slugified ID)
   - **Template hint** — instructional text injected into the agent's system prompt when working on tasks of this type
-- Built-in defaults include: timeline, location, character, faction, magic-system, technology, item, story-arc, chapter, text
+- Built-in defaults are populated from the project template (see Section 7). The Writing template provides 10 artifact types; the Coding template uses the generic `text` type
 - Artifact types appear as a **color-coded dot** on task cards and as a dropdown selector in the task detail panel header
 
 All project-level settings persist to `pct.yaml` in the project repo. The Model Registry and LoRA Registry persist globally to `~/.pct/registries/`.
@@ -656,7 +661,7 @@ Image generation behavior depends on the image generation agent's provider type:
 
 ### Act 1: Project Kickoff
 
-The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration Page (F10)**. The user selects the "Coding" project template, names the project "PCT", and reviews the pre-populated settings across the six tabs — workflow stages (all nine stages enabled, Auto-Run off for all), a Claude Code agent as the default, code-oriented artifact types. After confirming, PCT opens the **Planning Window (F1)** — a Chat Interface with the INDEX.md artifact. No Kanban board yet.
+The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration Page (F10)**. The user selects the "Coding" project template (see Section 7), names the project "PCT", and reviews the pre-populated settings across the six tabs — the Coding template's 8 workflow stages (Refine Spec through Done, Auto-Run off for all), a Claude Code agent as the default, and the generic `text` artifact type. After confirming, PCT opens the **Planning Window (F1)** — a Chat Interface with the INDEX.md artifact. No Kanban board yet.
 
 > **User:** I want to build a Project Construction Tool. It's a Python/React app that uses LLM agents to execute project tasks on a Kanban board. Here's my rough idea...
 
@@ -839,3 +844,90 @@ Training completes. In the Evaluation tab, the user runs an A/B comparison — b
 5. **Local-first** — Runs on the user's machine. No cloud dependency required (though remote LLM APIs are supported).
 6. **Configurable workflow** — Stages, agents, auto-advance rules, and approval gates are all configurable per project and task type. Users can override the active agent per task in the chat input.
 7. **Worktree-transparent tooling** — Agents and tools operate against `$PCT_PROJECT_ROOT` (the worktree directory during execution, the main tree otherwise). Tools use relative paths or this variable, never hardcoded repo locations. This makes worktree isolation invisible to agents — they see a normal git checkout.
+
+---
+
+## 7. Project Types & Templates
+
+PCT uses **project templates** to pre-populate workflow stages, artifact types, initial features, and stage prompt templates when a project is created. Templates are selected during project creation (F9) via the Project Configuration Page (F10). The selected project type is stored as read-only metadata on the project. All template-provided defaults can be customized after creation.
+
+Templates are JSON definitions stored in a `templates/` directory and can be user-created or community-shared. PCT ships with the following built-in templates:
+
+### Coding
+
+For software development projects. Features produce specification documents and implementation plans under `work/`; source code lives under `src/`.
+
+**Workflow stages (8):**
+
+| # | Stage ID | Label | Prompt Template |
+|---|----------|-------|-----------------|
+| 1 | `refine-spec` | Refine Spec | — |
+| 2 | `implement` | Implement | — |
+| 3 | `feature-test` | Feature Test | — |
+| 4 | `code-review` | Code Review | — |
+| 5 | `merge` | Merge | — |
+| 6 | `full-test` | Full Test | — |
+| 7 | `push` | Push | — |
+| 8 | `done` | Done | — |
+
+**Artifact types:** Uses the generic `text` artifact type. No code-specific artifact types are defined yet.
+
+**Initial feature:** A single "Project Setup" feature (`f1-project-setup`) with four tasks:
+1. Set up project structure and dependencies
+2. Configure linting and formatting
+3. Add CI/CD pipeline
+4. Write initial README
+
+### Writing (World Building + Story)
+
+For creative writing, world building, D&D campaigns, and narrative projects. Each feature produces a single document per feature under `work/`. The workflow stages use content-oriented names with prompt templates that reference `{{artifact}}` and `{{cross_refs}}` template variables for world consistency.
+
+**Workflow stages (6):**
+
+| # | Stage ID | Label | Prompt Template |
+|---|----------|-------|-----------------|
+| 1 | `concept` | Concept | *"Help the user brainstorm and develop the core concept. Read {{artifact}} if it exists and suggest expansions."* |
+| 2 | `outline` | Outline | *"Help structure and outline the content. Reference {{cross_refs}} for world consistency."* |
+| 3 | `draft` | Draft | *"Write or expand the draft. Use {{artifact}} as the working document. Reference {{cross_refs}} for world consistency."* |
+| 4 | `revise` | Revise | *"Review {{artifact}} for quality, consistency, and completeness. Cross-check against {{cross_refs}}. Suggest specific improvements."* |
+| 5 | `polish` | Polish | *"Final polish of {{artifact}}. Fix grammar, improve prose, ensure consistency with {{cross_refs}}."* |
+| 6 | `done` | Done | — |
+
+**Artifact types (10):**
+
+| ID | Label | Template Hint (summary) |
+|----|-------|------------------------|
+| `timeline` | Timeline & History | Chronological events, cause-and-effect, historical context |
+| `location` | Location | Physical description, atmosphere, history, inhabitants |
+| `character` | Character | Appearance, personality, motivations, backstory, relationships |
+| `faction` | Faction / Organization | Founding history, goals, structure, members, alliances |
+| `magic-system` | Magic & Religion | Rules, limitations, source of power, cultural attitudes |
+| `technology` | Technology | Function, access, societal impact, limitations |
+| `item` | Item / Artifact | Physical description, origin, powers, significance |
+| `story-arc` | Story Arc | Premise, plot points, character involvement, themes |
+| `chapter` | Chapter | Narrative prose, pacing, dialogue, plot advancement |
+| `text` | Text | Generic (no template hint) |
+
+Each artifact type includes a `template_hint` — instructional text injected into the agent's system prompt when working on tasks of that type. Template hints also instruct agents to use `[[feature_id#task_id]]` WikiLinks for cross-referencing world entities.
+
+**Initial features (7):**
+
+| Feature ID | Title | Tasks | Default Artifact Type |
+|------------|-------|-------|-----------------------|
+| `f0-timeline` | Timeline & History | Establish world chronology | `timeline` |
+| `f1-locations` | Locations | Define major regions; Detail key cities | `location` |
+| `f2-characters` | Characters | Create protagonist profile; Create antagonist profile | `character` |
+| `f3-factions` | Factions & Organizations | Outline major factions; Define faction relationships | `faction` |
+| `f4-magic-religion` | Magic & Religion | Define magic system rules; Outline religious traditions | `magic-system` |
+| `f5-technology` | Technology | Define technology level and key inventions | `technology` |
+| `f6-items` | Items & Artifacts | Catalog significant items and their origins | `item` |
+
+### Future Templates
+
+The product spec envisions additional templates: **D&D Campaign**, **Business Deck**, **Research Paper**, and a **Blank** template. These are not yet implemented. New templates can be added by defining entries in the templates directory and registering them in the project type selector.
+
+**Template structure (JSON):**
+Each template defines:
+- `stages` — list of workflow stage configurations (ID, label, enabled, agent, optional prompt template)
+- `initial_feature` or `initial_features` — one or more features with pre-populated tasks and artifact types
+- Artifact type defaults (associated with the project type, not embedded in the template JSON directly)
