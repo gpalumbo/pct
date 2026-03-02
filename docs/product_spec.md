@@ -35,6 +35,8 @@
    - [F9: Session & Project Management](#f9-session--project-management)
    - [F10: Project Configuration Page](#f10-project-configuration-page)
    - [F11: Image Generation](#f11-image-generation)
+   - [F12: PERT Chart](#f12-pert-chart)
+   - [F13: Notifications](#f13-notifications)
 4. [User Narrative: Building PCT with PCT](#4-user-narrative-building-pct-with-pct)
    - [Act 1: Project Kickoff](#act-1-project-kickoff)
    - [Act 2: The Kanban Appears](#act-2-the-kanban-appears)
@@ -92,7 +94,12 @@ The feature lifecycle governs **when decomposition and re-planning happen**: spe
 ### Task
 A single unit of work within a feature. Tasks flow through the Kanban workflow stages. Each task is assigned to an **agent** (LLM or user) and executes within a specific context assembled from the project spec, feature spec, RAG history, and prior attempts.
 
-Tasks support **explicit dependencies** — both within a feature and across features. The planning agent proposes an initial dependency graph during task decomposition; the user can review and edit it. Tasks with unmet dependencies remain blocked in their current column. Cross-feature dependencies are modeled as task-level blocks across swimlanes (e.g., "Task X in Feature B is blocked by Task Y in Feature A").
+Tasks support two forms of explicit linking:
+
+- **`blocked_by`** — a list of `[[feature_id#task_id]]` WikiLinks (see F1 WikiLink definition). Hard blocking: a task with unmet `blocked_by` entries cannot auto-execute. When all upstream tasks reach Done, the task auto-unblocks; if the current stage has Auto-Run enabled, the agent fires automatically (see F4). Both within-feature and cross-feature blocking are supported at the task level.
+- **`cross_refs`** — a list of `[[feature_id#task_id]]` WikiLinks. Soft/informational: no blocking effect. Influences context assembly by including referenced task artifacts at lower priority (see Context).
+
+The planning agent proposes both `blocked_by` and `cross_refs` during task decomposition; the user can review and edit them in the Task Detail Panel (F3). **Circular dependency detection** is enforced on save — PCT validates the `blocked_by` graph is acyclic and rejects cycles with an error naming the offending path. **Bypass**: the user can manually run or advance a blocked task via a warning modal that lists unmet dependencies with their current status; confirming bypasses the block without removing the dependency (see F3 Stage controls).
 
 Tasks can be added mid-flight to an active swimlane — by the user manually, or by any agent during execution. Any agent can create new tasks during execution (e.g., a code review agent spawning a bug-fix task, a planning agent spawning feature tasks, or integration test failures generating regression tasks). New tasks always enter at the Refine Spec workflow stage.
 
@@ -140,7 +147,8 @@ The assembled information an agent receives when executing a task. Context is bu
 2. **Feature specification** — the feature this task belongs to
 3. **Task specification** — what this specific task should accomplish
 4. **RAG-injected history** — relevant prior task results, rejected attempts, related work from other features
-5. **Retry history** — all prior attempts at this task, including rejections and user feedback
+5. **Chat history** — all prior chat at this task and stage, as controlled by the context window selections
+6. **Upstream dependency artifacts** — `blocked_by` task artifacts and `cross_refs` task artifacts summarized if the token budget is tight
 
 RAG context injection happens at **every workflow stage**, not as an optional feature but as a core part of the agent invocation pipeline.
 
@@ -262,14 +270,16 @@ Capabilities:
 - **Priority ordering** — swimlanes are drag-to-reorder. Position = priority. Higher = more important. Priority ordering is persisted to project configuration.
 - **Auto-collapse** — swimlanes below a configurable threshold (default: top 5) are collapsed to headers only. User can expand any swimlane or adjust the threshold.
 - **Swimlane collapse/expand** — each swimlane can be collapsed to save space, with state persisted across navigation
-- **Cross-swimlane dependency indicators** — visual links showing when a task in one feature is blocked by a task in another feature
+- **Dependency connector lines** — subtle dashed connector lines (optional) between dependent task cards (both within-swimlane and cross-swimlane `blocked_by` relationships). Hovering a connector highlights both endpoints and shows a tooltip with dependency direction. Collapsed swimlanes show a badge count of cross-swimlane dependencies instead of lines.
 - **Completed archive** — features in the **Complete** lifecycle stage are moved to a collapsible "Completed" section at the bottom of the board, auto-collapsed by default. The section header shows the count of completed features. Expanding it reveals completed swimlanes in read-only mode (tasks visible but not draggable). Individual completed features can be expanded to inspect their task history and artifacts.
 - **Filtering** — multi-select feature filter, toggles for suspended/complete feature visibility
 - **Inline task creation** — add tasks directly from the swimlane header, with artifact type inferred from existing tasks in the feature
 - **Task card visual indicators:**
   - Left border color indicates agent type (LLM: blue, User: green, Tool: gold)
+  - **Right border color indicates notification state** (see F13): green = ready for user, red = needs attention (error/failure), yellow = consistency warning. No right border when no notification applies.
   - **Artifact type color dot** — small colored indicator showing the task's artifact type
-  - Blocked tasks shown with reduced opacity
+  - Blocked tasks shown with reduced opacity and a **lock icon** overlay. Hovering the lock shows a tooltip listing unmet `blocked_by` entries as clickable WikiLinks.
+  - **Bypass indicator** — after a user bypasses a blocked task (see F3 Stage controls), the lock icon changes to an unlocked/warning icon, the card displays a "Bypassed" badge, and normal opacity is restored
   - Selected/dragging tasks highlighted with blue background
 - **Swimlane header controls:**
   - Feature title and lifecycle stage badge (color-coded)
@@ -278,7 +288,7 @@ Capabilities:
   - **Analyze dropdown** — triggers Gap Analysis, Continuity Check, or Impact Analysis (see below and F8)
   - Suspend/Resume toggle — suspended swimlanes display with a visual warning treatment (muted colors + suspended badge)
 - **Feature Analysis Tools** (accessible from swimlane header):
-  - **Gap Analysis** — an LLM-powered analysis that identifies missing tasks within a feature, streamed via SSE. Results include suggested tasks with title, feature, artifact type, and reasoning. Each suggestion has a one-click "Create" button.
+  - **Gap Analysis** — an LLM-powered analysis that identifies missing tasks within a feature, streamed via SSE. Results include suggested tasks with title, feature, artifact type, and reasoning. Each suggestion has a one-click "Create" button. Gap Analysis may also suggest `blocked_by` relationships where ordering constraints are detected among existing tasks.
   - **Continuity Check** — verifies narrative/specification consistency within a feature, also streamed via SSE with the same suggestion format.
 
 ### F3: Task Detail Panel
@@ -288,10 +298,14 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 - Task title
 - **Artifact type selector** — dropdown to assign/change the task's artifact type (e.g., chapter, character, timeline, code). Artifact types are configurable per project (see F10).
 - Feature and task ID display
-- **Cross-references section** — tag strip showing `cross_depends_on` references with:
-  - "Add Ref" button opening a **CrossRefPicker modal** — a feature-grouped checklist of all tasks in the project for selecting cross-dependencies
+- **Dependencies section** (`blocked_by`) — tag strip showing hard-blocking dependencies as `[[feature_id#task_id]]` WikiLinks (see F1 WikiLink definition) with:
+  - "Add Dependency" button opening a **DependencyPicker modal** — a feature-grouped task checklist for selecting blocking dependencies
+  - Inline circular dependency detection — PCT validates the graph on each addition and rejects cycles with an error naming the path
+  - Closable tags for removing dependencies
+- **Cross-references section** (`cross_refs`) — tag strip showing soft/informational references as `[[feature_id#task_id]]` WikiLinks with:
+  - "Add Ref" button opening a **CrossRefPicker modal** — same UI pattern as DependencyPicker
   - Closable tags for removing references
-  - Hint about `[[feature_id#task_id]]` WikiLink syntax for cross-referencing artifacts
+  - WikiLink syntax hint
 
 **Task-specific artifact scoping:**
 - The task is expected to update appropriate section in the main associated feature document or source code depending on project type.
@@ -299,14 +313,17 @@ Resizable slide-out panel (min 500px, max 900px, default 520px, draggable via le
 - The agent selector in the chat input (Section 2) defaults to the workflow stage's configured agent but can be changed at any time during the conversation. This is a transient chat-level choice, not a persistent task setting — however, reopening the same task at the same workflow stage restores the last user-selected agent rather than reverting to the stage default.
 
 **Stage controls:**
-- Controls: Run Agent (calls agent with full context plus the prompt to update artifacts), Approve (Advance Stage), Reject (with feedback, falls into chat mode waiting on user), Stop (like chat interrupt, task falls into chat mode waiting on user), Send Back to Stage
+- Controls: Run Agent (calls agent with full context plus the prompt to update artifacts), Approve (Advance Stage), Reject (with feedback, falls into chat mode waiting on user), Stop (like chat interrupt, task falls into chat mode waiting on user), Send Back to Stage, **Bypass Block** (visible only when the task has unmet `blocked_by` — opens a warning modal listing unmet dependencies with their current status; on confirm, the task proceeds despite unmet deps; bypass is logged and the card displays a "Bypassed" badge on the Kanban board)
 
 ### F4: Agent Execution Engine
 Manages the lifecycle of agent task execution:
-- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) include latest 2 full retry attempts, summarize older ones; (3) RAG results ranked by relevance, included up to a configurable token budget
+- **Context assembly** using a tiered strategy: (1) always include project spec, feature spec, and task spec; (2) upstream dependency artifacts — `blocked_by` task artifacts at full content, `cross_refs` task artifacts summarized; (3) include latest 2 full retry attempts, summarize older ones; (4) RAG results ranked by relevance, included up to a configurable token budget
 - **Context Manager** — an **optional** LLM-powered tool that intelligently summarizes, compresses, and prioritizes context to fit within model token limits. Called automatically before agent invocation, compressing context when the assembled context length reaches 75% of the target model's max context size. Also exposed as a tool that agents can invoke mid-execution (e.g., to request additional context or re-summarize). Uses a configurable model and prompt (set in F10 General tab) — remote models guided via prompt skills, local models fine-tuned with LoRA. Core PCT differentiator: intelligent context management rather than naive truncation.
+- **Dependency-aware scheduling** — tasks with unmet `blocked_by` entries are excluded from the execution queue. On task completion, PCT re-evaluates all tasks listing the completed task in their `blocked_by` and unblocks those with no remaining blockers.
+- **Auto-unblock + auto-run** — when a task's last `blocked_by` clears, it auto-unblocks. If the task's current workflow stage has Auto-Run enabled, the agent fires automatically. This creates a cascade effect: completing one task can trigger a chain of unblocks and agent executions across swimlanes.
 - **Parallel execution** — multiple agents across different tasks/swimlanes simultaneously, subject to concurrency limits configured in F10
 - **Worktree isolation** — each agent execution happens in an isolated git worktree
+- **Error handling** — when an auto-executing agent fails (API error, model timeout, out-of-memory, unhandled exception), the task enters an **Error** state. The task card displays red notification treatment (see F13). Error details (error type, message, timestamp, partial output if any) are stored in the task's execution log. If a product notification email is configured (F10 General tab), an email alert is sent. The task remains at its current workflow stage — the user can inspect the error in the Task Detail Panel, adjust context, and retry. Auto-Run does not re-trigger on error — the user must manually retry or reassign.
 
 ### F5: Git Integration
 Git is universal — **all project types** use git, not just code projects. Non-code projects produce text-mergeable documents (LaTeX, RTF, Markdown) that flow through the same pipeline.
@@ -572,7 +589,7 @@ A general-purpose mechanism for detecting when in-flight or completed work has d
 *Analysis output:*
 Results are presented in a modal (similar to Gap Analysis / Continuity Check in F2), streamed via SSE. Each finding includes:
 - The affected task and its current stage
-- Severity: **Contradicted** (spec directly conflicts with task output/spec), **Possibly affected** (related changes that may need review), **Unchanged** (confirmed consistent)
+- Severity: **Contradicted** (spec directly conflicts with task output/spec), **Dependency conflict** (`blocked_by` targets a deleted or moved task, or creates an indirect indefinite wait — suggested action: "Update dependencies"), **Possibly affected** (related changes that may need review), **Unchanged** (confirmed consistent)
 - Explanation of the inconsistency
 - Suggested action: Restart from Refine Spec, Flag for review, No action needed
 
@@ -592,7 +609,7 @@ The user reviews findings and selects per-task actions:
 - Export/import project state
 
 ### F10: Project Configuration Page
-Dedicated settings page with **six tabs** for managing project-level configuration:
+Dedicated settings page with **seven tabs** for managing project-level configuration:
 
 **General tab:**
 - **UI Preferences** — font size slider (10–20px), persisted to localStorage
@@ -601,6 +618,8 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 - **Planning & defaults** — planning agent selector, default agent selector (fallback for ChatInput when no stage agent is configured)
 - **Context Manager** — agent selector for the Context Manager (see F4) and a default prompt template for context summarization/compression. The Context Manager is optional; when no agent is selected, context is passed to target models without compression.
 - **Agent concurrency limits** — max parallel remote API agents (default: 2), max parallel local GPU agents (default: 1). Excess tasks queue until a slot opens.
+- **Notification email** (optional) — product-level email address for system notifications (agent failures, merge conflicts, integration test results, training job completion). See F13.
+- **SMTP Configuration** (collapsible) — SMTP server, port, username, password/app key, TLS toggle. Required for any email notifications to function. When unconfigured, email notifications are silently skipped; visual notifications (card colors, badges) still function.
 
 **Model Registry tab:**
 - View, add, edit, and remove entries in the global Model Registry. Each entry specifies a model name, **provider type** (Remote API / Local / **HuggingFace**), model identifier, context length, and provider-specific details (model file path for local/HuggingFace, API base URL for remote). For local and HuggingFace models, a **file browser** button opens a filesystem navigation modal for selecting model paths. Context length tooltip explains that 0 = use model default. The registry is global (shared across projects) and populates model dropdowns throughout the agent configuration UI.
@@ -610,6 +629,9 @@ Dedicated settings page with **six tabs** for managing project-level configurati
 
 **Agents tab:**
 - Define named agents for this project. Each agent combines: a model (dropdown from Model Registry), an optional LoRA (dropdown from LoRA Registry, filtered by selected model), an **agent type** (LLM / User / Tool / **Image Gen**), a **provider type** (Remote API / Local / **HuggingFace** / User), a prompt template, and provider-specific settings (CLI command for remote, temperature and context length overrides). Agents are standalone entities identified by ID and referenced elsewhere in the project. The configuration UI supports creating, editing, and deleting agents.
+- **User agent notification settings** — User-type agents expose two additional fields:
+  - **Registered user** (optional) — dropdown linking this User agent to a registered user from the Users tab
+  - **Notify on waiting** toggle — when enabled, sends an email to the linked user's email address whenever a task enters a workflow stage where this agent is the assigned executor. Requires the linked user to have an email address configured and SMTP to be set up (General tab). See F13.
 
 **Workflow Stages tab:**
 - **Drag-and-drop reorderable** stage list. Each stage has:
@@ -621,7 +643,7 @@ Dedicated settings page with **six tabs** for managing project-level configurati
   - Inline save/cancel controls for dirty edits; delete for unused stages
   - "Add Stage" button to create new custom stages
 - **Template Variables** (collapsible section):
-  - **Built-in variables** (read-only reference): `{{artifact}}` (full artifact content), `{{artifact_path}}` (file path), `{{task_title}}`, `{{feature_title}}`, `{{cross_refs}}` (cross-reference context)
+  - **Built-in variables** (read-only reference): `{{artifact}}` (full artifact content), `{{artifact_path}}` (file path), `{{task_title}}`, `{{feature_title}}`, `{{blocked_by}}` (upstream dependency artifact content from hard-blocking tasks), `{{cross_refs}}` (cross-reference context from soft-linked tasks)
   - **Custom variables** — user-defined key/description/value triples that are substituted into stage prompt templates. Keys are auto-slugified (lowercase alphanumeric).
 
 **Artifact Types tab:**
@@ -630,6 +652,14 @@ Dedicated settings page with **six tabs** for managing project-level configurati
   - **Template hint** — instructional text injected into the agent's system prompt when working on tasks of this type
 - Built-in defaults are populated from the project template (see Section 7). The Writing template provides 10 artifact types; the Coding template uses the generic `text` type
 - Artifact types appear as a **color-coded dot** on task cards and as a dropdown selector in the task detail panel header
+
+**Users tab:**
+- Manage registered user profiles for the project. Each user profile contains:
+  - **Display name** — identifier shown in dropdowns and notifications
+  - **Email address** (optional) — required for email notifications. Validated on save.
+- Registered users populate the **Registered user** dropdown in User agent configuration (Agents tab)
+- Users are project-scoped — multiple projects can have different user lists
+- Add, edit, and remove user profiles. Removing a user unlinks them from any User agents referencing them (with confirmation)
 
 All project-level settings persist to `pct.yaml` in the project repo. The Model Registry and LoRA Registry persist globally to `~/.pct/registries/`.
 
@@ -655,13 +685,86 @@ Image generation behavior depends on the image generation agent's provider type:
 **Common:**
 - Image session metadata persisted per task at `work/{feature_id}/{task_id}/images/session.json`
 
+### F12: PERT Chart
+Visual dependency graph for analyzing task relationships and identifying critical paths.
+
+**Access:**
+- **Feature-scoped** — from the swimlane header Analyze dropdown (alongside Gap Analysis, Continuity Check, and Impact Analysis)
+- **Project-wide** — from a top-level navigation entry; displays all features' tasks in a single graph
+
+**Nodes:**
+- Each node represents a task
+- **Color** indicates workflow stage (matches Kanban column colors)
+- **Shape** indicates status: completed (filled), in-progress (half-filled), blocked (outlined + lock icon), eligible (outlined, no lock)
+
+**Edges:**
+- `blocked_by` relationships rendered as **solid directed arrows** (arrow points from upstream to downstream task)
+- `cross_refs` relationships rendered as **dotted lines** (toggleable, off by default)
+
+**Critical path:**
+- The longest dependency chain is highlighted in bold/red
+- A summary bar displays: chain length (number of tasks), estimated bottleneck tasks, and total stages remaining on the critical path
+
+**Filters and controls:**
+- Feature multi-select filter (project-wide view)
+- Status filter (completed / in-progress / blocked / eligible)
+- Stage multi-select filter
+- Zoom and pan controls
+- Layout toggle: left-to-right (LTR) or top-to-bottom (TTB)
+
+**Interactions:**
+- Click a node to open the task in the Task Detail Panel (F3)
+- Hover a node to show a task summary tooltip (title, stage, status, `blocked_by` count)
+- Read-only visualization — all dependency editing happens in the Task Detail Panel (F3)
+
+**Guaranteed DAG:** Circular dependency detection in the Task Detail Panel (F3) ensures the PERT chart is always a valid directed acyclic graph.
+
+### F13: Notifications
+PCT provides visual and email notifications to keep users informed about tasks requiring attention, agent failures, and project events. Notifications are designed to surface actionable information without requiring the user to poll the Kanban board.
+
+**Task Card Status Colors:**
+Task cards display a **right border** notification-state color, independent of the existing left-border agent-type color:
+
+| Color | Meaning | Trigger | Clears When |
+|-------|---------|---------|-------------|
+| **Green** | Ready for user | Task is waiting in a stage assigned to a User agent, or Auto-Run is off and the task needs manual invocation | User begins interaction (opens task, runs agent, or advances stage) |
+| **Red** | Needs attention | Agent execution failed (see F4 Error handling), agent explicitly requested human assistance, or merge conflict detected | User addresses the error (retries, reassigns, or resolves conflict) |
+| **Yellow** | Consistency warning | Task flagged by Impact Analysis, Continuity Check, or Gap Analysis as contradicted or possibly affected (see F8) | User dismisses the finding or restarts the task |
+
+When no notification condition applies, the right border is absent. Multiple conditions follow priority order: red > yellow > green (only the highest-priority color displays).
+
+**Notification Badge:**
+A numeric badge on the top-level navigation bar shows the count of unacknowledged notifications across all features. The badge is color-coded to the highest-severity unacknowledged item (red > yellow > green). Clicking the badge opens a **Notification Panel** — a dropdown list of recent notification events, each with a link to the affected task and a dismiss action. The badge count decrements as the user addresses or dismisses items.
+
+**Notification Events:**
+
+| Event | Visual Indicator | Email Target |
+|-------|-----------------|-------------|
+| Task waiting for user | Green right border | Per-user email (if User agent has Notify on waiting enabled) |
+| Agent execution failure | Red right border | Product notification email |
+| Agent requests assistance | Red right border | Product notification email |
+| Merge conflict detected | Red right border | Product notification email |
+| Consistency/impact finding | Yellow right border | — (visual only) |
+| Dependency unblocked (user stage) | Green right border | Per-user email (if User agent has Notify on waiting enabled) |
+| Integration test complete | Swimlane header badge (pass/fail) | Product notification email |
+| Training job complete (F7) | F7 tab badge | Product notification email |
+
+**Email Notifications:**
+Email notifications are optional and require SMTP configuration in F10 General tab. Two email targets:
+- **Product notification email** (F10 General tab) — receives system-level alerts: agent failures, merge conflicts, integration test results, training job completion. Single address shared across the project.
+- **Per-user email** (F10 Users tab) — receives task-waiting notifications when a task enters a workflow stage assigned to that user's agent. Configured per registered user and enabled via the **Notify on waiting** toggle on the User agent (F10 Agents tab).
+
+Email content includes: event type, task title, feature name, workflow stage, timestamp, and a deep link to open the task in PCT (local URL).
+
+When SMTP is not configured, email notifications are silently skipped — all visual notifications (card colors, badges, notification panel) still function independently.
+
 ---
 
 ## 4. User Narrative: Building PCT with PCT
 
 ### Act 1: Project Kickoff
 
-The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration Page (F10)**. The user selects the "Coding" project template (see Section 7), names the project "PCT", and reviews the pre-populated settings across the six tabs — the Coding template's 8 workflow stages (Refine Spec through Done, Auto-Run off for all), a Claude Code agent as the default, and the generic `text` artifact type. After confirming, PCT opens the **Planning Window (F1)** — a Chat Interface with the INDEX.md artifact. No Kanban board yet.
+The user launches PCT for the first time. PCT detects an uninitialized project and redirects to the **Project Configuration Page (F10)**. The user selects the "Coding" project template (see Section 7), names the project "PCT", and reviews the pre-populated settings across the seven tabs — the Coding template's 8 workflow stages (Refine Spec through Done, Auto-Run off for all), a Claude Code agent as the default, and the generic `text` artifact type. After confirming, PCT opens the **Planning Window (F1)** — a Chat Interface with the INDEX.md artifact. No Kanban board yet.
 
 > **User:** I want to build a Project Construction Tool. It's a Python/React app that uses LLM agents to execute project tasks on a Kanban board. Here's my rough idea...
 
@@ -710,7 +813,7 @@ The planning agent proposes a task breakdown and dependency graph:
 
 > **Agent:** For Core Server & API, I propose the following tasks:
 > 1. Define data models (no dependencies)
-> 2. Design API routes (depends on #1)
+> 2. Design API routes (`blocked_by: [[core-server#define-data-models]]`)
 > 3. Setup project scaffold (no dependencies)
 >
 > Here's the dependency graph and detailed specs for each...
@@ -722,7 +825,7 @@ SWIMLANE: Core Server & API                                       [Active]
  [Define data models]  [Design API routes (blocked)]  [Setup scaffold]
 ```
 
-"Design API routes" shows with reduced opacity — it depends on "Define data models" and cannot proceed until that task completes.
+"Design API routes" shows with reduced opacity and a lock icon — it is blocked by "Define data models" (`blocked_by: [[core-server#define-data-models]]`) and cannot auto-execute until that task reaches Done.
 
 ### Act 4: First Agent Run — Spec Refinement
 
@@ -753,6 +856,14 @@ F4 launches two LLM agents in parallel, each in an isolated git worktree (F5). T
 
 The user clicks into the running "Data models" task and watches the agent's output stream. They notice the agent heading in a wrong direction and click **Interrupt**. The agent completes its current generation step and stops. The user adds guidance in the chat and re-runs.
 
+**Auto-unblock cascade:** "Define data models" completes and reaches Done. PCT automatically re-evaluates downstream dependencies — "Design API routes" has its only `blocked_by` entry cleared, so it auto-unblocks. The lock icon disappears and the card regains full opacity. The user had enabled Auto-Run on the Implement stage, so the agent fires immediately on the newly unblocked task without user intervention. The Kanban board shows a chain reaction: one completion triggers the next task's execution.
+
+**Notification in action:** Meanwhile, the auto-running agent on "Design API routes" hits an API rate limit and fails. The task card immediately gains a **red right border** (F13), and an email alert is sent to the product notification address configured in F10. The notification badge in the top nav increments. The user clicks the badge, sees the error summary, clicks through to the task, reviews the error details, and retries. The red border clears once the agent re-runs successfully.
+
+**Bypass demo:** Meanwhile, the user notices "Design component tree" in the React Frontend swimlane is blocked by a task that won't finish soon. They click into it and see the **Bypass Block** button in the Stage controls. Clicking it opens a warning modal listing the unmet `blocked_by` entries with their current status. The user confirms — the task proceeds despite unmet dependencies. On the Kanban board, the lock icon changes to an unlocked/warning icon and the card displays a "Bypassed" badge.
+
+**PERT chart:** Curious about the overall project shape, the user opens the **project-wide PERT chart** from the top-level navigation (F12). The graph shows all tasks across all features as a DAG. The critical path — the longest dependency chain — is highlighted in bold red, running through "Define data models" → "Design API routes" → downstream tasks. A summary bar shows the chain length and bottleneck task. The user notes that "Setup scaffold" is off the critical path and can be deferred without affecting the project timeline.
+
 ### Act 6: Code Review — Agent Reviews Agent
 
 "Data models" completes implementation. The user approves, and the task advances through **Feature Test** (Auto-Run is off, so the user triggers the test agent manually — pytest passes) to **Code Review**.
@@ -778,7 +889,7 @@ After saving, PCT offers to run impact analysis. The user accepts. PCT runs **Im
 >
 > **Actions:** [Restart] [Flag] [Dismiss] per task
 
-The user clicks **"Restart all contradicted"** — the API routes task is sent back to Refine Spec with the updated feature spec in its context. They dismiss the unchanged task and flag the scaffold for review.
+The user clicks **"Restart all contradicted"** — the API routes task is sent back to Refine Spec with the updated feature spec in its context. They dismiss the unchanged task and flag the scaffold for review. On the Kanban board, the flagged scaffold task now displays a **yellow right border** (F13), a persistent visual reminder that it has an unresolved consistency finding.
 
 ### Act 8: Merge Through Push
 
@@ -824,14 +935,21 @@ Training completes. In the Evaluation tab, the user runs an A/B comparison — b
 | Project kickoff | Planning Window (full Chat Interface with INDEX.md artifact) — no Kanban |
 | First launch (uninitialized) | Redirects to Project Configuration Page (F10) for initial project configuration |
 | Planning complete | Planning Window sidebar + Kanban board (main view) |
-| Task detail | Resizable slide-out Task Detail Panel (full Chat Interface scoped to task, plus header with artifact type, cross-refs) |
+| Task detail | Resizable slide-out Task Detail Panel (full Chat Interface scoped to task, plus header with artifact type, `blocked_by` dependencies, `cross_refs`) |
 | Agent running | Live SSE streaming + streaming indicator + Interrupt button (same in both Planning Window and Task Detail) |
 | Feature analysis | Modal with streaming analysis output, suggested tasks with create buttons |
 | Swimlane suspended | Swimlane tasks shown with muted/warning treatment. User can still interact. Auto-execution paused. |
 | Impact analysis running | Modal with streaming analysis output, per-task findings with action buttons |
 | Feature integration test | Swimlane header shows integration test status; agent output streams in feature-scoped panel |
 | Feedback/training | Dedicated view with 5 tabs: Training Data (browser + curation), Datasets (named collections + validation), Training (LoRA config + monitoring), Evaluation (A/B comparison), Prompt Templates (versioned editor) |
-| Project configuration | Project Configuration Page (F10) with 6 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types |
+| Project configuration | Project Configuration Page (F10) with 7 tabs: General, Model Registry, LoRA Registry, Agents, Workflow Stages, Artifact Types, Users |
+| PERT chart (feature) | Feature-scoped directed acyclic graph from swimlane header Analyze dropdown |
+| PERT chart (project) | Project-wide directed acyclic graph from top-level navigation |
+| Bypass warning | Modal listing unmet `blocked_by` dependencies when user runs a blocked task |
+| Task waiting (green) | Task card green right border — ready for user interaction. Notification badge incremented. |
+| Task error (red) | Task card red right border — agent failure or merge conflict. Error details in Task Detail Panel. Email sent to product notification address. |
+| Task flagged (yellow) | Task card yellow right border — consistency/impact finding. Dismissable via impact analysis actions. |
+| Notification panel | Dropdown from nav badge — list of recent notification events with task links and dismiss actions |
 
 ---
 
