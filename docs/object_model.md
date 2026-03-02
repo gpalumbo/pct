@@ -2,1148 +2,962 @@
 
 ---
 
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Conventions](#2-conventions)
+3. [Enumerations](#3-enumerations)
+4. [Core Entities](#4-core-entities)
+   - [Project](#41-project)
+   - [SmtpConfig](#42-smtpconfig)
+   - [Feature](#43-feature)
+   - [Task](#44-task)
+   - [ErrorDetails](#45-errordetails)
+5. [Agents & Models](#5-agents--models)
+   - [Agent](#51-agent)
+   - [ModelRegistryEntry](#52-modelregistryentry)
+   - [LoRARegistryEntry](#53-loraregistryentry)
+   - [LoRAVersion](#54-loraversion)
+6. [Workflow & Configuration](#6-workflow--configuration)
+   - [WorkflowStage](#61-workflowstage)
+   - [ArtifactType](#62-artifacttype)
+   - [TemplateVariable](#63-templatevariable)
+   - [UserProfile](#64-userprofile)
+7. [Chat & Context](#7-chat--context)
+   - [TaskStageContext](#71-taskstagecontext)
+   - [ChatMessage](#72-chatmessage)
+   - [ContextSnapshot](#73-contextsnapshot)
+8. [Training Pipeline (F7)](#8-training-pipeline-f7)
+   - [TrainingFlag](#81-trainingflag)
+   - [Dataset](#82-dataset)
+   - [TrainingJob](#83-trainingjob)
+   - [HyperParameters](#84-hyperparameters)
+   - [TrainingProgress](#85-trainingprogress)
+   - [EvaluationSession](#86-evaluationsession)
+   - [EvalPrompt](#87-evalprompt)
+   - [PromptTemplate](#88-prompttemplate)
+   - [PromptTemplateVersion](#89-prompttemplateversion)
+9. [Image Generation (F11)](#9-image-generation-f11)
+   - [ImageSession](#91-imagesession)
+   - [ImageRound](#92-imageround)
+   - [GeneratedImage](#93-generatedimage)
+10. [Notifications (F13)](#10-notifications-f13)
+    - [NotificationEvent](#101-notificationevent)
+11. [Relationships](#11-relationships)
+12. [State Machines](#12-state-machines)
+    - [Feature Lifecycle](#121-feature-lifecycle)
+    - [Task Workflow Progression](#122-task-workflow-progression)
+    - [Task Execution Status](#123-task-execution-status)
+    - [Training Job Lifecycle](#124-training-job-lifecycle)
+    - [HuggingFace Model Download](#125-huggingface-model-download)
+
+---
+
 ## 1. Overview
 
-This document defines the core data structures, their relationships, state machines, and storage mappings for PCT. All models are schema-level Pydantic definitions — detailed enough to be unambiguous, but the actual implementation classes will be the source of truth once coding begins.
-
-**Conventions:**
-- All config/metadata files use YAML (parsed by PyYAML)
-- Task files use YAML frontmatter + Markdown body (parsed by python-frontmatter)
-- Streaming logs use JSONL (append-only)
-- All timestamps are ISO 8601 UTC
-- IDs use numbered prefixes for ordering (e.g., `001-core-server`)
+This document defines the domain entities, enumerations, relationships, and state machines for PCT. It serves as the canonical reference for **what data exists and how it relates**. Implementation details (storage formats, API design, framework choices) belong in the technical specification.
 
 ---
 
-## 2. Enums
+## 2. Conventions
 
-```python
-class FeatureStage(str, Enum):
-    """Feature lifecycle stages."""
-    BACKLOG = "backlog"
-    PLANNING = "planning"
-    ACTIVE = "active"
-    SUSPENDED = "suspended"
-    INTEGRATION_TEST = "integration-test"
-    COMPLETE = "complete"
+- **IDs** — kebab-case slugs with optional numeric prefixes for ordering (e.g., `f1-core-server`, `define-data-models`). Entity IDs are their slugs.
+- **Timestamps** — ISO 8601 UTC
+- **WikiLinks** — `[[feature_id]]` references a feature; `[[feature_id#task_id]]` references a task. Mirrors the `work/` directory structure.
+- **Scope** — Model Registry and LoRA Registry are **global** (shared across projects). All other entities are **project-scoped**.
 
-class TaskStatus(str, Enum):
-    """Task workflow stages (Kanban columns)."""
-    REFINE_SPEC = "refine-spec"
-    IMPLEMENT = "implement"
-    FEATURE_TEST = "feature-test"
-    CODE_REVIEW = "code-review"
-    USER_APPROVAL = "user-approval"
-    MERGE = "merge"
-    FULL_TEST = "full-test"
-    REFACTOR_CHECK = "refactor-check"
-    PUSH = "push"
-    DONE = "done"
+**Artifact directory structure** (defined by product spec Artifact Strategy):
 
-class AgentType(str, Enum):
-    """Types of agents that can execute tasks."""
-    LLM = "llm"
-    USER = "user"
-    TOOL = "tool"          # future
-    IMAGEGEN = "imagegen"  # image generation via diffusion models
-
-class ProviderType(str, Enum):
-    """Agent execution backend."""
-    REMOTE_API = "remote"       # Claude Code CLI, other remote APIs
-    LOCAL_LLM = "local"         # llama-cpp-python
-    HUGGINGFACE = "huggingface" # HuggingFace Hub models (downloaded on demand)
-    USER = "user"               # manual human execution
-
-class TaskOutcome(str, Enum):
-    """Result of a task execution attempt."""
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    INTERRUPTED = "interrupted"
-    IN_PROGRESS = "in-progress"
-    ERROR = "error"            # execution failed with an error
-
-class SerializationMode(str, Enum):
-    """Whether tasks in a feature can execute in parallel."""
-    PARALLEL = "parallel"   # mergeable outputs, concurrent execution allowed
-    SERIAL = "serial"       # non-mergeable outputs, one task at a time
-
-class AuthProvider(str, Enum):
-    """How a user authenticated."""
-    LOCAL = "local"         # email + password
-    GOOGLE = "google"       # Google OAuth
+```
+work/
+├── INDEX.md                              # Auto-generated master project index (includes Ideas List)
+├── {feature_id}/
+│   ├── {feature_id}.md                   # Feature document (writing) or spec (code)
+│   ├── implementation_plan.md            # Code projects: tech spec / build plan
+│   └── {task_id}/
+│       ├── main.md                       # Primary text artifact
+│       ├── images/                       # Generated images
+│       │   └── session.json              # Image generation metadata
+│       └── ...                           # Auxiliary files (drafts, mermaid, PDFs, etc.)
+src/                                      # Code projects: shared source code
 ```
 
 ---
 
-## 3. Core Domain Models
+## 3. Enumerations
 
-### Project
+### FeatureStage
 
-The top-level entity. One PCT instance per project. Not directly persisted as a single object — it's assembled from `pct.yaml`, `project_spec.md`, and the feature/task directory structure.
+Lifecycle stage of a feature (swimlane).
 
-```python
-class Project(BaseModel):
-    """Assembled at runtime from .pct/ directory contents."""
-    project_id: str
-    project_name: str
-    project_type: str                          # "code", "content", "creative", etc.
-    config: ProjectConfig                      # from pct.yaml
-    specification: str                         # from project_spec.md (raw markdown)
-    active_features: list[Feature]             # from active-features/
-    backlog_features: list[BacklogFeature]     # from feature_backlog/
-```
+| Value | Description |
+|-------|-------------|
+| `planning` | Feature created with a Refine Feature task; spec being refined |
+| `active` | Tasks flowing through workflow; swimlane shows progress |
+| `suspended` | Auto-execution paused; user can still interact manually |
+| `integration_test` | All tasks done; feature-level verification running |
+| `complete` | Passed integration testing; moved to completed archive |
 
-### ProjectConfig
+### ExecutionStatus
 
-Maps directly to `pct.yaml`. This is the primary persisted configuration.
+Current execution state of a task within its workflow stage.
 
-```python
-class ProjectConfig(BaseModel):
-    """Persisted as $PCT_PROJECT_ROOT/pct.yaml"""
-    project_id: str
-    project_name: str
-    project_type: str
-    project_directory: str                     # absolute path to project root
-    agents: list[AgentConfig]                  # named agents defined for this project
-    workflow_stages: list[WorkflowStageConfig] # ordered list of active stages with agent assignments
-    template_variables: list[TemplateVariable] = []  # custom prompt template variables
-    artifact_types: list[ArtifactTypeConfig] = []    # configurable artifact types for tasks
-    planning_agent: str                        # agent ID for the planning chat
-    default_agent: str                         # agent ID fallback for unassigned stages
-    auto_advance: bool = False                 # whether tasks auto-advance through stages
-    concurrency: ConcurrencyConfig
-    context: ContextConfig
+| Value | Description |
+|-------|-------------|
+| `idle` | Waiting for user action or auto-run trigger |
+| `queued` | Ready for auto-run; waiting for a concurrency slot |
+| `running` | Agent currently executing |
+| `error` | Agent execution failed; requires user attention |
 
-class WorkflowStageConfig(BaseModel):
-    """Configuration for a single workflow stage."""
-    stage: str                                 # stage slug ID (e.g., "refine-spec", "implement")
-    label: str = ""                            # display name (e.g., "Refine Spec", "Implement")
-    enabled: bool = True                       # whether this stage is active
-    agent: str | None = None                   # agent ID assigned to this stage (falls back to default_agent)
-    prompt_template: str | None = None         # optional per-stage prompt template injected into agent context
+### AgentType
 
-class ConcurrencyConfig(BaseModel):
-    remote_api_limit: int = 2
-    local_gpu_limit: int = 1
+The kind of executor an agent represents.
 
-class ContextConfig(BaseModel):
-    token_budget: int = 8000
-    context_manager_model: str = "claude-haiku"
+| Value | Description |
+|-------|-------------|
+| `llm` | AI model with prompt template |
+| `user` | Human performs the work |
+| `tool` | Custom tool or script (future) |
+| `image_gen` | Diffusion model for image generation |
 
-class TemplateVariable(BaseModel):
-    """Custom variable for prompt template substitution."""
-    key: str                                   # auto-slugified (lowercase alphanumeric + hyphens)
-    description: str = ""                      # human-readable description
-    value: str = ""                            # the value substituted into templates
+### ProviderType
 
-class ArtifactTypeConfig(BaseModel):
-    """Configurable artifact type for task categorization."""
-    id: str                                    # auto-derived slug from label
-    label: str                                 # display name (e.g., "Chapter", "Character")
-    template_hint: str = ""                    # instructional text injected into agent system prompt
-```
+How a model is hosted or accessed. Lives on ModelRegistryEntry; agents inherit from their linked model.
 
-### Feature
+| Value | Description |
+|-------|-------------|
+| `remote_api` | Cloud API endpoint (e.g., Claude, GPT) |
+| `local` | Model weights on local disk |
+| `huggingface` | HuggingFace Hub model (downloaded on demand) |
+| `user` | Sentinel for User agents — no model backend |
 
-A major deliverable, represented as a Kanban swimlane. Assembled from `feature_spec.md` + `metadata.yaml` + `tasks/` directory.
+A built-in "User" ModelRegistryEntry with `provider_type: user` exists so that User agents always have a valid model reference.
 
-```python
-class Feature(BaseModel):
-    """Assembled from active-features/<nnn>-<name>/ directory."""
-    id: str                                    # e.g., "001-core-server"
-    title: str
-    specification: str                         # from feature_spec.md (raw markdown)
-    metadata: FeatureMetadata                  # from metadata.yaml
-    tasks: list[Task]                          # from tasks/ directory
+### DownloadStatus
 
-class FeatureMetadata(BaseModel):
-    """Persisted as active-features/<nnn>-<name>/metadata.yaml"""
-    lifecycle_stage: FeatureStage
-    serialization_mode: SerializationMode = SerializationMode.PARALLEL
-    worktree_path: str | None = None           # active git worktree path
-    branch: str | None = None                  # git branch name
-    commits: list[str] = []                    # commit SHAs
-    feature_dependencies: list[str] = []       # cross-feature deps (feature IDs)
-    created: datetime
-    updated: datetime
+Download state for HuggingFace models.
 
-class BacklogFeature(BaseModel):
-    """A feature in the backlog — spec only, no tasks or metadata yet."""
-    id: str                                    # filename slug
-    specification: str                         # from feature_backlog/<name>.md
-```
+| Value | Description |
+|-------|-------------|
+| `pending` | Not yet downloaded |
+| `downloading` | Download in progress |
+| `ready` | Downloaded and available |
+| `error` | Download failed |
 
-### Task
+### MessageRole
 
-A single unit of work within a feature. Persisted as a YAML-frontmatter Markdown file.
+| Value | Description |
+|-------|-------------|
+| `user` | User message |
+| `assistant` | Agent/model response |
+| `system` | System-injected message |
 
-```python
-class Task(BaseModel):
-    """Persisted as active-features/<feature>/tasks/<nnn>-<slug>.md
+### FlagType
 
-    Frontmatter fields map to this model.
-    Markdown body contains the spec, acceptance criteria, and notes.
-    """
-    # --- Frontmatter fields ---
-    id: str                                    # e.g., "001"
-    title: str
-    feature: str                               # parent feature ID
-    status: TaskStatus                         # current workflow stage
-    agent: str                                 # agent ID for current stage
-    branch: str                                # git branch name
-    depends_on: list[str] = []                 # intra-feature task IDs
-    cross_depends_on: list[str] = []           # cross-feature: "feature-id/task-id"
-    tags: list[str] = []
-    priority: int = 0
-    attempt: int = 1                           # current attempt number
-    artifact_path: str | None = None           # directory path to task artifacts (e.g. work/slug/slug/)
-    artifact_type: str | None = None           # artifact type ID (from ArtifactTypeConfig.id)
-    created: datetime
-    updated: datetime
+Sentiment of a training data flag.
 
-    # --- Markdown body (not in frontmatter) ---
-    body: str                                  # spec + acceptance criteria + notes
+| Value | Description |
+|-------|-------------|
+| `positive` | Good response (thumbs up) |
+| `negative` | Bad response (thumbs down) |
 
-    @property
-    def is_blocked(self) -> bool:
-        """True if any dependency (intra or cross-feature) is unmet."""
-        ...
+### AnnotationCategory
 
-    @property
-    def slug(self) -> str:
-        """Filename-safe identifier: e.g., '001-define-data-models'"""
-        ...
-```
+Quick category tag for flagged training data.
 
-### Model Registry
+| Value |
+|-------|
+| `style` |
+| `accuracy` |
+| `completeness` |
+| `format` |
+| `instruction_following` |
+| `other` |
 
-Global catalog of available models. Shared across all projects.
+### CurationStatus
 
-```python
-class ModelRegistryEntry(BaseModel):
-    """Persisted in ~/.pct/registries/models.yaml (list of entries)."""
-    id: str                                    # e.g., "claude-sonnet-4-5", "llama-3-8b"
-    provider_type: ProviderType                # remote, local, or huggingface
-    model_id: str                              # provider-specific identifier (API model ID or local filename)
-    context_length: int                        # max tokens (0 = use model default)
-    model_path: str | None = None              # for local/huggingface models: path to weights file
-    api_base: str | None = None                # for remote models: API endpoint base URL
-    download_status: str | None = None         # for huggingface: "pending" | "downloading" | "ready" | "error"
-```
+Progress of a training example through the curation pipeline.
 
-### LoRA Registry
+| Value | Description |
+|-------|-------------|
+| `raw` | Freshly flagged, unedited |
+| `curated` | User has reviewed and edited |
+| `in_dataset` | Added to at least one named dataset |
 
-Global catalog of available LoRA adapters. Shared across all projects.
+### TrainingMethod
 
-```python
-class LoRARegistryEntry(BaseModel):
-    """Persisted in ~/.pct/registries/loras.yaml (list of entries)."""
-    id: str                                    # e.g., "code-review-v2", "summarizer-v1"
-    base_model: str                            # model registry ID — enforces compatibility
-    path: str                                  # path to LoRA adapter weights
-    description: str = ""
-    created: datetime
-```
+LoRA fine-tuning approach.
 
-### Agent
+| Value | Description |
+|-------|-------------|
+| `sft` | Supervised fine-tuning (positive examples only) |
+| `kto` | Kahneman-Tversky Optimization (handles both positive and negative) |
 
-Standalone, named configuration that defines an executor. Agents are defined per-project and reference the global Model and LoRA registries.
+### TrainingJobStatus
 
-```python
-class AgentConfig(BaseModel):
-    """Persisted in $PCT_PROJECT_ROOT/pct.yaml under the agents list."""
-    id: str                                    # e.g., "claude-code", "local-reviewer"
-    agent_type: AgentType
-    provider_type: ProviderType
-    model: str                                 # model registry ID (from ModelRegistryEntry.id)
-    prompt_template: str | None = None         # prompt template name (resolved from curation)
-    lora: str | None = None                    # LoRA registry ID (from LoRARegistryEntry.id)
+| Value | Description |
+|-------|-------------|
+| `pending` | Configured, not yet started |
+| `running` | Training in progress |
+| `completed` | Training finished successfully |
+| `failed` | Training failed |
+| `cancelled` | Cancelled by user |
 
-    # Provider-specific config
-    cli_command: str | None = None             # for remote API (e.g., "claude")
-    context_length: int | None = None          # override model's default context window
-    temperature: float | None = None           # sampling temperature (0.0–2.0), None = model default
-```
+### LoRASaveTarget
 
-### User
+Where to persist a trained LoRA.
 
-A registered PCT user. Persisted as a JSON file. Passwords are bcrypt-hashed; Google OAuth users have no password.
+| Value | Description |
+|-------|-------------|
+| `project_local` | Saved to project directory only |
+| `global` | Registered in global LoRA registry |
 
-```python
-class User(BaseModel):
-    """Persisted in ~/.pct/users/users.json (keyed by email).
-    Location is configurable via PCT_USER_DATA_DIR env var."""
-    email: str
-    hashed_password: str                       # bcrypt hash, empty string for OAuth users
-    auth_provider: AuthProvider                # "local" or "google"
-    created_at: datetime
+### ImpactSeverity
 
-class TokenResponse(BaseModel):
-    """Returned by auth endpoints."""
-    access_token: str                          # JWT (HS256), contains {"sub": email, "exp": ...}
-    token_type: str = "bearer"
-```
+Severity level of an impact analysis finding.
 
-**Storage:** `~/.pct/users/users.json` — a flat JSON dict keyed by email. Lives outside the project repo since users are global to the PCT installation. Configurable via `PCT_USER_DATA_DIR`.
+| Value | Description |
+|-------|-------------|
+| `contradicted` | Spec directly conflicts with task output/spec |
+| `dependency_conflict` | `blocked_by` targets deleted/moved task or creates indefinite wait |
+| `possibly_affected` | Related changes that may need review |
+| `unchanged` | Confirmed consistent |
 
-**Auth flow:**
-- **Local:** Register/login with email + password. Password is bcrypt-hashed before storage. Server returns a JWT.
-- **Google:** Frontend obtains a Google ID token, backend verifies it via `google-auth`, creates user if new, returns a JWT.
-- **JWT:** HS256-signed, contains `sub` (email) and `exp` (expiry). Validated on protected endpoints via `Authorization: Bearer <token>` header.
+### ImpactAction
+
+User response to an impact analysis finding.
+
+| Value | Description |
+|-------|-------------|
+| `restart` | Send task back to Refine Spec with updated context |
+| `flag` | Visual indicator; task continues in current stage |
+| `dismiss` | No action; finding acknowledged |
+
+### NotificationState
+
+Notification state for task cards. UI maps these to visual treatments (colors, icons, etc.).
+
+| Value | Meaning | Priority |
+|-------|---------|----------|
+| `attention` | Needs immediate attention (error, failure, merge conflict) | Highest |
+| `warning` | Consistency concern (impact/continuity finding) | Medium |
+| `ready` | Ready for user interaction | Lowest |
+
+### NotificationEventType
+
+| Value | Description |
+|-------|-------------|
+| `task_waiting` | Task waiting for user action |
+| `agent_failure` | Agent execution failed |
+| `agent_assistance` | Agent explicitly requested human help |
+| `merge_conflict` | Merge conflict detected |
+| `consistency_finding` | Impact/continuity analysis found issue |
+| `dependency_unblocked` | Task unblocked and waiting at user stage |
+| `integration_test_complete` | Feature integration test finished |
+| `training_job_complete` | LoRA training job finished |
+
+### EvalVerdict
+
+Outcome of a LoRA evaluation session.
+
+| Value | Description |
+|-------|-------------|
+| `accept` | LoRA accepted for use |
+| `reject` | LoRA rejected and deleted |
+| `need_more_data` | Inconclusive; more training data needed |
 
 ---
 
-## 4. Execution Models
+## 4. Core Entities
 
-Execution models fall into two categories:
-- **Ephemeral (in-memory only):** `AgentJob`, `AgentResult`, `RawContext`, `AssembledContext`, `ContextMetadata` — these exist only during execution and are not persisted to disk.
-- **Persistent (stored to disk):** `AttemptRecord`, `AttemptMetadata`, `LLMMessage` — these are written to the execution state directory after each agent run.
+### 4.1 Project
 
-After execution completes, PCT converts the ephemeral `AgentResult` into a persistent `AttemptRecord` by writing `output.md`, `feedback.md`, `metadata.yaml`, and `agent_log.jsonl` to the attempt directory.
+Top-level container. One PCT instance per project.
 
-### AgentJob
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug identifier (e.g., `pct`) |
+| `name` | string | Display name |
+| `project_type` | string | Template type used at creation (read-only) |
+| `directory` | string | Root directory path |
+| `default_agent_id` | Agent ref | Fallback agent when no stage agent is configured |
+| `planning_agent_id` | Agent ref | Agent for the Planning Window |
+| `context_manager_agent_id` | Agent ref? | Optional agent for context compression (F4) |
+| `context_manager_prompt` | string? | Default prompt for context summarization |
+| `max_remote_agents` | integer | Max parallel remote API agents (default: 2) |
+| `max_local_agents` | integer | Max parallel local GPU agents (default: 1) |
+| `notification_email` | string? | Product-level email for system alerts |
+| `smtp_config` | SmtpConfig? | SMTP settings for email delivery |
+| `font_size` | integer | UI font size preference (10–20px, default: 14) |
+| `features` | Feature[] | Ordered list (order = priority) |
+| `workflow_stages` | WorkflowStage[] | Ordered workflow stage definitions |
+| `agents` | Agent[] | Project-scoped agent definitions |
+| `artifact_types` | ArtifactType[] | Project-scoped artifact type definitions |
+| `users` | UserProfile[] | Registered user profiles |
+| `template_variables` | TemplateVariable[] | Custom variables for stage prompt templates |
+| `prompt_templates` | PromptTemplate[] | Versioned prompt template definitions |
+| `planning_messages` | ChatMessage[] | Planning Window chat history |
+| `planning_agent_selection` | Agent ref? | Sticky agent selection for planning chat |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
 
-Queued unit of work for the agent concurrency pool. **Ephemeral** — exists in the `AgentPool` queue only.
+**Ideas** are maintained as text entries in `work/INDEX.md` (the Planning Window artifact). They are not domain objects — the user creates features from ideas manually or via chat.
 
-```python
-class AgentJob(BaseModel):
-    """Submitted to AgentPool.queue for execution. Not persisted."""
-    task: Task
-    feature: Feature
-    context: AssembledContext
-    agent_type: ProviderType                   # determines which semaphore
-    provider: AgentProvider                    # the executor (not serialized)
-    stage: TaskStatus                          # which workflow stage is executing
+### 4.2 SmtpConfig
 
-    class Config:
-        arbitrary_types_allowed = True         # for AgentProvider protocol
-```
+Nested configuration for email delivery.
 
-### AgentResult
+| Field | Type | Description |
+|-------|------|-------------|
+| `server` | string | SMTP server hostname |
+| `port` | integer | SMTP port |
+| `username` | string | Auth username |
+| `password` | string | Auth password or app key |
+| `tls` | boolean | Enable TLS |
 
-Outcome of a single agent execution. **Ephemeral** — converted to a persistent `AttemptRecord` after execution completes.
+### 4.3 Feature
 
-```python
-class AgentResult(BaseModel):
-    """Returned by AgentProvider.execute(). Not persisted directly;
-    PCT converts this to AttemptRecord files after execution."""
-    outcome: TaskOutcome
-    output: str                                # agent's produced content
-    tokens_input: int = 0
-    tokens_output: int = 0
-    duration_seconds: float = 0.0
-    error: str | None = None                   # if execution failed
-```
+A major deliverable represented as a Kanban swimlane.
 
-### AttemptRecord
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug, unique within project (e.g., `f1-core-server`) |
+| `title` | string | Display name |
+| `stage` | FeatureStage | Current lifecycle stage |
+| `spec_path` | string | Path to feature specification document |
+| `worktree_path` | string? | Path to git worktree (set during execution, cleared on cleanup) |
+| `branch` | string? | Feature branch name (e.g., `feature/f1-core-server`) |
+| `tasks` | Task[] | Tasks belonging to this feature |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
 
-Full record of a single execution attempt. Assembled from files in the execution directory.
+**Directory:** `work/{id}/`
 
-```python
-class AttemptRecord(BaseModel):
-    """Assembled from execution/active-tasks/<task-id>/attempt-<nnn>/
+**Refine Feature task:** On creation, every feature auto-generates a "Refine Feature" task at the first workflow stage. The planning agent proposes task breakdowns and dependency graphs through this task. When the Refine Feature task completes, the feature transitions from `planning` to `active`.
 
-    Files:
-      agent_log.jsonl  -> raw_messages
-      output.md        -> output
-      feedback.md      -> feedback
-      metadata.yaml    -> all other fields
-    """
-    attempt_number: int
-    agent_id: str
-    model: str
-    prompt_template_version: str | None = None
-    lora: str | None = None
-    timestamp: datetime
-    duration_seconds: float
-    tokens_input: int
-    tokens_output: int
-    outcome: TaskOutcome
-    output: str                                # agent's produced output
-    feedback: str | None = None                # rejection feedback (if rejected)
-    raw_messages: list[LLMMessage] = []        # full conversation transcript
+### 4.4 Task
 
-class AttemptMetadata(BaseModel):
-    """Persisted as attempt-<nnn>/metadata.yaml"""
-    attempt_number: int
-    agent_id: str
-    model: str
-    prompt_template_version: str | None = None
-    lora: str | None = None
-    timestamp: datetime
-    duration_seconds: float
-    tokens_input: int
-    tokens_output: int
-    outcome: TaskOutcome
-```
+A single unit of work within a feature. Tasks flow through workflow stages.
 
-### LLMMessage
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug, unique within feature (e.g., `define-data-models`) |
+| `title` | string | Display name |
+| `feature_id` | Feature ref | Parent feature |
+| `current_stage_id` | WorkflowStage ref | Current workflow stage |
+| `artifact_type_id` | ArtifactType ref? | Artifact categorization |
+| `blocked_by` | WikiLink[] | Hard-blocking deps: `[[feature_id#task_id]]` |
+| `cross_refs` | WikiLink[] | Soft/informational refs: `[[feature_id#task_id]]` |
+| `execution_status` | ExecutionStatus | Current execution state within the stage |
+| `is_bypassed` | boolean | User bypassed unmet dependencies (default: false) |
+| `consistency_flag` | ImpactSeverity? | Set by impact/continuity analysis; null when clear |
+| `error_details` | ErrorDetails? | Populated when `execution_status` is `error` |
+| `stage_contexts` | map\<stage_id, TaskStageContext\> | Per-stage chat history and metadata |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
 
-Single message in an LLM conversation.
+**Directory:** `work/{feature_id}/{id}/`
 
-```python
-class LLMMessage(BaseModel):
-    """Single entry in agent_log.jsonl"""
-    role: Literal["system", "user", "assistant"]
-    content: str
-    timestamp: datetime
-    tokens: int | None = None
-```
+**Computed properties:**
+- `is_blocked` — true when any `blocked_by` entry references a task not yet at Done stage
+- `notification_state` — `NotificationState?` derived from execution_status, consistency_flag, and assigned agent type: attention > warning > ready > `null` (no notification)
 
----
+**Validation:**
+- `blocked_by` graph must be acyclic (DAG enforced on save; cycles rejected with error naming the offending path)
+- Both `blocked_by` and `cross_refs` support within-feature and cross-feature references
+- Any agent can create new tasks during execution; new tasks always enter at the first workflow stage
 
-## 5. Context Models
+### 4.5 ErrorDetails
 
-### RawContext
+Captured when an agent execution fails.
 
-All gathered context materials before the Context Manager processes them. **Ephemeral** — assembled in-memory from persisted specs, attempt records, and RAG results.
-
-```python
-class RawContext(BaseModel):
-    """Input to ContextManager.prepare_context(). Not persisted."""
-    project_spec: str                          # full project_spec.md content
-    feature_spec: str                          # full feature_spec.md content
-    task_spec: str                             # full task .md body
-    retry_history: list[AttemptRecord]         # all prior attempts for this task
-    rag_results: list[RAGResult]               # retrieved similar documents
-```
-
-### AssembledContext
-
-Final context passed to an agent after Context Manager compression. **Ephemeral** — exists in-memory during execution. The context inspector UI (F3) reads this before the agent runs.
-
-```python
-class AssembledContext(BaseModel):
-    """Output of ContextManager.prepare_context(). Not persisted.
-    Passed to AgentProvider.execute()."""
-    base: str                                  # tier 1: specs (always verbatim)
-    retries: str                               # tier 2: retry history (summarized)
-    rag: str                                   # tier 3: RAG results (ranked/compressed)
-    metadata: ContextMetadata
-
-    @property
-    def full_text(self) -> str:
-        return f"{self.base}\n\n{self.retries}\n\n{self.rag}"
-
-class ContextMetadata(BaseModel):
-    """Metadata about the assembled context for the inspector UI. Not persisted."""
-    total_tokens: int
-    tier_breakdown: dict[str, int]             # {"base": 2000, "retries": 1500, "rag": 3000}
-    items_included: int                        # number of RAG results included
-    items_excluded: int                        # number of RAG results dropped
-    retries_summarized: int                    # number of old attempts summarized
-    budget: int                                # configured token budget
-```
-
-### RAGResult
-
-Single retrieval result from LanceDB.
-
-```python
-class RAGResult(BaseModel):
-    """Returned by RAG query. Maps to TaskDocument/SpecDocument in LanceDB."""
-    document_id: str
-    document_type: Literal["task", "spec", "feature"]
-    feature: str | None = None
-    stage: str | None = None
-    outcome: TaskOutcome | None = None
-    attempt: int | None = None
-    similarity_score: float
-    text: str                                  # the retrieved content
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `error_type` | string | Category (e.g., `api_error`, `timeout`, `oom`) |
+| `message` | string | Error message |
+| `partial_output` | string? | Any output produced before failure |
+| `occurred_at` | timestamp | |
 
 ---
 
-## 6. RAG Storage Models
+## 5. Agents & Models
 
-LanceDB models for vector search. These extend `LanceModel` (which extends Pydantic `BaseModel`).
+### 5.1 Agent
 
-```python
-from lancedb.pydantic import Vector, LanceModel
+A named, reusable executor configuration. Project-scoped. Provider information is inherited from the linked model.
 
-class TaskDocument(LanceModel):
-    """Indexed in $PCT_PROJECT_ROOT/.pct/rag/tasks.lance/"""
-    task_id: str
-    feature: str
-    stage: str
-    outcome: str                               # "approved" | "rejected"
-    attempt: int
-    text: str                                  # content to embed and search
-    vector: Vector(384)                        # all-MiniLM-L6-v2 output dimension
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug, unique within project |
+| `name` | string | Display name |
+| `agent_type` | AgentType | Kind of executor (llm, user, tool, image_gen) |
+| `model_id` | ModelRegistryEntry ref | Base model (User agents link to the built-in "User" model) |
+| `lora_id` | LoRARegistryEntry ref? | Optional LoRA adapter |
+| `prompt_template` | string? | Agent prompt / system instructions |
+| `temperature` | float? | Override model default |
+| `context_length_override` | integer? | Override model default context length |
+| `cli_command` | string? | Command for remote API provider |
+| `linked_user_id` | UserProfile ref? | For User agents: linked registered user |
+| `notify_on_waiting` | boolean | For User agents: email on task assignment (default: false) |
 
-class SpecDocument(LanceModel):
-    """Indexed in $PCT_PROJECT_ROOT/.pct/rag/specs.lance/"""
-    spec_id: str
-    spec_type: Literal["project", "feature", "task"]
-    feature: str | None = None
-    text: str
-    vector: Vector(384)
-```
+**Constraints:**
+- `lora_id` must reference a LoRA compatible with `model_id` (matching `base_model_id`)
+- `linked_user_id` and `notify_on_waiting` apply only when `agent_type` is `user`
+- `notify_on_waiting` requires the linked user to have an email and SMTP to be configured
+- Provider type is resolved via `model_id` → ModelRegistryEntry.provider_type
 
----
+### 5.2 ModelRegistryEntry
 
-## 7. Image Generation Models
+A model available for use. **Global** — shared across all projects.
 
-Models for the image generation pipeline. Image generation sessions track multiple rounds of generation per task, with selection and refinement support.
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Display name |
+| `provider_type` | ProviderType | How the model is sourced |
+| `model_identifier` | string | Provider-specific ID (file path, API model name, HF repo) |
+| `context_length` | integer | Max context window (0 = use model default) |
+| `api_base_url` | string? | For remote API models |
+| `file_path` | string? | For local/HuggingFace models |
+| `download_status` | DownloadStatus? | For HuggingFace models only |
 
-```python
-class JobStatus(str, Enum):
-    """Status of an image generation job."""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+**Built-in entry:** A "User" model with `provider_type: user` exists by default. It has no model backend and serves as the model reference for User-type agents.
 
-class GenerateRequest(BaseModel):
-    """Request to start an image generation job."""
-    feature_id: str
-    task_id: str
-    prompt: str
-    negative_prompt: str = ""
-    guidance_scale: float = 7.5
-    num_inference_steps: int = 30
-    width: int = 512
-    height: int = 512
-    source_image: str | None = None            # base64 or path for img2img
-    divergence: float = 0.5                    # img2img strength (0.1–0.9)
-    seed: int | None = None                    # for reproducibility
+### 5.3 LoRARegistryEntry
 
-class GeneratedImage(BaseModel):
-    """A single generated image within a round."""
-    filename: str                              # e.g., "round_001_0.png"
-    seed: int
-    round: int
-    index: int                                 # 0–3 within the round
+A LoRA adapter available for use. **Global** — shared across all projects.
 
-class GenerationRound(BaseModel):
-    """One round of image generation (produces 4 images)."""
-    round: int
-    prompt: str
-    params: dict                               # generation parameters used
-    images: list[GeneratedImage]
-    selected_image: str | None = None          # filename of user-selected image
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Display name |
+| `base_model_id` | ModelRegistryEntry ref | Compatible base model |
+| `description` | string | Purpose / training notes |
+| `versions` | LoRAVersion[] | Version history |
+| `active_version` | integer | Currently active version number |
 
-class SessionMetadata(BaseModel):
-    """Persisted at work/{feature_id}/{task_id}/images/session.json"""
-    feature_id: str
-    task_id: str
-    model_id: str                              # e.g., "sd-legacy/stable-diffusion-v1-5"
-    rounds: list[GenerationRound]
-    current_round: int
+### 5.4 LoRAVersion
 
-class JobResponse(BaseModel):
-    """Returned by job status polling."""
-    job_id: str
-    status: JobStatus
-    progress: float = 0.0                      # 0.0–1.0
-    images: list[GeneratedImage] = []
-    error: str | None = None
+A single version of a LoRA adapter. Supports rollback to previous versions.
 
-class SelectImageRequest(BaseModel):
-    """Request to select an image from a generation round."""
-    round: int
-    filename: str
-```
-
-**Storage:** Image generation artifacts live in `work/{feature_id}/{task_id}/images/` within the project directory:
-- `session.json` — session metadata (rounds, selections, model)
-- `round_NNN_M.png` — generated image files (4 per round)
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | integer | Sequential version number |
+| `file_path` | string | Path to adapter weights |
+| `training_job_id` | TrainingJob ref? | Job that produced this version |
+| `created_at` | timestamp | |
 
 ---
 
-## 8. Protocol Interfaces
+## 6. Workflow & Configuration
 
-### AgentProvider
+### 6.1 WorkflowStage
 
-The core abstraction for all agent backends. All providers implement this protocol.
+A column on the Kanban board. Ordered within a project. Templates select a subset from the built-in catalog.
 
-```python
-class AgentProvider(Protocol):
-    async def execute(
-        self,
-        task: Task,
-        context: AssembledContext,
-        on_output: Callable[[str], Awaitable[None]],   # streaming callback
-    ) -> AgentResult: ...
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug identifier (e.g., `refine-spec`, `implement`) |
+| `label` | string | Display name |
+| `enabled` | boolean | Whether this stage is active for the project |
+| `agent_id` | Agent ref? | Default executor for tasks at this stage |
+| `prompt_template` | string? | Per-stage prompt injected into agent context |
+| `auto_run` | boolean | Auto-execute agent when task enters this stage (default: false) |
+| `sort_order` | integer | Position in the workflow |
 
-    async def interrupt(self) -> None: ...
-```
+**Built-in stage catalog** (templates select a subset):
 
-**Implementations:**
+| Stage ID | Label | Typical Use |
+|----------|-------|-------------|
+| `refine-spec` | Refine Spec | Clarify requirements, produce task spec |
+| `implement` | Implement | Execute the work |
+| `feature-test` | Feature Test | Run tests scoped to task/feature |
+| `code-review` | Code Review | Another agent reviews the work |
+| `user-approval` | User Approval | Human reviews and approves/rejects |
+| `merge` | Merge | Merge task branch into feature branch |
+| `full-test` | Full Test Suite | Run complete project tests post-merge |
+| `refactoring-check` | Refactoring Check | Scan for refactoring opportunities |
+| `push` | Push | Push to remote |
+| `done` | Done | Terminal — task complete and archived |
+| `concept` | Concept | Brainstorm core concept (Writing) |
+| `outline` | Outline | Structure and outline (Writing) |
+| `draft` | Draft | Write or expand draft (Writing) |
+| `revise` | Revise | Review for quality and consistency (Writing) |
+| `polish` | Polish | Final grammar, prose, consistency pass (Writing) |
 
-| Provider | Backend | Notes |
-|----------|---------|-------|
-| `ClaudeCodeProvider` | Claude Code CLI via subprocess | Primary. Streams stdout/stderr. Interrupt via SIGTERM. |
-| `LocalLLMProvider` | llama-cpp-python | Separate process/thread pool. Same streaming interface. |
-| `UserProvider` | Manual human execution | No subprocess. Presents task in UI, waits for completion. |
-| `ContextManagerProvider` | Configurable LLM (lightweight) | Specialized for summarization. Called pre-execution and as agent tool. |
+### 6.2 ArtifactType
+
+Categorization for task work products. Project-scoped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug identifier |
+| `label` | string | Display name |
+| `template_hint` | string? | Instructional text injected into agent system prompt for tasks of this type |
+| `color` | string? | Color for the task card indicator dot |
+
+**Built-in artifact types** (Writing template):
+
+| ID | Label |
+|----|-------|
+| `timeline` | Timeline & History |
+| `location` | Location |
+| `character` | Character |
+| `faction` | Faction / Organization |
+| `magic-system` | Magic & Religion |
+| `technology` | Technology |
+| `item` | Item / Artifact |
+| `story-arc` | Story Arc |
+| `chapter` | Chapter |
+| `text` | Text (generic, used by Coding template) |
+
+### 6.3 TemplateVariable
+
+User-defined variable for stage prompt template substitution.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `key` | string | Slug key (auto-slugified, lowercase alphanumeric) |
+| `description` | string | What this variable represents |
+| `value` | string | Substitution value |
+
+**Built-in variables** (always available, read-only):
+
+| Variable | Content |
+|----------|---------|
+| `{{artifact}}` | Full artifact content |
+| `{{artifact_work_dir}}` | Task work directory path (`work/{feature_id}/{task_id}/`) |
+| `{{artifact_file_path}}` | Feature document file path (`work/{feature_id}/{feature_id}.md`) |
+| `{{task_title}}` | Task display name |
+| `{{feature_title}}` | Feature display name |
+| `{{blocked_by}}` | Upstream dependency artifact content |
+| `{{cross_refs}}` | Cross-reference context from soft-linked tasks |
+
+### 6.4 UserProfile
+
+A registered user for notification routing. Project-scoped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Slug, unique within project |
+| `display_name` | string | Identifier shown in dropdowns and notifications |
+| `email` | string? | Email for notifications (validated on save) |
 
 ---
 
-## 9. State Machines
+## 7. Chat & Context
 
-### Feature Lifecycle
+### 7.1 TaskStageContext
+
+The chat session for a specific task at a specific workflow stage. Stored independently per (task, stage) pair.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_id` | Task ref | |
+| `stage_id` | WorkflowStage ref | |
+| `messages` | ChatMessage[] | Conversation history at this stage |
+| `last_agent_id` | Agent ref? | Sticky agent selection for this context |
+
+**Stage transition rules:**
+- **Advance** — context resets for the new stage; the artifact is the handoff mechanism
+- **Send back** — previous stage's context is restored in full (non-destructive)
+- **Carry-forward override** — optional flag on approval to include current stage's conversation in the next stage's context (rare)
+
+### 7.2 ChatMessage
+
+A single message in a chat session (planning or task-stage).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique within session |
+| `role` | MessageRole | user / assistant / system |
+| `content` | string | Message text |
+| `included` | boolean | Whether included in context sent to agent (default: true) |
+| `created_at` | timestamp | |
+
+### 7.3 ContextSnapshot
+
+The full assembled context captured when a user flags a training example. Preserves exactly what the model saw at flag time.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `project_spec` | string | Project specification text at capture time |
+| `feature_spec` | string | Feature specification text at capture time |
+| `task_spec` | string | Task specification text at capture time |
+| `rag_results` | string | RAG-injected context |
+| `retry_history` | string | Prior attempts and feedback |
+| `chat_history` | ChatMessage[] | Messages included in context |
+| `captured_at` | timestamp | |
+
+---
+
+## 8. Training Pipeline (F7)
+
+### 8.1 TrainingFlag
+
+A user-flagged message pair from a chat interaction.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `session_ref` | string | Source: task_id + stage_id, or planning session |
+| `message_range` | integer[] | Indices of the user turn + assistant response |
+| `context_snapshot_id` | ContextSnapshot ref | What the model saw |
+| `agent_id` | Agent ref | Agent that produced the response |
+| `model_id` | ModelRegistryEntry ref | Model used |
+| `flag_type` | FlagType | Positive or negative |
+| `annotation_category` | AnnotationCategory | Quick category |
+| `note` | string? | Free-text explanation |
+| `curation_status` | CurationStatus | Pipeline progress |
+| `edited_response` | string? | User's curated ideal response |
+| `context_sections_included` | string[]? | Which context sections to include in training |
+| `created_at` | timestamp | |
+
+### 8.2 Dataset
+
+A named collection of curated training examples.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Display name (e.g., "code-style-preferences") |
+| `description` | string? | Purpose of this dataset |
+| `entries` | TrainingFlag ref[] | Ordered list of included flags |
+| `created_at` | timestamp | |
+| `updated_at` | timestamp | |
+
+**Computed properties:**
+- `example_count`, `positive_count`, `negative_count`
+- `avg_token_length` — average across entries
+
+### 8.3 TrainingJob
+
+A LoRA fine-tuning run.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Name for the output LoRA |
+| `base_model_id` | ModelRegistryEntry ref | Target base model (local/HF only) |
+| `training_method` | TrainingMethod | SFT or KTO |
+| `dataset_ids` | Dataset ref[] | Source datasets |
+| `target_lora_id` | LoRARegistryEntry ref? | If updating existing (null = create new) |
+| `status` | TrainingJobStatus | Current state |
+| `save_target` | LoRASaveTarget | Where to save output |
+| `hyperparameters` | HyperParameters | Training configuration |
+| `progress` | TrainingProgress? | Live metrics (when running/completed) |
+| `error_message` | string? | If failed |
+| `started_at` | timestamp? | |
+| `completed_at` | timestamp? | |
+
+**Constraint:** `base_model_id` must reference a model with `provider_type` of `local` or `huggingface` (remote API models cannot be LoRA-trained).
+
+### 8.4 HyperParameters
+
+Training configuration values.
+
+| Field | Type | Default |
+|-------|------|---------|
+| `lora_rank` | integer | 16 |
+| `lora_alpha` | integer | 32 |
+| `learning_rate` | float | 2e-4 |
+| `epochs` | integer | 3 |
+| `batch_size` | integer | 4 |
+| `max_sequence_length` | integer | (from model context) |
+
+### 8.5 TrainingProgress
+
+Live metrics for a running or completed training job.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `current_epoch` | integer | |
+| `total_epochs` | integer | |
+| `loss` | float | Current loss value |
+| `loss_history` | float[] | Loss values per step (for chart) |
+| `elapsed_seconds` | integer | |
+| `eta_seconds` | integer? | Estimated time remaining |
+
+### 8.6 EvaluationSession
+
+An A/B comparison between base model and base+LoRA.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `lora_id` | LoRARegistryEntry ref | LoRA being evaluated |
+| `base_model_id` | ModelRegistryEntry ref | Base model |
+| `blind_mode` | boolean | Whether model labels are hidden |
+| `prompts` | EvalPrompt[] | Test prompts with responses |
+| `verdict` | EvalVerdict? | Final outcome |
+| `created_at` | timestamp | |
+
+### 8.7 EvalPrompt
+
+A single test prompt within an evaluation session.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prompt` | string | The test input |
+| `source_flag_id` | TrainingFlag ref? | Pulled from flagged example (or written fresh) |
+| `base_response` | string | Base model response |
+| `lora_response` | string | Base+LoRA model response |
+| `base_rating` | integer? | User rating for base |
+| `lora_rating` | integer? | User rating for LoRA |
+
+### 8.8 PromptTemplate
+
+Versioned agent instructions that evolve over time. Project-scoped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Display name |
+| `versions` | PromptTemplateVersion[] | Version history |
+| `active_version` | integer | Currently active version number |
+
+### 8.9 PromptTemplateVersion
+
+A single version of a prompt template.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | integer | Sequential version number |
+| `content` | string | Template text |
+| `notes` | string? | Change description |
+| `created_at` | timestamp | |
+
+---
+
+## 9. Image Generation (F11)
+
+### 9.1 ImageSession
+
+Image generation state for a task. One per task.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_id` | Task ref | Owning task |
+| `rounds` | ImageRound[] | Generation rounds in order |
+| `accepted_image_id` | GeneratedImage ref? | Selected/accepted final image |
+
+### 9.2 ImageRound
+
+A single round of image generation.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `round_number` | integer | Sequential round index |
+| `prompt` | string | Generation prompt |
+| `negative_prompt` | string? | Exclusion prompt |
+| `guidance_scale` | float | Prompt adherence (default: 7.5) |
+| `divergence` | float? | img2img variation strength (0.1–0.9; only for rounds after the first) |
+| `source_image_id` | GeneratedImage ref? | Source for img2img (null for text-to-image) |
+| `images` | GeneratedImage[] | Generated images (typically 4) |
+
+### 9.3 GeneratedImage
+
+A single generated image.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `file_path` | string | Path to image file |
+| `seed` | integer | Generation seed |
+| `index` | integer | Position in the round (0–3) |
+| `created_at` | timestamp | |
+
+---
+
+## 10. Notifications (F13)
+
+### 10.1 NotificationEvent
+
+A notification event surfaced to the user.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `event_type` | NotificationEventType | Kind of event |
+| `task_id` | Task ref? | Related task (null for project-level events) |
+| `feature_id` | Feature ref? | Related feature |
+| `message` | string | Human-readable summary |
+| `severity` | NotificationState | Visual priority |
+| `acknowledged` | boolean | User has dismissed/addressed (default: false) |
+| `email_sent` | boolean | Whether email was dispatched (default: false) |
+| `email_target` | string? | Which email address received it |
+| `created_at` | timestamp | |
+
+**Email routing:**
+- **Product notification email** (Project.notification_email) — agent failures, merge conflicts, integration tests, training jobs
+- **Per-user email** (UserProfile.email) — task-waiting notifications when `notify_on_waiting` is enabled on the User agent
+
+---
+
+## 11. Relationships
+
+### Entity Relationship Summary
 
 ```
-                    ┌──────────────────────────────────┐
-                    │                                  │
-                    v                                  │
-  Backlog ──> Planning ──> Active ──> Integration Test ──> Complete
-                            │  ^          │
-                            │  │          │ (failure spawns
-                            v  │          │  new tasks)
-                         Suspended ───────┘
+Project
+ ├── 1:N Feature (ordered by priority)
+ ├── 1:N WorkflowStage (ordered)
+ ├── 1:N Agent
+ ├── 1:N ArtifactType
+ ├── 1:N UserProfile
+ ├── 1:N TemplateVariable
+ ├── 1:N PromptTemplate
+ ├── 1:N NotificationEvent
+ ├── 0:1 SmtpConfig
+ └── refs → Agent (default_agent, planning_agent, context_manager_agent)
+
+Feature
+ ├── 1:N Task
+ └── belongs to → Project
+
+Task
+ ├── N:N Task (blocked_by — directed, acyclic)
+ ├── N:N Task (cross_refs — directed, informational)
+ ├── 1:N TaskStageContext (one per visited workflow stage)
+ ├── 0:1 ImageSession
+ ├── 0:1 ErrorDetails
+ ├── refs → WorkflowStage (current_stage)
+ ├── refs → ArtifactType
+ └── belongs to → Feature
+
+Agent
+ ├── refs → ModelRegistryEntry (required — User agents use built-in "User" model)
+ ├── refs → LoRARegistryEntry (optional, must match model)
+ ├── refs → UserProfile (optional, for User agents)
+ └── belongs to → Project
+
+ModelRegistryEntry (GLOBAL)
+ └── 1:N LoRARegistryEntry (compatible adapters)
+
+LoRARegistryEntry (GLOBAL)
+ ├── 1:N LoRAVersion
+ └── refs → ModelRegistryEntry (base model)
+
+TaskStageContext
+ ├── 1:N ChatMessage
+ └── refs → Agent (last selected)
+
+TrainingFlag
+ ├── refs → ContextSnapshot
+ ├── refs → Agent
+ └── refs → ModelRegistryEntry
+
+Dataset
+ └── N:N TrainingFlag (ordered entries)
+
+TrainingJob
+ ├── refs → ModelRegistryEntry (base model)
+ ├── refs → LoRARegistryEntry (if updating)
+ └── refs → Dataset[] (sources)
+
+EvaluationSession
+ ├── refs → LoRARegistryEntry
+ ├── refs → ModelRegistryEntry
+ └── 1:N EvalPrompt
+
+ImageSession
+ ├── 1:N ImageRound
+ └── belongs to → Task
+
+ImageRound
+ └── 1:N GeneratedImage
 ```
 
-**Valid transitions:**
+### Key Constraints
+
+1. **Acyclic `blocked_by` graph** — circular dependency detection enforced on save; the directed graph must be a DAG at all times
+2. **Cross-feature references** — both `blocked_by` and `cross_refs` can reference tasks in any feature via WikiLinks
+3. **LoRA–Model compatibility** — Agent's `lora_id` must reference a LoRA whose `base_model_id` matches the Agent's `model_id`
+4. **LoRA training targets local only** — TrainingJob's `base_model_id` must have `provider_type` of `local` or `huggingface`
+5. **Notification email requires SMTP** — email notifications silently skipped when SmtpConfig is absent
+6. **User agent notifications require linked user with email** — `notify_on_waiting` only functions when linked UserProfile has a valid email and SMTP is configured
+7. **Agent provider inherited** — Agent does not store its own provider type; resolved via `model_id` → ModelRegistryEntry.provider_type
+
+---
+
+## 12. State Machines
+
+### 12.1 Feature Lifecycle
+
+```
+Planning ──→ Active ──→ Integration Test ──→ Complete
+                │              │
+                ↓              │
+            Suspended ─────→ Active (resume)
+```
 
 | From | To | Trigger |
 |------|----|---------|
-| Backlog | Planning | User activates feature |
-| Planning | Active | User approves spec and task breakdown |
-| Active | Suspended | User clicks "Suspend" |
-| Suspended | Active | User resumes (after re-planning + impact analysis) |
-| Active | Integration Test | All tasks reach `done` |
+| Planning | Active | Refine Feature task completes |
+| Active | Suspended | User toggles suspend on swimlane |
+| Active | Integration Test | All tasks reach Done stage |
+| Suspended | Active | User toggles resume |
 | Integration Test | Complete | Integration test passes |
-| Integration Test | Active | Integration test fails (new tasks spawned at Refine Spec) |
+| Integration Test | Active | Integration test fails (new tasks spawned at first workflow stage) |
 
-### Task Workflow
+**Notes:**
+- Suspend can also be applied from Integration Test
+- Project-wide suspend applies to all active swimlanes simultaneously
+- Resume can be global or per-swimlane
+
+### 12.2 Task Workflow Progression
+
+Tasks advance through the project's ordered workflow stages.
 
 ```
-  refine-spec ──> implement ──> feature-test ──> code-review ──> user-approval
-       ^                                              │               │
-       │              (reject / send back)            │               │
-       └──────────────────────────────────────────────┘               │
-                                                                      v
-                                                      merge ──> full-test ──> refactor-check ──> push ──> done
+[Stage 1] → [Stage 2] → ... → [Stage N-1] → [Done]
+    ↑           ↑                    ↑
+    └───────────┴── Send Back ───────┘
 ```
 
-**Valid transitions:**
+**Rules:**
+- **Advance** — on approval, task moves to next enabled stage
+- **Send back** — user can return task to any earlier stage; that stage's context is restored
+- **Skip** — drag-and-drop to non-adjacent stage shows confirmation listing skipped stages
+- **Bypass** — blocked tasks can be manually advanced with user confirmation; logged with badge
+- **Auto-run** — when a task enters a stage with `auto_run` enabled and is not blocked, the agent fires automatically
+- **Auto-unblock cascade** — when a task reaches Done, PCT re-evaluates all tasks listing it in `blocked_by`; newly unblocked tasks at auto-run stages fire automatically
+- **Done** — terminal stage; task is complete and archived
+
+### 12.3 Task Execution Status
+
+```
+      ┌──── (user retry) ─────┐
+      ↓                        │
+    Idle ──→ Queued ──→ Running ──→ Idle (at next stage on success)
+                           │
+                           └──→ Error
+```
 
 | From | To | Trigger |
 |------|----|---------|
-| Any stage | Next stage | Agent completes + auto-advance, or user advances manually |
-| code-review | implement | Review rejects, sends back with feedback |
-| code-review | refine-spec | Review rejects, fundamental spec issue |
-| user-approval | Any earlier stage | User rejects, sends back to specific stage |
-| Any stage | Any earlier stage | User manually sends back (with confirmation) |
-| (new task) | refine-spec | Task added mid-flight by user or agent |
+| Idle | Queued | Auto-run enabled and task enters stage (or unblocks) |
+| Queued | Running | Concurrency slot available |
+| Running | Idle | Agent completes successfully |
+| Running | Error | Agent fails (API error, timeout, OOM, etc.) |
+| Error | Idle | User retries or reassigns |
 
-**Blocked state:** A task remains in its current stage if any `depends_on` or `cross_depends_on` dependency is unmet. Blocked tasks are visually indicated on the Kanban board.
+**Note:** Auto-run does not re-trigger on error. The user must manually retry.
 
----
+### 12.4 Training Job Lifecycle
 
-## 10. Model Relationships
-
-### Domain Model Class Diagram
-
-```mermaid
-classDiagram
-    class Project {
-        +str project_id
-        +str project_name
-        +str project_type
-        +ProjectConfig config
-        +str specification
-        +list~Feature~ active_features
-        +list~BacklogFeature~ backlog_features
-    }
-
-    class ProjectConfig {
-        +str project_id
-        +str project_name
-        +str project_type
-        +str project_directory
-        +list~AgentConfig~ agents
-        +list~WorkflowStageConfig~ workflow_stages
-        +list~TemplateVariable~ template_variables
-        +list~ArtifactTypeConfig~ artifact_types
-        +str planning_agent
-        +str default_agent
-        +bool auto_advance
-        +ConcurrencyConfig concurrency
-        +ContextConfig context
-    }
-
-    class WorkflowStageConfig {
-        +str stage
-        +str label
-        +bool enabled
-        +str agent
-        +str prompt_template
-    }
-
-    class TemplateVariable {
-        +str key
-        +str description
-        +str value
-    }
-
-    class ArtifactTypeConfig {
-        +str id
-        +str label
-        +str template_hint
-    }
-
-    class ModelRegistryEntry {
-        +str id
-        +ProviderType provider_type
-        +str model_id
-        +int context_length
-        +str model_path
-        +str api_base
-        +str download_status
-    }
-
-    class LoRARegistryEntry {
-        +str id
-        +str base_model
-        +str path
-        +str description
-        +datetime created
-    }
-
-    class ConcurrencyConfig {
-        +int remote_api_limit
-        +int local_gpu_limit
-    }
-
-    class ContextConfig {
-        +int token_budget
-        +str context_manager_model
-    }
-
-    class Feature {
-        +str id
-        +str title
-        +str specification
-        +FeatureMetadata metadata
-        +list~Task~ tasks
-    }
-
-    class FeatureMetadata {
-        +FeatureStage lifecycle_stage
-        +SerializationMode serialization_mode
-        +str worktree_path
-        +str branch
-        +list~str~ commits
-        +list~str~ feature_dependencies
-        +datetime created
-        +datetime updated
-    }
-
-    class BacklogFeature {
-        +str id
-        +str specification
-    }
-
-    class Task {
-        +str id
-        +str title
-        +str feature
-        +TaskStatus status
-        +str agent
-        +str branch
-        +list~str~ depends_on
-        +list~str~ cross_depends_on
-        +list~str~ tags
-        +int priority
-        +int attempt
-        +str artifact_path
-        +str artifact_type
-        +datetime created
-        +datetime updated
-        +str body
-        +is_blocked() bool
-        +slug() str
-    }
-
-    class AttemptRecord {
-        +int attempt_number
-        +str agent_id
-        +str model
-        +str prompt_template_version
-        +str lora
-        +datetime timestamp
-        +float duration_seconds
-        +int tokens_input
-        +int tokens_output
-        +TaskOutcome outcome
-        +str output
-        +str feedback
-        +list~LLMMessage~ raw_messages
-    }
-
-    class LLMMessage {
-        +str role
-        +str content
-        +datetime timestamp
-        +int tokens
-    }
-
-    class FeatureStage {
-        <<enumeration>>
-        BACKLOG
-        PLANNING
-        ACTIVE
-        SUSPENDED
-        INTEGRATION_TEST
-        COMPLETE
-    }
-
-    class TaskStatus {
-        <<enumeration>>
-        REFINE_SPEC
-        IMPLEMENT
-        FEATURE_TEST
-        CODE_REVIEW
-        USER_APPROVAL
-        MERGE
-        FULL_TEST
-        REFACTOR_CHECK
-        PUSH
-        DONE
-    }
-
-    class TaskOutcome {
-        <<enumeration>>
-        APPROVED
-        REJECTED
-        INTERRUPTED
-        IN_PROGRESS
-        ERROR
-    }
-
-    class SerializationMode {
-        <<enumeration>>
-        PARALLEL
-        SERIAL
-    }
-
-    Project "1" *-- "1" ProjectConfig
-    Project "1" *-- "*" Feature
-    Project "1" *-- "*" BacklogFeature
-    ProjectConfig "1" *-- "*" AgentConfig
-    ProjectConfig "1" *-- "*" WorkflowStageConfig
-    ProjectConfig "1" *-- "*" TemplateVariable
-    ProjectConfig "1" *-- "*" ArtifactTypeConfig
-    ProjectConfig "1" *-- "1" ConcurrencyConfig
-    ProjectConfig "1" *-- "1" ContextConfig
-    AgentConfig ..> ModelRegistryEntry : model (by ID)
-    AgentConfig ..> LoRARegistryEntry : lora (by ID)
-    LoRARegistryEntry ..> ModelRegistryEntry : base_model (by ID)
-    WorkflowStageConfig ..> AgentConfig : agent (by ID)
-    WorkflowStageConfig --> TaskStatus
-    Feature "1" *-- "1" FeatureMetadata
-    Feature "1" *-- "*" Task
-    Task "1" *-- "*" AttemptRecord
-    AttemptRecord "1" *-- "*" LLMMessage
-    FeatureMetadata --> FeatureStage
-    FeatureMetadata --> SerializationMode
-    Task --> TaskStatus
-    AttemptRecord --> TaskOutcome
-    Task "*" ..> "*" Task : depends_on
-    Feature "*" ..> "*" Feature : cross-feature dep
+```
+Pending ──→ Running ──→ Completed
+               │
+               ├──→ Failed
+               └──→ Cancelled
 ```
 
-### Execution Model Class Diagram
+### 12.5 HuggingFace Model Download
 
-```mermaid
-classDiagram
-    class AgentProvider {
-        <<interface>>
-        +execute(Task, AssembledContext, Callback) AgentResult
-        +interrupt() None
-    }
-
-    class ClaudeCodeProvider {
-        +execute(Task, AssembledContext, Callback) AgentResult
-        +interrupt() None
-    }
-
-    class LocalLLMProvider {
-        +execute(Task, AssembledContext, Callback) AgentResult
-        +interrupt() None
-    }
-
-    class UserProvider {
-        +execute(Task, AssembledContext, Callback) AgentResult
-        +interrupt() None
-    }
-
-    class ContextManager {
-        +AgentProvider provider
-        +int token_budget
-        +prepare_context(RawContext) AssembledContext
-    }
-
-    class AgentConfig {
-        +str id
-        +AgentType agent_type
-        +ProviderType provider_type
-        +str model
-        +str prompt_template
-        +str lora
-        +str cli_command
-        +int context_length
-        +float temperature
-    }
-
-    class AgentJob {
-        +Task task
-        +Feature feature
-        +AssembledContext context
-        +ProviderType agent_type
-        +AgentProvider provider
-        +TaskStatus stage
-    }
-
-    class AgentResult {
-        +TaskOutcome outcome
-        +str output
-        +int tokens_input
-        +int tokens_output
-        +float duration_seconds
-        +str error
-    }
-
-    class RawContext {
-        +str project_spec
-        +str feature_spec
-        +str task_spec
-        +list~AttemptRecord~ retry_history
-        +list~RAGResult~ rag_results
-    }
-
-    class AssembledContext {
-        +str base
-        +str retries
-        +str rag
-        +ContextMetadata metadata
-        +full_text() str
-    }
-
-    class ContextMetadata {
-        +int total_tokens
-        +dict tier_breakdown
-        +int items_included
-        +int items_excluded
-        +int retries_summarized
-        +int budget
-    }
-
-    class RAGResult {
-        +str document_id
-        +str document_type
-        +str feature
-        +str stage
-        +TaskOutcome outcome
-        +int attempt
-        +float similarity_score
-        +str text
-    }
-
-    class AgentType {
-        <<enumeration>>
-        LLM
-        USER
-        TOOL
-        IMAGEGEN
-    }
-
-    class ProviderType {
-        <<enumeration>>
-        REMOTE_API
-        LOCAL_LLM
-        HUGGINGFACE
-        USER
-    }
-
-    class AgentPool {
-        +Queue~AgentJob~ queue
-        +dict semaphores
-        +submit(AgentJob) None
-        +run(int) None
-    }
-
-    AgentProvider <|.. ClaudeCodeProvider
-    AgentProvider <|.. LocalLLMProvider
-    AgentProvider <|.. UserProvider
-    ContextManager --> AgentProvider : uses for summarization
-    ContextManager --> RawContext : input
-    ContextManager --> AssembledContext : output
-    AssembledContext "1" *-- "1" ContextMetadata
-    AgentJob --> AgentProvider
-    AgentJob --> AssembledContext
-    AgentPool --> AgentJob : queues
-    AgentPool --> AgentProvider : dispatches to
-    AgentConfig --> AgentType
-    AgentConfig --> ProviderType
-    RawContext "1" o-- "*" RAGResult
 ```
-
-### Task Dependency Model
-
-Tasks support two types of dependencies. Both block execution until the dependency reaches `done`.
-
-```mermaid
-graph LR
-    subgraph "Feature: 001-core-server"
-        T1[Task 001<br>Define data models]
-        T2[Task 002<br>Design API routes]
-        T3[Task 003<br>Setup scaffold]
-        T1 -->|depends_on| T3
-        T2 -->|depends_on| T1
-    end
-
-    subgraph "Feature: 002-frontend-kanban"
-        T4[Task 001<br>Design component tree]
-        T4 -.->|cross_depends_on| T1
-    end
-
-    style T4 stroke-dasharray: 5 5
+Pending ──→ Downloading ──→ Ready
+                │
+                └──→ Error ──→ (retry) → Downloading
 ```
-
-### Feature Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> Backlog
-    Backlog --> Planning : Activate feature
-    Planning --> Active : Approve spec and tasks
-    Active --> Suspended : Suspend
-    Suspended --> Active : Resume
-    Active --> Integration_Test : All tasks done
-    Integration_Test --> Complete : Test passes
-    Integration_Test --> Active : Test fails
-    Complete --> [*]
-```
-
-### Task Workflow
-
-```mermaid
-stateDiagram-v2
-    [*] --> Refine_Spec
-    Refine_Spec --> Implement
-    Implement --> Feature_Test
-    Feature_Test --> Code_Review
-    Code_Review --> User_Approval : Passes
-    Code_Review --> Implement : Rejected
-    Code_Review --> Refine_Spec : Spec issue
-    User_Approval --> Merge : Approved
-    User_Approval --> Implement : Rejected
-    User_Approval --> Refine_Spec : Rejected
-    Merge --> Full_Test
-    Full_Test --> Refactor_Check
-    Refactor_Check --> Push
-    Push --> Done
-    Done --> [*]
-```
-
-### Execution Pipeline
-
-```mermaid
-flowchart LR
-    subgraph "Context Assembly"
-        PS[Project Spec] --> RC[RawContext]
-        FS[Feature Spec] --> RC
-        TS[Task Spec] --> RC
-        RH[Retry History] --> RC
-        RAG[RAG Results] --> RC
-        RC --> CM[ContextManager]
-        CM --> AC[AssembledContext]
-    end
-
-    subgraph "Agent Execution"
-        AC --> AJ[AgentJob]
-        AJ --> AP[AgentPool]
-        AP -->|remote| CCP[ClaudeCodeProvider]
-        AP -->|local| LLP[LocalLLMProvider]
-        AP -->|user| UP[UserProvider]
-    end
-
-    subgraph "Results"
-        CCP --> AR[AgentResult]
-        LLP --> AR
-        UP --> AR
-        AR --> ATT[AttemptRecord]
-        ATT --> STORE[(Execution State)]
-        ATT --> RAGI[(RAG Index)]
-    end
-```
-
----
-
-## 11. Storage Mapping
-
-### Git-tracked — project root + `pct-admin/`
-
-| Model | File | Format |
-|-------|------|--------|
-| ProjectConfig | `pct.yaml` | YAML |
-| AgentConfig (list) | `pct.yaml` (under `agents` key) | YAML |
-| WorkflowStageConfig (list) | `pct.yaml` (under `workflow_stages` key) | YAML |
-| TemplateVariable (list) | `pct.yaml` (under `template_variables` key) | YAML |
-| ArtifactTypeConfig (list) | `pct.yaml` (under `artifact_types` key) | YAML |
-| Project spec | `pct-admin/project_spec.md` | Markdown |
-| Feature spec | `pct-admin/active-features/<id>/feature_spec.md` | Markdown |
-| FeatureMetadata | `pct-admin/active-features/<id>/metadata.yaml` | YAML |
-| Task | `pct-admin/active-features/<id>/tasks/<nnn>-<slug>.md` | YAML frontmatter + Markdown |
-| Backlog feature spec | `pct-admin/feature_backlog/<name>.md` | Markdown |
-
-### Git-ignored — `.pct/`
-
-| Model | File | Format |
-|-------|------|--------|
-| AttemptMetadata | `.pct/execution/active-tasks/<task>/attempt-<nnn>/metadata.yaml` | YAML |
-| Attempt output | `.pct/execution/active-tasks/<task>/attempt-<nnn>/output.md` | Markdown |
-| Attempt feedback | `.pct/execution/active-tasks/<task>/attempt-<nnn>/feedback.md` | Markdown |
-| LLM transcript | `.pct/execution/active-tasks/<task>/attempt-<nnn>/agent_log.jsonl` | JSONL |
-| Completed attempts | `.pct/execution/completed-tasks/<task>/...` | Same structure |
-| Integration test | `.pct/execution/features/<feature>/integration-test/attempt-<nnn>/...` | Same structure |
-| Planning chat | `.pct/chat_history/planning-<nnn>.jsonl` | JSONL |
-| RAG: task index | `.pct/rag/tasks.lance/` | Lance columnar |
-| RAG: spec index | `.pct/rag/specs.lance/` | Lance columnar |
-| Kanban snapshots | `.pct/kanban_snapshots/` | YAML |
-
-### Project work directory (`work/` in project repo)
-
-| Model | File | Format |
-|-------|------|--------|
-| Work index | `work/INDEX.md` | Markdown (auto-generated) |
-| Task artifact | `work/{feature_id}/{task_id}/{artifact}` | Various |
-| Image session metadata | `work/{feature_id}/{task_id}/images/session.json` | JSON |
-| Generated images | `work/{feature_id}/{task_id}/images/round_NNN_M.png` | PNG |
-
-### User data (`~/.pct/users/`, configurable via `PCT_USER_DATA_DIR`)
-
-| Model | File | Format |
-|-------|------|--------|
-| User (all users) | `users.json` | JSON (dict keyed by email) |
-
-### Global registries (`~/.pct/registries/`)
-
-| Model | File | Format |
-|-------|------|--------|
-| ModelRegistryEntry | `models.yaml` | YAML (list of entries) |
-| LoRARegistryEntry | `loras.yaml` | YAML (list of entries) |
-
-### Global curation (`~/.pct/curation/`)
-
-| Model | File | Format |
-|-------|------|--------|
-| Prompt templates | `prompt_templates/v<N>/<stage>.md` | Markdown |
-| Training data | `training_data/{positive,negative}/` | Mixed |
-| LoRA weights | `loras/<name>/` | Model files |
-
-### Ephemeral (in-memory only)
-
-| Model | Lifecycle | Notes |
-|-------|-----------|-------|
-| AgentJob | Created when task is ready for execution, consumed by AgentPool worker | Queued in `asyncio.Queue` |
-| AgentResult | Returned by `AgentProvider.execute()`, converted to AttemptRecord | Written to disk as attempt files |
-| RawContext | Assembled from persisted specs + attempt records + RAG results | Input to ContextManager |
-| AssembledContext | Output of ContextManager, passed to agent | Visible in context inspector UI |
-| ContextMetadata | Token counts and tier breakdown for UI display | Part of AssembledContext |
-| GenerateRequest | Submitted to image gen pipeline | Contains prompt, params, source image |
-| JobResponse | Returned by job status polling | Contains progress, images, errors |

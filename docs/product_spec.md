@@ -643,7 +643,7 @@ Dedicated settings page with **seven tabs** for managing project-level configura
   - Inline save/cancel controls for dirty edits; delete for unused stages
   - "Add Stage" button to create new custom stages
 - **Template Variables** (collapsible section):
-  - **Built-in variables** (read-only reference): `{{artifact}}` (full artifact content), `{{artifact_path}}` (file path), `{{task_title}}`, `{{feature_title}}`, `{{blocked_by}}` (upstream dependency artifact content from hard-blocking tasks), `{{cross_refs}}` (cross-reference context from soft-linked tasks)
+  - **Built-in variables** (read-only reference): `{{artifact}}` (full artifact content), `{{artifact_work_dir}}` (task work directory path), `{{artifact_file_path}}` (feature document file path), `{{task_title}}`, `{{feature_title}}`, `{{blocked_by}}` (upstream dependency artifact content from hard-blocking tasks), `{{cross_refs}}` (cross-reference context from soft-linked tasks)
   - **Custom variables** — user-defined key/description/value triples that are substituted into stage prompt templates. Keys are auto-slugified (lowercase alphanumeric).
 
 **Artifact Types tab:**
