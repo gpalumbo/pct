@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "typescript": "^5.9.3",
+    "yarn": "^1.22.22"
+  }
+}

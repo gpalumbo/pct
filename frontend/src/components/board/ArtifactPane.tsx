@@ -1,154 +1,69 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Button, Input, Spin, Tag, message } from 'antd';
-import { SaveOutlined, ReloadOutlined, EditOutlined } from '@ant-design/icons';
-import { useArtifact, useSaveArtifact, useUpdateTask } from '../../hooks/useBoardQueries';
+import { useState } from 'react';
+import { Button, Spin, Typography, Empty } from 'antd';
+import { EditOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import { boardApi } from '../../api/boardApi';
 import ArtifactEditorModal from './ArtifactEditorModal';
-import './sidebar.css';
 
-function artifactSlug(text: string, maxWords = 3): string {
-  const words = text.toLowerCase().match(/[a-z0-9]+/g) || [];
-  const selected = words.length > maxWords ? words.slice(0, maxWords) : words;
-  return selected.join('_') || 'untitled';
-}
-
-/** Extract and display [[wikilinks]] found in text as a tag strip */
-function WikilinkStrip({ text }: { text: string }) {
-  const links = useMemo(() => {
-    const matches: string[] = [];
-    const regex = /\[\[([^[\]]+)\]\]/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (!matches.includes(match[1])) {
-        matches.push(match[1]);
-      }
-    }
-    return matches;
-  }, [text]);
-
-  if (links.length === 0) return null;
-
-  return (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '4px 0', flexShrink: 0 }}>
-      {links.map((link) => (
-        <Tag key={link} color="blue" style={{ fontSize: 10, margin: 0, cursor: 'default' }}>
-          {link}
-        </Tag>
-      ))}
-    </div>
-  );
-}
+const { Title } = Typography;
 
 interface ArtifactPaneProps {
   featureId: string;
   taskId: string;
-  taskTitle?: string;
 }
 
-export default function ArtifactPane({ featureId, taskId, taskTitle }: ArtifactPaneProps) {
-  const { data: artifact, isLoading, refetch } = useArtifact(featureId, taskId);
-  const saveMutation = useSaveArtifact();
-  const updateTask = useUpdateTask();
-  const [content, setContent] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [path, setPath] = useState('');
+export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
   const [editorOpen, setEditorOpen] = useState(false);
 
-  useEffect(() => {
-    if (artifact) {
-      setContent(artifact.content);
-      setPath(artifact.path);
-      setDirty(false);
-    }
-  }, [artifact]);
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['artifact', featureId, taskId],
+    queryFn: () => boardApi.getArtifact(featureId, taskId),
+    enabled: !!featureId && !!taskId,
+  });
 
-  const handlePathSave = () => {
-    const trimmed = path.trim();
-    if (trimmed === (artifact?.path || '')) return;
-    updateTask.mutate(
-      { featureId, taskId, data: { artifact_path: trimmed } },
-      {
-        onSuccess: () => {
-          refetch();
-          message.success('Artifact path updated');
-        },
-        onError: () => message.error('Failed to update artifact path'),
-      },
-    );
-  };
+  if (isLoading) return <Spin size="small" />;
 
-  const handleSave = () => {
-    saveMutation.mutate(
-      { featureId, taskId, content },
-      {
-        onSuccess: () => {
-          setDirty(false);
-          message.success('Artifact saved');
-        },
-        onError: () => {
-          message.error('Failed to save artifact');
-        },
-      },
-    );
-  };
-
-  if (isLoading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
-        <Spin size="small" />
-      </div>
-    );
-  }
+  const content = data?.content ?? '';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 12px' }}>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}
-      >
-        <Input
-          size="small"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          onBlur={handlePathSave}
-          onPressEnter={handlePathSave}
-          placeholder={`work/${artifactSlug(featureId)}/${taskTitle ? artifactSlug(taskTitle) : 'task'}/`}
-          style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
-        />
-        <Button size="small" icon={<EditOutlined />} onClick={() => setEditorOpen(true)} />
-        <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()} />
-        <Button
-          size="small"
-          type="primary"
-          icon={<SaveOutlined />}
-          onClick={handleSave}
-          disabled={!dirty}
-          loading={saveMutation.isPending}
-        >
-          Save
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Title level={5} style={{ margin: 0 }}>
+          Artifact
+        </Title>
+        <Button size="small" icon={<EditOutlined />} onClick={() => setEditorOpen(true)}>
+          Edit
         </Button>
       </div>
-      <Input.TextArea
-        value={content}
-        onChange={(e) => {
-          setContent(e.target.value);
-          setDirty(true);
-        }}
-        style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
-        placeholder={
-          artifact?.exists
-            ? ''
-            : 'Artifact file does not exist yet. Type content and save to create it.'
-        }
-      />
-      <WikilinkStrip text={content} />
+
+      {content ? (
+        <div
+          style={{
+            padding: 8,
+            background: '#fafafa',
+            borderRadius: 4,
+            border: '1px solid #f0f0f0',
+            maxHeight: 300,
+            overflow: 'auto',
+            fontSize: 13,
+          }}
+        >
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
+      ) : (
+        <Empty description="No artifact content" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )}
+
       <ArtifactEditorModal
         open={editorOpen}
         content={content}
-        onSave={(md) => {
-          setContent(md);
-          setDirty(true);
+        featureId={featureId}
+        taskId={taskId}
+        onClose={() => {
           setEditorOpen(false);
+          refetch();
         }}
-        onCancel={() => setEditorOpen(false)}
       />
     </div>
   );

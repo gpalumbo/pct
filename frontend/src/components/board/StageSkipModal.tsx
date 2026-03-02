@@ -1,41 +1,40 @@
 import { Modal, Typography } from 'antd';
-import { useBoardStore } from '../../stores/boardStore';
-import { useMoveTask } from '../../hooks/useBoardQueries';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
-export default function StageSkipModal() {
-  const pendingMove = useBoardStore((s) => s.pendingMove);
-  const setPendingMove = useBoardStore((s) => s.setPendingMove);
-  const moveTask = useMoveTask();
+interface StageSkipModalProps {
+  open: boolean;
+  fromStage: string;
+  toStage: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
 
-  const handleConfirm = () => {
-    if (!pendingMove) return;
-    moveTask.mutate(
-      {
-        featureId: pendingMove.featureId,
-        taskId: pendingMove.taskId,
-        data: { new_status: pendingMove.newStatus, confirm_skip: true },
-      },
-      { onSettled: () => setPendingMove(null) },
-    );
-  };
-
+export default function StageSkipModal({ open, fromStage, toStage, onConfirm, onCancel }: StageSkipModalProps) {
   return (
     <Modal
-      title="Confirm Stage Skip"
-      open={pendingMove !== null}
-      onOk={handleConfirm}
-      onCancel={() => setPendingMove(null)}
-      okText="Confirm Skip"
-      confirmLoading={moveTask.isPending}
+      open={open}
+      title={
+        <span>
+          <ExclamationCircleOutlined style={{ color: '#faad14', marginRight: 8 }} />
+          Skip Stage Confirmation
+        </span>
+      }
+      onOk={onConfirm}
+      onCancel={onCancel}
+      okText="Skip Stage"
+      okButtonProps={{ danger: true }}
     >
-      {pendingMove && (
-        <Text>
-          Move this task to <Text strong>{pendingMove.newStatus}</Text>? This skips one or more
-          intermediate stages.
-        </Text>
-      )}
+      <Text>
+        You are about to move this task from <Text strong>{fromStage}</Text> to{' '}
+        <Text strong>{toStage}</Text>, skipping one or more intermediate stages.
+      </Text>
+      <br />
+      <br />
+      <Text type="secondary">
+        Skipped stages will be marked as bypassed. Are you sure you want to continue?
+      </Text>
     </Modal>
   );
 }

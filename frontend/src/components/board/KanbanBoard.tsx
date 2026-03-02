@@ -1,118 +1,91 @@
+import { useCallback } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
-import { Spin, Typography } from 'antd';
-import { useBoard, useMoveTask, useReassignTask } from '../../hooks/useBoardQueries';
-import { useBoardStore } from '../../stores/boardStore';
-import type { Feature } from '../../types/board';
-import BoardHeader from './BoardHeader';
-import BoardToolbar from './BoardToolbar';
+import { Spin, Empty, Typography } from 'antd';
 import Swimlane from './Swimlane';
-import BacklogSection from './BacklogSection';
-import StageSkipModal from './StageSkipModal';
+import { useBoardQuery } from '../../hooks/useBoardQueries';
+import { useBoardStore } from '../../stores/boardStore';
 
 const { Text } = Typography;
 
 export default function KanbanBoard() {
-  const { data: board, isLoading, refetch } = useBoard();
-  const moveTask = useMoveTask();
-  const reassignTask = useReassignTask();
-  const setPendingMove = useBoardStore((s) => s.setPendingMove);
-  const setIsDragging = useBoardStore((s) => s.setIsDragging);
-  const filterFeatureIds = useBoardStore((s) => s.filterFeatureIds);
-  const showSuspended = useBoardStore((s) => s.showSuspended);
-  const showComplete = useBoardStore((s) => s.showComplete);
+  const { data: board, isLoading } = useBoardQuery();
+  const setBoard = useBoardStore((s) => s.setBoard);
 
-  if (isLoading || !board) {
+  // Keep store in sync with query data
+  if (board) {
+    setBoard(board.features, board.workflow_stages);
+  }
+
+  const features = board?.features ?? [];
+  const stages = board?.workflow_stages ?? [];
+  const enabledStages = stages.filter((s) => s.enabled);
+
+  const onDragEnd = useCallback(
+    (result: DropResult) => {
+      if (!result.destination) return;
+
+      const sourceDroppable = result.source.droppableId;
+      const destDroppable = result.destination.droppableId;
+
+      if (sourceDroppable === destDroppable) return;
+
+      // droppableId format: "featureId::stageId"
+      const [, destStageId] = destDroppable.split('::');
+      const [sourceFeatureId] = sourceDroppable.split('::');
+      const taskId = result.draggableId;
+
+      if (destStageId && sourceFeatureId && taskId) {
+        // Fire the mutation -- useMoveTask requires featureId/taskId at call site
+        // We use the board API directly here for simplicity
+        import('../../api/boardApi').then(({ boardApi }) => {
+          boardApi.moveTask(sourceFeatureId, taskId, { target_stage_id: destStageId });
+        });
+      }
+    },
+    [],
+  );
+
+  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />;
+
+  if (features.length === 0) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
-
-  const enabledStages = board.enabled_stages;
-  const stageLabels = board.stage_labels;
-
-  // Filter features
-  let visibleFeatures: Feature[] = board.features;
-  if (filterFeatureIds.length > 0) {
-    visibleFeatures = visibleFeatures.filter((f) => filterFeatureIds.includes(f.id));
-  }
-  if (!showSuspended) {
-    visibleFeatures = visibleFeatures.filter((f) => f.metadata.lifecycle_stage !== 'suspended');
-  }
-  if (!showComplete) {
-    visibleFeatures = visibleFeatures.filter((f) => f.metadata.lifecycle_stage !== 'complete');
-  }
-
-  const handleDragStart = () => setIsDragging(true);
-
-  const handleDragEnd = (result: DropResult) => {
-    setIsDragging(false);
-    if (!result.destination) return;
-
-    const [srcFeature] = result.draggableId.split(':');
-    const [, srcStage] = result.source.droppableId.split(':');
-    const [destFeature, destStage] = result.destination.droppableId.split(':');
-
-    if (srcStage === destStage && srcFeature === destFeature) return;
-
-    const taskId = result.draggableId.split(':')[1];
-
-    // Cross-feature move: reassign task (skip adjacency check)
-    if (srcFeature !== destFeature) {
-      reassignTask.mutate({
-        src_feature_id: srcFeature,
-        task_id: taskId,
-        dest_feature_id: destFeature,
-        new_status: destStage,
-      });
-      return;
-    }
-
-    // Same-feature move: check adjacency
-    const srcIdx = enabledStages.indexOf(srcStage);
-    const destIdx = enabledStages.indexOf(destStage);
-    const isAdjacent = Math.abs(destIdx - srcIdx) <= 1;
-
-    if (isAdjacent) {
-      moveTask.mutate({
-        featureId: srcFeature,
-        taskId,
-        data: { new_status: destStage },
-      });
-    } else {
-      // Open confirmation modal
-      setPendingMove({
-        featureId: srcFeature,
-        taskId,
-        newStatus: destStage,
-      });
-    }
-  };
-
-  if (enabledStages.length === 0) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Text type="secondary">
-          No workflow stages configured. Go to Settings to enable workflow stages.
-        </Text>
-      </div>
+      <Empty description="No features yet" style={{ marginTop: 60 }}>
+        <Text type="secondary">Create a new feature to get started.</Text>
+      </Empty>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <BoardToolbar features={board.features} onRefresh={() => refetch()} />
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <BoardHeader enabledStages={enabledStages} stageLabels={stageLabels} />
-        <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          {visibleFeatures.map((feature) => (
-            <Swimlane key={feature.id} feature={feature} enabledStages={enabledStages} />
-          ))}
-        </DragDropContext>
-        <BacklogSection backlog={board.backlog} />
+    <DragDropContext onDragEnd={onDragEnd}>
+      {/* Stage column headers */}
+      <div style={{ display: 'flex', gap: 8, paddingLeft: 168, marginBottom: 4 }}>
+        {enabledStages.map((stage) => (
+          <div
+            key={stage.id}
+            style={{
+              minWidth: 180,
+              maxWidth: 220,
+              flex: '1 0 180px',
+              textAlign: 'center',
+              fontWeight: 600,
+              fontSize: 12,
+              color: '#595959',
+              textTransform: 'uppercase',
+              padding: '4px 0',
+              borderBottom: '2px solid #1890ff',
+            }}
+          >
+            {stage.label}
+          </div>
+        ))}
       </div>
-      <StageSkipModal />
-    </div>
+
+      {/* Swimlanes */}
+      {features
+        .filter((f) => f.stage !== 'planning')
+        .map((feature) => (
+          <Swimlane key={feature.id} feature={feature} stages={stages} />
+        ))}
+    </DragDropContext>
   );
 }

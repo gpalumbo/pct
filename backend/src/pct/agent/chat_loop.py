@@ -1,154 +1,65 @@
-"""Core chat loop orchestration — message building and single-turn execution."""
+"""Chat loop — execute agent turns with tool iteration."""
 
-from __future__ import annotations
-
-import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 
-from loguru import logger
-
-from pct.agent.models import AgentResult, AssembledContext, LLMMessage, TaskOutcome
+from pct.agent.models import AgentResult, TaskOutcome, ToolCall
 from pct.agent.protocols import AgentProvider
-from pct.agent.tools import ToolRegistry
+from pct.agent.tools._base import ToolRegistry
 
-
-def build_messages(
-    context: AssembledContext,
-    system_prompt: str | None = None,
-) -> list[dict[str, str]]:
-    """Convert an AssembledContext into a list of LLM messages.
-
-    Returns a list of ``{"role": ..., "content": ...}`` dicts suitable for
-    any chat-completion API.
-    """
-    messages: list[dict[str, str]] = []
-    if system_prompt is not None:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": context.full_text})
-    return messages
-
-
-_DEFAULT_MAX_TOOL_ITERATIONS = 10
+MAX_TOOL_ITERATIONS = 10
 
 
 async def execute_chat_turn(
     provider: AgentProvider,
-    context: AssembledContext,
-    system_prompt: str | None = None,
-    on_token: Callable[[str], Awaitable[None]] | None = None,
-    timeout_seconds: float | None = None,
+    messages: list[dict[str, str]],
     tool_registry: ToolRegistry | None = None,
-    max_tool_iterations: int = _DEFAULT_MAX_TOOL_ITERATIONS,
+    on_token: Callable[[str], Awaitable[None]] | None = None,
+    timeout: float = 300.0,
 ) -> AgentResult:
-    """Execute a chat turn with optional tool-use loop.
+    """Execute a single chat turn with optional tool calling.
 
-    When *tool_registry* is provided, the LLM may request tool calls. Each
-    tool call is executed, the result is appended to the conversation, and the
-    provider is called again — repeating until the LLM produces a final text
-    response or *max_tool_iterations* is reached.
+    1. Call provider.execute(messages, on_token, tools)
+    2. If result contains tool_calls and registry is provided:
+       - Execute each tool call
+       - Append tool results to messages
+       - Loop back (max 10 iterations)
+    3. Return final AgentResult
     """
-    messages = build_messages(context, system_prompt)
-    now = datetime.now(UTC)
+    start = time.time()
+    tools = tool_registry.get_definitions() if tool_registry else None
+    all_tool_calls: list[ToolCall] = []
 
-    # Track streamed tokens so we can record them in messages
-    collected_tokens: list[str] = []
-
-    async def _tracking_callback(token: str) -> None:
-        collected_tokens.append(token)
-        if on_token is not None:
-            await on_token(token)
-
-    tool_definitions = tool_registry.get_definitions() if tool_registry is not None else None
-    all_tool_calls: list = []
-
-    start = time.monotonic()
-    try:
-        for _iteration in range(max_tool_iterations + 1):
-            logger.debug(
-                "Executing chat turn with {} messages and {} tools",
-                len(messages),
-                len(tool_definitions or []),
-            )
-            coro = provider.execute(messages, on_token=_tracking_callback, tools=tool_definitions)
-            if timeout_seconds is not None:
-                result = await asyncio.wait_for(coro, timeout=timeout_seconds)
-            else:
-                result = await coro
-            logger.debug("LLM result: {}", result)
-
-            # No tool calls — final response
-            if not result.tool_calls or tool_registry is None:
-                break
-
-            all_tool_calls.extend(result.tool_calls)
-
-            # Append the assistant message with tool calls (OpenAI format)
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": result.output or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function_name,
-                                "arguments": tc.arguments,
-                            },
-                        }
-                        for tc in result.tool_calls
-                    ],
-                }
+    for _iteration in range(MAX_TOOL_ITERATIONS):
+        try:
+            result = await provider.execute(messages, on_token=on_token, tools=tools)
+        except Exception as e:
+            return AgentResult(
+                outcome=TaskOutcome.failure,
+                error=str(e),
+                duration_seconds=time.time() - start,
             )
 
-            # Execute each tool and append results
-            for tc in result.tool_calls:
-                logger.info("Tool call: {}({})", tc.function_name, tc.arguments)
-                try:
-                    output = await tool_registry.execute(tc.function_name, tc.arguments)
-                    error = None
-                except Exception as exc:
-                    output = ""
-                    error = str(exc)
+        if not result.tool_calls or tool_registry is None:
+            result.duration_seconds = time.time() - start
+            result.tool_calls = all_tool_calls + result.tool_calls
+            return result
 
-                content = error if error else output
-                if error:
-                    logger.warning("Tool error [{}]: {}", tc.function_name, error)
-                else:
-                    preview = output[:200] + ("…" if len(output) > 200 else "")
-                    logger.info("Tool result [{}]: {}", tc.function_name, preview)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": content,
-                    }
-                )
-        else:
-            # Exhausted iterations — return what we have with an error note
-            result.error = f"Tool loop exceeded {max_tool_iterations} iterations"
-            result.outcome = TaskOutcome.ERROR
+        # Execute tool calls
+        for tc in result.tool_calls:
+            tool_result = await tool_registry.execute(tc.tool_name, **tc.arguments)
+            tc.result = tool_result
+            all_tool_calls.append(tc)
 
-    except TimeoutError:
-        raise
-    except Exception as exc:
-        logger.error("LLM exception: {}", exc)
-        elapsed = time.monotonic() - start
-        return AgentResult(
-            outcome=TaskOutcome.ERROR,
-            error=str(exc),
-            duration_seconds=elapsed,
-        )
+            # Add tool results to message history
+            messages.append({"role": "assistant", "content": f"[Tool: {tc.tool_name}]"})
+            messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result}"})
 
-    elapsed = time.monotonic() - start
-    result.duration_seconds = elapsed
-    result.tool_calls = all_tool_calls
-
-    # Build message records for the conversation
-    result.messages = [LLMMessage(role=m["role"], content=m.get("content", ""), timestamp=now) for m in messages]
-    if result.output:
-        result.messages.append(LLMMessage(role="assistant", content=result.output, timestamp=now))
-
+    # Max iterations reached
+    result = AgentResult(
+        outcome=TaskOutcome.in_progress,
+        output="Max tool iterations reached",
+        tool_calls=all_tool_calls,
+        duration_seconds=time.time() - start,
+    )
     return result

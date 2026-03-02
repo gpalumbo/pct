@@ -1,24 +1,24 @@
-"""UserProvider — manual human execution provider (stub)."""
-
-from __future__ import annotations
+"""UserProvider — human performs the work (no-op provider)."""
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 
-from pct.agent.models import AgentResult
+from pct.agent.models import AgentResult, TaskOutcome
 
 
 class UserProvider:
-    """Agent provider for manual human execution via UI.
-
-    Not yet implemented — raises NotImplementedError on all operations.
-    """
+    """Provider for User agents — always returns in_progress (human must act)."""
 
     async def execute(
         self,
         messages: list[dict[str, str]],
         on_token: Callable[[str], Awaitable[None]] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
-        raise NotImplementedError("UserProvider is not yet implemented")
+        return AgentResult(
+            outcome=TaskOutcome.in_progress,
+            output="Waiting for user action.",
+        )
 
     async def interrupt(self) -> None:
-        raise NotImplementedError("UserProvider is not yet implemented")
+        pass  # No-op for user provider

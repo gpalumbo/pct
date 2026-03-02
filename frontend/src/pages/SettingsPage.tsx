@@ -1,6 +1,13 @@
-import { Button, Layout, Tabs, Typography } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { Tabs, Typography } from 'antd';
+import {
+  SettingOutlined,
+  AppstoreOutlined,
+  ExperimentOutlined,
+  TeamOutlined,
+  NodeIndexOutlined,
+  FileTextOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import GeneralTab from '../components/settings/GeneralTab';
 import ModelRegistryTab from '../components/settings/ModelRegistryTab';
 import LoRARegistryTab from '../components/settings/LoRARegistryTab';
@@ -8,32 +15,76 @@ import AgentsTab from '../components/settings/AgentsTab';
 import WorkflowTab from '../components/settings/WorkflowTab';
 import ArtifactTypesTab from '../components/settings/ArtifactTypesTab';
 
-const { Header, Content } = Layout;
 const { Title } = Typography;
 
+const tabItems = [
+  {
+    key: 'general',
+    label: 'General',
+    icon: <SettingOutlined />,
+    children: <GeneralTab />,
+  },
+  {
+    key: 'models',
+    label: 'Model Registry',
+    icon: <AppstoreOutlined />,
+    children: <ModelRegistryTab />,
+  },
+  {
+    key: 'lora',
+    label: 'LoRA Registry',
+    icon: <ExperimentOutlined />,
+    children: <LoRARegistryTab />,
+  },
+  {
+    key: 'agents',
+    label: 'Agents',
+    icon: <TeamOutlined />,
+    children: <AgentsTab />,
+  },
+  {
+    key: 'workflow',
+    label: 'Workflow',
+    icon: <NodeIndexOutlined />,
+    children: <WorkflowTab />,
+  },
+  {
+    key: 'artifacts',
+    label: 'Artifact Types',
+    icon: <FileTextOutlined />,
+    children: <ArtifactTypesTab />,
+  },
+  {
+    key: 'users',
+    label: 'Users',
+    icon: <UserOutlined />,
+    children: (
+      <div style={{ padding: 24 }}>
+        <Title level={5}>Users</Title>
+        <p>User management will be available here.</p>
+      </div>
+    ),
+  },
+];
+
 export default function SettingsPage() {
-  const navigate = useNavigate();
-
-  const items = [
-    { key: 'general', label: 'General', children: <GeneralTab /> },
-    { key: 'models', label: 'Model Registry', children: <ModelRegistryTab /> },
-    { key: 'loras', label: 'LoRA Registry', children: <LoRARegistryTab /> },
-    { key: 'agents', label: 'Agents', children: <AgentsTab /> },
-    { key: 'workflow', label: 'Workflow Stages', children: <WorkflowTab /> },
-    { key: 'artifact-types', label: 'Artifact Types', children: <ArtifactTypesTab /> },
-  ];
-
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')} />
-        <Title level={4} style={{ color: 'white', margin: 0 }}>
-          Project Settings
-        </Title>
-      </Header>
-      <Content style={{ padding: 24 }}>
-        <Tabs items={items} />
-      </Content>
-    </Layout>
+    <div style={{ padding: 24 }}>
+      <Title level={3} style={{ marginBottom: 16 }}>
+        Settings
+      </Title>
+      <Tabs
+        tabPosition="left"
+        items={tabItems.map((item) => ({
+          ...item,
+          label: (
+            <span>
+              {item.icon} {item.label}
+            </span>
+          ),
+        }))}
+        style={{ minHeight: 'calc(100vh - 120px)' }}
+      />
+    </div>
   );
 }

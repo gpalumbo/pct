@@ -1,35 +1,31 @@
-"""PCT Backend Configuration."""
+"""Application configuration — pydantic-settings, .env, PCT_ prefix."""
 
 from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# The backend package lives at backend/src/pct/; two parents up from this
-# file's directory gives us the backend/ dir, one more gives the repo root.
-_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent  # backend/src/pct → backend/
-_DEFAULT_ROOT = str(_BACKEND_DIR.parent)  # backend/ → repo root
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Global application settings loaded from environment / .env file."""
+
+    model_config = {"env_prefix": "PCT_", "env_file": ".env", "extra": "ignore"}
+
+    # Server
     host: str = "127.0.0.1"
     port: int = 8000
-    log_level: str = "INFO"
-    cors_origin: str = "http://localhost:5173"
 
     # Auth
     secret_key: str = "change-me-in-production"
-    access_token_expire_minutes: int = 60 * 24  # 24 hours
-    google_client_id: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 hours
 
-    # Storage
-    user_data_dir: str = ""
+    # Project root — where pct.yaml lives
+    project_root: Path = Field(default_factory=lambda: Path.cwd())
 
-    # Project
-    project_root: str = ""
-    registries_dir: str = ""
-    root: str = _DEFAULT_ROOT
+    # Global registry dir
+    global_config_dir: Path = Field(default_factory=lambda: Path.home() / ".pct")
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="PCT_")
-
-
-settings: Settings = Settings()
+    # Debug
+    debug: bool = False
+    log_level: str = "INFO"

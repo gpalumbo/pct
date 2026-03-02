@@ -1,195 +1,49 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as api from '../api/configApi';
-import type {
-  AgentConfig,
-  ArtifactTypeConfig,
-  LoRARegistryEntry,
-  ModelRegistryEntry,
-  ProjectConfig,
-  TemplateVariable,
-  WorkflowStageConfig,
-} from '../types/config';
+/** TanStack Query hooks for config API. */
 
-// ---------------------------------------------------------------------------
-// Project Status (initialization check)
-// ---------------------------------------------------------------------------
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { configApi } from '../api/configApi';
+import type { Project } from '../types/config';
 
-export function useProjectStatus(enabled = true) {
-  return useQuery({ queryKey: ['project-status'], queryFn: api.fetchProjectStatus, enabled });
-}
-
-// ---------------------------------------------------------------------------
-// Model Registry
-// ---------------------------------------------------------------------------
-
-export function useModels() {
-  return useQuery({ queryKey: ['models'], queryFn: api.fetchModels });
-}
-
-export function useCreateModel() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: ModelRegistryEntry) => api.createModel(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+export function useProjectStatus() {
+  return useQuery({
+    queryKey: ['projectStatus'],
+    queryFn: configApi.getProjectStatus,
+    staleTime: 10000,
   });
 }
 
-export function useUpdateModel() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ModelRegistryEntry }) =>
-      api.updateModel(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+export function useProject() {
+  return useQuery({
+    queryKey: ['project'],
+    queryFn: configApi.getProject,
+    staleTime: 5000,
   });
 }
 
-export function useDeleteModel() {
+export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.deleteModel(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+    mutationFn: (project: Project) => configApi.updateProject(project),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['project'] }),
   });
 }
 
-// ---------------------------------------------------------------------------
-// LoRA Registry
-// ---------------------------------------------------------------------------
-
-export function useLoras() {
-  return useQuery({ queryKey: ['loras'], queryFn: api.fetchLoras });
-}
-
-export function useCreateLora() {
+export function useInitializeProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: LoRARegistryEntry) => api.createLora(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
-  });
-}
-
-export function useUpdateLora() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: LoRARegistryEntry }) => api.updateLora(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
-  });
-}
-
-export function useDeleteLora() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.deleteLora(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Agents
-// ---------------------------------------------------------------------------
-
-export function useAgents() {
-  return useQuery({ queryKey: ['agents'], queryFn: api.fetchAgents });
-}
-
-export function useCreateAgent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: AgentConfig) => api.createAgent(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
-  });
-}
-
-export function useUpdateAgent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: AgentConfig }) => api.updateAgent(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
-  });
-}
-
-export function useDeleteAgent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.deleteAgent(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Workflow Stages
-// ---------------------------------------------------------------------------
-
-export function useWorkflowStages() {
-  return useQuery({ queryKey: ['workflow-stages'], queryFn: api.fetchWorkflowStages });
-}
-
-export function useSaveWorkflowStages() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: WorkflowStageConfig[]) => api.saveWorkflowStages(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workflow-stages'] }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Template Variables
-// ---------------------------------------------------------------------------
-
-export function useTemplateVariables() {
-  return useQuery({ queryKey: ['template-variables'], queryFn: api.fetchTemplateVariables });
-}
-
-export function useSaveTemplateVariables() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: TemplateVariable[]) => api.saveTemplateVariables(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['template-variables'] }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Artifact Types
-// ---------------------------------------------------------------------------
-
-export function useArtifactTypes() {
-  return useQuery({ queryKey: ['artifact-types'], queryFn: api.fetchArtifactTypes });
-}
-
-export function useSaveArtifactTypes() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: ArtifactTypeConfig[]) => api.saveArtifactTypes(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['artifact-types'] }),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Reindex
-// ---------------------------------------------------------------------------
-
-export function useReindexProject() {
-  return useMutation({
-    mutationFn: () => api.reindexProject(),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Project Config
-// ---------------------------------------------------------------------------
-
-export function useProjectConfig() {
-  return useQuery({ queryKey: ['project-config'], queryFn: api.fetchProjectConfig });
-}
-
-export function useSaveProjectConfig() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: ProjectConfig) => api.saveProjectConfig(data),
+    mutationFn: ({ name, projectType }: { name: string; projectType: string }) =>
+      configApi.initializeProject(name, projectType),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project-config'] });
-      qc.invalidateQueries({ queryKey: ['project-status'] });
-      qc.invalidateQueries({ queryKey: ['agents'] });
-      qc.invalidateQueries({ queryKey: ['workflow-stages'] });
+      qc.invalidateQueries({ queryKey: ['project'] });
+      qc.invalidateQueries({ queryKey: ['projectStatus'] });
     },
+  });
+}
+
+export function useBrowseFiles(path?: string) {
+  return useQuery({
+    queryKey: ['files', path],
+    queryFn: () => configApi.browseFiles(path),
+    enabled: path !== undefined,
   });
 }

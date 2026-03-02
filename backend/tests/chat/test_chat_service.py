@@ -1,193 +1,85 @@
-"""Tests for the chat persistence service."""
+"""Tests for chat service."""
 
-import os
+from pathlib import Path
 
-import pytest
-
-from pct.chat import service
-from pct.chat.models import PlanningMessage, UpdateMessageRequest
+from pct.chat.service import ChatService
+from pct.models.enums import MessageRole
 
 
-@pytest.fixture(autouse=True)
-def _isolate_chat(tmp_path):
-    """Isolate project root and registries for each test."""
-    os.environ["PCT_PROJECT_ROOT"] = str(tmp_path / "project")
-    os.environ["PCT_REGISTRIES_DIR"] = str(tmp_path / "registries")
-    (tmp_path / "project" / ".pct").mkdir(parents=True)
+class TestChatService:
+    def test_create_session(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        sid = svc.create_session("test-session")
+        assert sid == "test-session"
+        assert "test-session" in svc.list_sessions()
 
-    from pct import config
+    def test_add_and_get_messages(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        svc.add_message("s1", MessageRole.user, "Hello")
+        svc.add_message("s1", MessageRole.assistant, "Hi!")
+        messages = svc.get_messages("s1")
+        assert len(messages) == 2
+        assert messages[0].content == "Hello"
+        assert messages[1].content == "Hi!"
 
-    config.settings = config.Settings()
-    yield
-
-
-class TestSessionCRUD:
-    def test_list_sessions_empty(self):
-        assert service.list_sessions() == []
-
-    def test_create_session(self):
-        session = service.create_session("My Chat")
-        assert session.id == "planning-001"
-        assert session.title == "My Chat"
-
-    def test_create_multiple_sessions(self):
-        s1 = service.create_session("First")
-        s2 = service.create_session("Second")
-        assert s1.id == "planning-001"
-        assert s2.id == "planning-002"
-
-    def test_get_session(self):
-        service.create_session("Test")
-        session = service.get_session("planning-001")
-        assert session is not None
-        assert session.title == "Test"
-
-    def test_get_session_not_found(self):
-        assert service.get_session("nope") is None
-
-    def test_get_or_create_default_session(self):
-        # First call creates
-        s1 = service.get_or_create_default_session()
-        assert s1.id == "planning-001"
-        # Second call returns existing
-        s2 = service.get_or_create_default_session()
-        assert s2.id == "planning-001"
-
-    def test_list_sessions_returns_all(self):
-        service.create_session("A")
-        service.create_session("B")
-        sessions = service.list_sessions()
-        assert len(sessions) == 2
-
-
-class TestMessages:
-    def test_load_messages_empty(self):
-        service.create_session("Test")
-        msgs = service.load_messages("planning-001")
-        assert msgs == []
-
-    def test_append_and_load_messages(self):
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="Hello")
-        service.append_message("planning-001", msg)
-
-        msgs = service.load_messages("planning-001")
-        assert len(msgs) == 1
-        assert msgs[0].content == "Hello"
-        assert msgs[0].role == "user"
-
-    def test_append_multiple_messages(self):
-        service.create_session("Test")
-        service.append_message("planning-001", PlanningMessage(role="user", content="Hi"))
-        service.append_message("planning-001", PlanningMessage(role="assistant", content="Hello!"))
-
-        msgs = service.load_messages("planning-001")
-        assert len(msgs) == 2
-        assert msgs[0].role == "user"
-        assert msgs[1].role == "assistant"
-
-    def test_update_message_content(self):
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="Original")
-        service.append_message("planning-001", msg)
-
-        updated = service.update_message(
-            "planning-001",
-            msg.id,
-            UpdateMessageRequest(content="Updated"),
-        )
+    def test_update_message_content(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        msg = svc.add_message("s1", MessageRole.user, "Original")
+        updated = svc.update_message("s1", msg.id, content="Updated")
         assert updated is not None
         assert updated.content == "Updated"
+        messages = svc.get_messages("s1")
+        assert messages[0].content == "Updated"
 
-        msgs = service.load_messages("planning-001")
-        assert msgs[0].content == "Updated"
+    def test_update_message_included(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        msg = svc.add_message("s1", MessageRole.user, "Test")
+        updated = svc.update_message("s1", msg.id, included=False)
+        assert updated is not None
+        assert updated.included is False
 
-    def test_update_message_included(self):
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="Test")
-        service.append_message("planning-001", msg)
+    def test_update_nonexistent(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        assert svc.update_message("s1", "nonexistent", content="X") is None
 
-        service.update_message(
-            "planning-001",
-            msg.id,
-            UpdateMessageRequest(included=False),
-        )
+    def test_delete_message(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        svc.add_message("s1", MessageRole.user, "Keep")
+        m2 = svc.add_message("s1", MessageRole.user, "Delete")
+        assert svc.delete_message("s1", m2.id) is True
+        messages = svc.get_messages("s1")
+        assert len(messages) == 1
+        assert messages[0].content == "Keep"
 
-        msgs = service.load_messages("planning-001")
-        assert msgs[0].included is False
+    def test_delete_nonexistent(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        assert svc.delete_message("s1", "nope") is False
 
-    def test_update_message_role(self):
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="Test")
-        service.append_message("planning-001", msg)
+    def test_truncate(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        svc.add_message("s1", MessageRole.user, "M1")
+        m2 = svc.add_message("s1", MessageRole.assistant, "M2")
+        svc.add_message("s1", MessageRole.user, "M3")
+        count = svc.truncate_from("s1", m2.id)
+        assert count == 2
+        messages = svc.get_messages("s1")
+        assert len(messages) == 1
+        assert messages[0].content == "M1"
 
-        service.update_message(
-            "planning-001",
-            msg.id,
-            UpdateMessageRequest(role="system"),
-        )
+    def test_truncate_nonexistent(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        svc.create_session("s1")
+        assert svc.truncate_from("s1", "nope") == 0
 
-        msgs = service.load_messages("planning-001")
-        assert msgs[0].role == "system"
-
-    def test_update_message_not_found(self):
-        service.create_session("Test")
-        result = service.update_message(
-            "planning-001",
-            "nonexistent",
-            UpdateMessageRequest(content="x"),
-        )
-        assert result is None
-
-    def test_get_included_messages(self):
-        service.create_session("Test")
-        m1 = PlanningMessage(role="user", content="A")
-        m2 = PlanningMessage(role="assistant", content="B")
-        service.append_message("planning-001", m1)
-        service.append_message("planning-001", m2)
-
-        # Exclude second message
-        service.update_message("planning-001", m2.id, UpdateMessageRequest(included=False))
-
-        included = service.get_included_messages("planning-001")
-        assert len(included) == 1
-        assert included[0].content == "A"
-
-    def test_delete_message(self):
-        service.create_session("Test")
-        m1 = PlanningMessage(role="user", content="A")
-        m2 = PlanningMessage(role="assistant", content="B")
-        service.append_message("planning-001", m1)
-        service.append_message("planning-001", m2)
-
-        assert service.delete_message("planning-001", m1.id) is True
-
-        msgs = service.load_messages("planning-001")
-        assert len(msgs) == 1
-        assert msgs[0].content == "B"
-
-    def test_delete_message_not_found(self):
-        service.create_session("Test")
-        assert service.delete_message("planning-001", "nonexistent") is False
-
-    def test_delete_message_updates_session_count(self):
-        service.create_session("Test")
-        m1 = PlanningMessage(role="user", content="A")
-        m2 = PlanningMessage(role="assistant", content="B")
-        service.append_message("planning-001", m1)
-        service.append_message("planning-001", m2)
-
-        service.delete_message("planning-001", m1.id)
-
-        session = service.get_session("planning-001")
-        assert session is not None
-        assert session.message_count == 1
-
-    def test_session_message_count_updated(self):
-        service.create_session("Test")
-        service.append_message("planning-001", PlanningMessage(role="user", content="A"))
-        service.append_message("planning-001", PlanningMessage(role="assistant", content="B"))
-
-        session = service.get_session("planning-001")
-        assert session is not None
-        assert session.message_count == 2
+    def test_get_or_create_session(self, tmp_project_root: Path):
+        svc = ChatService(tmp_project_root)
+        messages = svc.get_or_create_session("new-session")
+        assert messages == []
+        assert "new-session" in svc.list_sessions()

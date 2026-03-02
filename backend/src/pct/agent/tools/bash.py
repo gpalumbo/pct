@@ -1,66 +1,54 @@
-"""Bash shell tool for agent execution."""
-
-from __future__ import annotations
+"""BashTool — execute shell commands with 30s timeout."""
 
 import asyncio
-import json
-import subprocess
 from typing import Any
 
 
 class BashTool:
-    """Runs a shell command via subprocess in a thread."""
-
-    def __init__(self, timeout: float = 30.0) -> None:
-        self._timeout = timeout
+    def __init__(self, cwd: str | None = None):
+        self.cwd = cwd
 
     @property
     def name(self) -> str:
         return "bash"
 
     @property
-    def definition(self) -> dict[str, Any]:
+    def description(self) -> str:
+        return "Execute a shell command. 30-second timeout."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
         return {
-            "type": "function",
-            "function": {
-                "name": "bash",
-                "description": "Run a shell command and return its output.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute.",
-                        },
-                    },
-                    "required": ["command"],
-                },
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to execute"},
             },
+            "required": ["command"],
         }
 
-    async def execute(self, arguments: str) -> str:
-        parsed = json.loads(arguments)
-        command = parsed["command"]
-
-        loop = asyncio.get_running_loop()
+    async def execute(self, command: str = "", **kwargs: Any) -> str:
         try:
-            result = await asyncio.wait_for(
-                loop.run_in_executor(None, self._run, command),
-                timeout=self._timeout,
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self.cwd,
             )
-        except TimeoutError:
-            return f"[error] Command timed out after {self._timeout}s"
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            except TimeoutError:
+                proc.kill()
+                return "Error: Command timed out (30s limit)"
 
-        return result
-
-    def _run(self, command: str) -> str:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            timeout=self._timeout,
-        )
-        output = proc.stdout.decode()
-        if proc.stderr:
-            output += proc.stderr.decode()
-        return output
+            output = stdout.decode("utf-8", errors="replace")
+            errors = stderr.decode("utf-8", errors="replace")
+            result = ""
+            if output:
+                result += output
+            if errors:
+                result += f"\n[stderr]\n{errors}"
+            if proc.returncode != 0:
+                result += f"\n[exit code: {proc.returncode}]"
+            return result.strip() or "(no output)"
+        except Exception as e:
+            return f"Error: {e}"

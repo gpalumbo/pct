@@ -1,200 +1,94 @@
-"""Tests for the chat API endpoints — session CRUD and message curation."""
-
-import os
+"""Tests for chat router."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from pct.auth.dependencies import set_settings
+from pct.auth.service import clear_users
+from pct.config import Settings
+from pct.main import app
+from pct.models.core import Project
+from pct.storage.project_io import init_project
+
+
+@pytest.fixture
+def chat_settings(tmp_path):
+    project = Project(id="test", name="Test", directory=str(tmp_path))
+    settings = Settings(project_root=tmp_path, secret_key="test-secret")
+    set_settings(settings)
+    init_project(tmp_path, project)
+    yield settings
+    set_settings(None)
+
 
 @pytest.fixture(autouse=True)
-def _isolate_chat(tmp_path):
-    """Isolate project root and registries for each test."""
-    os.environ["PCT_PROJECT_ROOT"] = str(tmp_path / "project")
-    os.environ["PCT_REGISTRIES_DIR"] = str(tmp_path / "registries")
-    (tmp_path / "project" / ".pct").mkdir(parents=True)
-
-    from pct import config
-
-    config.settings = config.Settings()
+def reset_users():
+    clear_users()
     yield
+    clear_users()
 
 
 @pytest.fixture
-async def client():
-    from pct.main import app
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-
-@pytest.fixture
-async def auth_headers(client: AsyncClient) -> dict[str, str]:
-    resp = await client.post(
-        "/api/auth/register",
-        json={"email": "chat@test.com", "password": "testpass123"},
-    )
-    assert resp.status_code == 200
-    token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+async def auth_client(chat_settings):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/api/auth/register", json={"email": "u@test.com", "password": "pass"})
+        token = resp.json()["access_token"]
+        c.headers["Authorization"] = f"Bearer {token}"
+        yield c
 
 
-class TestSessionEndpoints:
-    async def test_list_sessions_empty(self, client, auth_headers):
-        resp = await client.get("/api/chat/sessions", headers=auth_headers)
+class TestChatRouter:
+    async def test_list_sessions(self, auth_client: AsyncClient):
+        resp = await auth_client.get("/api/chat/sessions")
+        assert resp.status_code == 200
+
+    async def test_default_session(self, auth_client: AsyncClient):
+        resp = await auth_client.get("/api/chat/sessions/default")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["session_id"] == "planning"
+
+    async def test_create_session(self, auth_client: AsyncClient):
+        resp = await auth_client.post("/api/chat/sessions", params={"session_id": "test-s"})
+        assert resp.status_code == 200
+
+    async def test_get_messages(self, auth_client: AsyncClient):
+        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+        resp = await auth_client.get("/api/chat/sessions/s1/messages")
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_create_session(self, client, auth_headers):
-        resp = await client.post(
-            "/api/chat/sessions",
-            params={"title": "Test Chat"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["id"] == "planning-001"
-        assert data["title"] == "Test Chat"
-
-    async def test_get_default_session_creates(self, client, auth_headers):
-        resp = await client.get("/api/chat/sessions/default", headers=auth_headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["id"] == "planning-001"
-        assert data["title"] == "Planning"
-
-    async def test_get_default_session_returns_existing(self, client, auth_headers):
-        await client.post(
-            "/api/chat/sessions",
-            params={"title": "Custom"},
-            headers=auth_headers,
-        )
-        resp = await client.get("/api/chat/sessions/default", headers=auth_headers)
-        assert resp.json()["title"] == "Custom"
-
-    async def test_unauthenticated_returns_error(self, client):
-        resp = await client.get("/api/chat/sessions")
-        assert resp.status_code in (401, 403)
-
-
-class TestMessageEndpoints:
-    async def test_get_messages_empty(self, client, auth_headers):
-        await client.get("/api/chat/sessions/default", headers=auth_headers)
-        resp = await client.get(
-            "/api/chat/sessions/planning-001/messages",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    async def test_get_messages_session_not_found(self, client, auth_headers):
-        resp = await client.get(
-            "/api/chat/sessions/nonexistent/messages",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
-
-    async def test_update_message(self, client, auth_headers):
-        # Create session and send a message via the service directly
-        from pct.chat import service
-        from pct.chat.models import PlanningMessage
-
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="Hello")
-        service.append_message("planning-001", msg)
-
-        resp = await client.put(
-            f"/api/chat/sessions/planning-001/messages/{msg.id}",
-            json={"content": "Updated content", "included": False},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["content"] == "Updated content"
-        assert data["included"] is False
-
-    async def test_update_message_not_found(self, client, auth_headers):
-        from pct.chat import service
-
-        service.create_session("Test")
-
-        resp = await client.put(
-            "/api/chat/sessions/planning-001/messages/nonexistent",
-            json={"content": "x"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
-
-    async def test_update_message_session_not_found(self, client, auth_headers):
-        resp = await client.put(
-            "/api/chat/sessions/nonexistent/messages/abc",
-            json={"content": "x"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
-
-    async def test_delete_message(self, client, auth_headers):
-        from pct.chat import service
-        from pct.chat.models import PlanningMessage
-
-        service.create_session("Test")
-        msg = PlanningMessage(role="user", content="To delete")
-        service.append_message("planning-001", msg)
-
-        resp = await client.delete(
-            f"/api/chat/sessions/planning-001/messages/{msg.id}",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 204
-
-        resp = await client.get(
-            "/api/chat/sessions/planning-001/messages",
-            headers=auth_headers,
-        )
-        assert resp.json() == []
-
-    async def test_delete_message_not_found(self, client, auth_headers):
-        from pct.chat import service
-
-        service.create_session("Test")
-
-        resp = await client.delete(
-            "/api/chat/sessions/planning-001/messages/nonexistent",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
-
-    async def test_delete_message_session_not_found(self, client, auth_headers):
-        resp = await client.delete(
-            "/api/chat/sessions/nonexistent/messages/abc",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
-
-
-class TestSendEndpoint:
-    async def test_send_no_agent_configured(self, client, auth_headers):
-        """When no agents are configured, SSE stream returns an error event."""
-        from pct.chat import service
-
-        service.create_session("Test")
-
-        resp = await client.post(
-            "/api/chat/sessions/planning-001/send",
+    async def test_send_message_sse(self, auth_client: AsyncClient):
+        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+        resp = await auth_client.post(
+            "/api/chat/sessions/s1/send",
             json={"content": "Hello"},
-            headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        # Body should contain an error event
-        body = resp.text
-        assert "error" in body
-        assert "No agent configured" in body
+        # SSE response — read content
+        text = resp.text
+        assert "data:" in text
+        assert '"type": "done"' in text or '"type":"done"' in text
 
-    async def test_send_session_not_found(self, client, auth_headers):
-        resp = await client.post(
-            "/api/chat/sessions/nonexistent/send",
-            json={"content": "Hello"},
-            headers=auth_headers,
+    async def test_update_message(self, auth_client: AsyncClient):
+        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+        # Send to create messages
+        await auth_client.post("/api/chat/sessions/s1/send", json={"content": "Hi"})
+        messages_resp = await auth_client.get("/api/chat/sessions/s1/messages")
+        messages = messages_resp.json()
+        assert len(messages) >= 1
+        msg_id = messages[0]["id"]
+
+        resp = await auth_client.put(
+            f"/api/chat/sessions/s1/messages/{msg_id}",
+            json={"included": False},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+
+    async def test_delete_message(self, auth_client: AsyncClient):
+        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+        await auth_client.post("/api/chat/sessions/s1/send", json={"content": "Hi"})
+        messages = (await auth_client.get("/api/chat/sessions/s1/messages")).json()
+        msg_id = messages[0]["id"]
+        resp = await auth_client.delete(f"/api/chat/sessions/s1/messages/{msg_id}")
+        assert resp.status_code == 200

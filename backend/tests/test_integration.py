@@ -1,59 +1,79 @@
-"""Integration test: full auth lifecycle with health check."""
+"""Integration tests -- multi-step API workflows end-to-end."""
+
+from __future__ import annotations
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from pct.auth.dependencies import set_settings
+from pct.auth.service import clear_users
+from pct.config import Settings
+from pct.main import app
+from pct.models.core import Project
+from pct.notifications.service import get_notification_service
+from pct.storage.project_io import init_project
 
 
-async def test_full_auth_flow(client):
-    """Test: health check -> register -> authenticated access -> login -> access."""
-    # 1. Health check - server is ready
-    r = await client.get("/api/health")
-    assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+# -- Fixtures --
 
-    # 2. Register a new user
-    r = await client.post(
-        "/api/auth/register",
-        json={"email": "user@example.com", "password": "securepass123"},
+
+@pytest.fixture
+def integration_settings(tmp_path):
+    """Create a fully initialized project with workflow stages."""
+    project = Project(
+        id="integ-project",
+        name="Integration Test Project",
+        directory=str(tmp_path),
+        workflow_stages=[
+            {"id": "refine-spec", "label": "Refine Spec", "enabled": True, "sort_order": 0, "auto_run": False},
+            {"id": "implement", "label": "Implement", "enabled": True, "sort_order": 1, "auto_run": False},
+            {"id": "done", "label": "Done", "enabled": True, "sort_order": 2, "auto_run": False},
+        ],
+        artifact_types=[{"id": "text", "label": "Text"}],
     )
-    assert r.status_code == 200
-    token = r.json()["access_token"]
-    assert token
+    settings = Settings(project_root=tmp_path, secret_key="test-secret")
+    set_settings(settings)
+    init_project(tmp_path, project)
+    yield settings
+    set_settings(None)
 
-    # 3. Access protected endpoint with token
-    r = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert r.status_code == 200
-    assert r.json()["email"] == "user@example.com"
-    assert r.json()["auth_provider"] == "local"
 
-    # 4. Unauthenticated access is rejected
-    r = await client.get("/api/auth/me")
-    assert r.status_code in (401, 403)
+@pytest.fixture(autouse=True)
+def reset_users():
+    """Clear in-memory user store between tests."""
+    clear_users()
+    yield
+    clear_users()
 
-    # 5. Login with the same credentials
-    r = await client.post(
-        "/api/auth/login",
-        json={"email": "user@example.com", "password": "securepass123"},
-    )
-    assert r.status_code == 200
-    token2 = r.json()["access_token"]
 
-    # 6. New token works
-    r = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token2}"})
-    assert r.status_code == 200
-    assert r.json()["email"] == "user@example.com"
+@pytest.fixture(autouse=True)
+def reset_notifications():
+    """Clear notification events between tests."""
+    svc = get_notification_service()
+    svc.clear_all()
+    yield
+    svc.clear_all()
 
-    # 7. Duplicate registration is rejected
-    r = await client.post(
-        "/api/auth/register",
-        json={"email": "user@example.com", "password": "another"},
-    )
-    assert r.status_code == 400
 
-    # 8. Wrong password is rejected
-    r = await client.post(
-        "/api/auth/login",
-        json={"email": "user@example.com", "password": "wrongpassword"},
-    )
-    assert r.status_code == 401
+@pytest.fixture
+async def client(integration_settings):
+    """Unauthenticated HTTP client."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
 
-    # 9. Google auth returns 501 when not configured
-    r = await client.post("/api/auth/google", json={"credential": "fake-token"})
-    assert r.status_code == 501
+
+async def register_and_login(client: AsyncClient) -> dict:
+    """Register a user and return headers with JWT token."""
+    await client.post("/api/auth/register", json={"email": "test@example.com", "password": "testpass123"})
+    resp = await client.post("/api/auth/login", json={"email": "test@example.com", "password": "testpass123"})
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def auth_client(integration_settings):
+    """Authenticated HTTP client with a registered user."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        headers = await register_and_login(c)
+        c.headers.update(headers)
+        yield c

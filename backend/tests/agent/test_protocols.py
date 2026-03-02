@@ -1,26 +1,24 @@
-"""Tests for pct.agent.protocols — protocol conformance checks."""
+"""Tests for agent protocol compliance."""
 
-import inspect
+from pct.agent.protocols import AgentProvider
+from pct.agent.providers.claude_code import ClaudeCodeProvider
+from pct.agent.providers.local_llm import LocalLLMProvider
+from pct.agent.providers.user import UserProvider
 
-from pct.agent.models import AgentResult
-from pct.agent.protocols import AgentProvider, CompletionBackend
 
+class TestProtocolCompliance:
+    def test_user_provider_is_agent_provider(self):
+        assert isinstance(UserProvider(), AgentProvider)
 
-class TestProtocolConformance:
-    def test_local_provider_is_agent_provider(self, local_provider):
-        """LocalLLMProvider satisfies the AgentProvider protocol."""
-        assert isinstance(local_provider, AgentProvider)
+    def test_local_llm_provider_is_agent_provider(self):
+        # LocalLLMProvider satisfies the protocol even without model loaded
+        provider = LocalLLMProvider.__new__(LocalLLMProvider)
+        provider.model_path = "test"
+        provider.context_length = 4096
+        provider.temperature = 0.7
+        provider._llm = None
+        provider._interrupted = False
+        assert isinstance(provider, AgentProvider)
 
-    def test_fake_llama_is_completion_backend(self, fake_llama):
-        """FakeLlama satisfies the CompletionBackend protocol."""
-        assert isinstance(fake_llama, CompletionBackend)
-
-    async def test_provider_execute_returns_agent_result(self, local_provider):
-        """Provider.execute() returns an AgentResult instance."""
-        messages = [{"role": "user", "content": "Hello"}]
-        result = await local_provider.execute(messages)
-        assert isinstance(result, AgentResult)
-
-    def test_provider_execute_is_coroutine(self, local_provider):
-        """Provider.execute is a coroutine function."""
-        assert inspect.iscoroutinefunction(local_provider.execute)
+    def test_claude_code_provider_is_agent_provider(self):
+        assert isinstance(ClaudeCodeProvider(), AgentProvider)

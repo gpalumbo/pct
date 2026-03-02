@@ -1,55 +1,99 @@
-"""API routes for image generation."""
+"""Router — /api/imagegen endpoints."""
+
+from __future__ import annotations
+
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
 
-from pct.auth.dependencies import get_current_user
-from pct.imagegen import job_manager, service
-from pct.imagegen.models import GenerateRequest, JobResponse, SelectImageRequest, SessionMetadata
+from pct.auth.dependencies import get_current_user, get_settings
+from pct.config import Settings
+from pct.imagegen.job_manager import get_job_manager
+from pct.imagegen.models import (
+    GenerateRequest,
+    GenerateResponse,
+    JobStatus,
+    JobStatusResponse,
+    SelectImageRequest,
+)
+from pct.imagegen.service import get_session, select_image
 
-router = APIRouter()
-
-
-@router.post("/generate", response_model=dict)
-async def generate_images(req: GenerateRequest, _user: dict = Depends(get_current_user)):
-    """Start an async image generation job. Returns {job_id}."""
-    try:
-        job_id = service.start_generation(req)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return {"job_id": job_id}
+router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
 
 
-@router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str, _user: dict = Depends(get_current_user)):
-    """Poll job status and progress."""
-    job = job_manager.get_job(job_id)
+@router.post("/generate", response_model=GenerateResponse)
+async def generate_images(
+    req: GenerateRequest,
+    settings: Settings = Depends(get_settings),
+    _user: str = Depends(get_current_user),
+):
+    """Submit an image generation job.
+
+    The job runs asynchronously. Poll /jobs/{job_id} for status.
+    """
+    manager = get_job_manager()
+    job_id = manager.create_job(
+        feature_id=req.feature_id,
+        task_id=req.task_id,
+        prompt=req.prompt,
+        negative_prompt=req.negative_prompt,
+        guidance_scale=req.guidance_scale,
+        divergence=req.divergence,
+        source_image_id=req.source_image_id,
+    )
+
+    # Fire and forget — run the job in the background
+    asyncio.create_task(
+        manager.run_job(job_id, settings.project_root),
+        name=f"imagegen-{job_id}",
+    )
+
+    return GenerateResponse(job_id=job_id, status=JobStatus.pending)
+
+
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_job_status(
+    job_id: str,
+    _user: str = Depends(get_current_user),
+):
+    """Get the status of an image generation job."""
+    manager = get_job_manager()
+    job = manager.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+
+    return JobStatusResponse(
+        job_id=job.job_id,
+        status=job.status,
+        feature_id=job.feature_id,
+        task_id=job.task_id,
+        images=job.images,
+        error=job.error,
+    )
 
 
-@router.get("/{feature_id}/{task_id}/session", response_model=SessionMetadata)
-async def get_session(feature_id: str, task_id: str, _user: dict = Depends(get_current_user)):
-    """Get image generation session metadata."""
-    return service.load_metadata(feature_id, task_id)
+@router.get("/{feature_id}/{task_id}/session")
+async def get_image_session(
+    feature_id: str,
+    task_id: str,
+    settings: Settings = Depends(get_settings),
+    _user: str = Depends(get_current_user),
+):
+    """Get the image generation session for a task."""
+    session = get_session(settings.project_root, feature_id, task_id)
+    return session.model_dump(mode="json")
 
 
-@router.post("/{feature_id}/{task_id}/select", response_model=SessionMetadata)
-async def select_image(
+@router.post("/{feature_id}/{task_id}/select")
+async def select_generated_image(
     feature_id: str,
     task_id: str,
     req: SelectImageRequest,
-    _user: dict = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    _user: str = Depends(get_current_user),
 ):
-    """Select an image from a round for refinement."""
-    return service.select_image(feature_id, task_id, req)
-
-
-@router.get("/{feature_id}/{task_id}/images/{filename}")
-async def get_image(feature_id: str, task_id: str, filename: str, _user: dict = Depends(get_current_user)):
-    """Serve a generated image file."""
-    path = service._images_dir(feature_id, task_id) / filename
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(path, media_type="image/png")
+    """Select a generated image as the accepted output for a task."""
+    ok = select_image(settings.project_root, feature_id, task_id, req.image_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to select image")
+    return {"selected": True, "image_id": req.image_id}

@@ -1,49 +1,25 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as api from '../api/chatApi';
-import type { UpdateMessageRequest } from '../types/chat';
+/** TanStack Query hooks for chat API. */
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { chatApi } from '../api/chatApi';
+
+export function useChatMessages(sessionId: string) {
+  return useQuery({
+    queryKey: ['chat', sessionId],
+    queryFn: () => chatApi.getMessages(sessionId),
+    staleTime: 2000,
+    enabled: !!sessionId,
+  });
+}
 
 export function useDefaultSession() {
-  return useQuery({ queryKey: ['chat-session-default'], queryFn: api.fetchDefaultSession });
-}
-
-export function useSession(sessionId: string | null) {
   return useQuery({
-    queryKey: ['chat-session', sessionId],
-    queryFn: () => api.fetchSession(sessionId!),
-    enabled: !!sessionId,
-    retry: false,
+    queryKey: ['chat', 'default'],
+    queryFn: chatApi.getDefaultSession,
   });
 }
 
-export function useMessages(sessionId: string | null) {
-  return useQuery({
-    queryKey: ['chat-messages', sessionId],
-    queryFn: () => api.fetchMessages(sessionId!),
-    enabled: !!sessionId,
-  });
-}
-
-export function useUpdateMessage(sessionId: string | null) {
+export function useInvalidateChat() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ messageId, data }: { messageId: string; data: UpdateMessageRequest }) =>
-      api.updateMessage(sessionId!, messageId, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
-  });
-}
-
-export function useDeleteMessage(sessionId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (messageId: string) => api.deleteMessage(sessionId!, messageId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
-  });
-}
-
-export function useTruncateFromMessage(sessionId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (messageId: string) => api.truncateFromMessage(sessionId!, messageId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat-messages', sessionId] }),
-  });
+  return (sessionId: string) => qc.invalidateQueries({ queryKey: ['chat', sessionId] });
 }

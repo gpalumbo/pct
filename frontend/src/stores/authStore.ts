@@ -1,25 +1,31 @@
-import { create } from 'zustand';
+/** Auth store — Zustand with localStorage persistence. */
 
-interface User {
-  email: string;
-}
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 interface AuthState {
   token: string | null;
-  user: User | null;
-  setAuth: (token: string, user: User) => void;
+  email: string | null;
+  isAuthenticated: boolean;
+  login: (token: string, email: string) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  token: localStorage.getItem('pct_token'),
-  user: null,
-  setAuth: (token, user) => {
-    localStorage.setItem('pct_token', token);
-    set({ token, user });
-  },
-  logout: () => {
-    localStorage.removeItem('pct_token');
-    set({ token: null, user: null });
-  },
-}));
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      token: null,
+      email: null,
+      isAuthenticated: false,
+      login: (token, email) => {
+        localStorage.setItem('pct_token', token);
+        set({ token, email, isAuthenticated: true });
+      },
+      logout: () => {
+        localStorage.removeItem('pct_token');
+        set({ token: null, email: null, isAuthenticated: false });
+      },
+    }),
+    { name: 'pct-auth' },
+  ),
+);

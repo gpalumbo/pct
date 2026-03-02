@@ -1,120 +1,76 @@
-// Board domain types mirroring backend models
+/** Board types — mirrors backend models. */
 
-export type FeatureStage =
-  | 'backlog'
-  | 'planning'
-  | 'active'
-  | 'suspended'
-  | 'integration-test'
-  | 'complete';
+import type {
+  ExecutionStatus,
+  FeatureStage,
+  ImpactSeverity,
+} from './enums';
 
-export type SerializationMode = 'parallel' | 'serial';
-
-export interface FeatureMetadata {
-  lifecycle_stage: FeatureStage;
-  serialization_mode: SerializationMode;
-  worktree_path: string | null;
-  branch: string | null;
-  commits: string[];
-  feature_dependencies: string[];
-  created: string;
-  updated: string;
+export interface ErrorDetails {
+  error_type: string;
+  message: string;
+  partial_output?: string | null;
+  occurred_at: string;
 }
 
 export interface Task {
   id: string;
   title: string;
-  feature: string;
-  status: string;
-  agent: string | null;
-  branch: string | null;
-  depends_on: string[];
-  cross_depends_on: string[];
-  tags: string[];
-  priority: number;
-  attempt: number;
-  artifact_path: string;
-  created: string;
-  updated: string;
-  body: string;
-  artifact_type: string;
+  feature_id: string;
+  current_stage_id: string;
+  artifact_type_id?: string | null;
+  blocked_by: string[];
+  cross_refs: string[];
+  execution_status: ExecutionStatus;
+  is_bypassed: boolean;
+  consistency_flag?: ImpactSeverity | null;
+  error_details?: ErrorDetails | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Feature {
   id: string;
   title: string;
-  specification: string;
-  metadata: FeatureMetadata;
-  tasks: Task[];
-}
-
-export interface BacklogFeature {
-  id: string;
-  title: string;
-  specification: string;
-}
-
-export interface BoardResponse {
-  features: Feature[];
-  backlog: BacklogFeature[];
-  enabled_stages: string[];
-  stage_labels: Record<string, string>;
-}
-
-// Request types
-
-export interface CreateFeatureRequest {
-  id: string;
-  title: string;
-  specification?: string;
-  metadata?: Partial<FeatureMetadata> | null;
-}
-
-export interface UpdateFeatureMetadataRequest {
-  lifecycle_stage?: FeatureStage;
-  serialization_mode?: SerializationMode;
+  stage: FeatureStage;
+  spec_path: string;
   worktree_path?: string | null;
   branch?: string | null;
-  commits?: string[];
-  feature_dependencies?: string[];
+  tasks: Task[];
+  created_at: string;
+  updated_at: string;
 }
 
-export interface CreateTaskRequest {
+export interface WorkflowStage {
+  id: string;
+  label: string;
+  enabled: boolean;
+  agent_id?: string | null;
+  prompt_template?: string | null;
+  auto_run: boolean;
+  sort_order: number;
+}
+
+export interface BoardState {
+  features: Feature[];
+  workflow_stages: WorkflowStage[];
+}
+
+export interface FeatureCreate {
+  id: string;
   title: string;
-  status?: string;
-  agent?: string | null;
-  depends_on?: string[];
-  cross_depends_on?: string[];
-  tags?: string[];
-  priority?: number;
-  artifact_path?: string;
-  body?: string;
-  artifact_type?: string;
+  spec_content?: string;
 }
 
-export interface UpdateTaskRequest {
-  title?: string;
-  status?: string;
-  agent?: string | null;
-  branch?: string | null;
-  depends_on?: string[];
-  cross_depends_on?: string[];
-  tags?: string[];
-  priority?: number;
-  attempt?: number;
-  artifact_path?: string;
-  body?: string;
-  artifact_type?: string;
+export interface TaskCreate {
+  id: string;
+  title: string;
+  artifact_type_id?: string | null;
+  blocked_by?: string[];
+  cross_refs?: string[];
 }
 
-export interface MoveTaskRequest {
-  new_status: string;
-  confirm_skip?: boolean;
-}
-
-export interface ReassignTaskRequest {
-  src_feature_id: string;
-  task_id: string;
-  dest_feature_id: string;
-  new_status: string;
+export interface TaskMove {
+  target_stage_id: string;
+  bypass?: boolean;
 }

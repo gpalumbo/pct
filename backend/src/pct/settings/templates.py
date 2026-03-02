@@ -1,140 +1,179 @@
-"""Project-type templates: workflow stages and initial feature/tasks."""
+"""Project templates — coding and writing presets."""
 
-from __future__ import annotations
+from pathlib import Path
 
+from pct.models.agents import Agent, ModelRegistryEntry
+from pct.models.core import Project
+from pct.models.enums import AgentType, ProviderType
+from pct.models.workflow import ArtifactType, WorkflowStage
 
-def _stage(stage_id: str, label: str, prompt_template: str = "") -> dict:
-    d: dict = {"stage": stage_id, "label": label, "enabled": True, "agent": None}
-    if prompt_template:
-        d["prompt_template"] = prompt_template
-    return d
+CODING_STAGES = [
+    WorkflowStage(id="refine-spec", label="Refine Spec", sort_order=0),
+    WorkflowStage(id="implement", label="Implement", sort_order=1),
+    WorkflowStage(id="feature-test", label="Feature Test", sort_order=2),
+    WorkflowStage(id="code-review", label="Code Review", sort_order=3),
+    WorkflowStage(id="merge", label="Merge", sort_order=4),
+    WorkflowStage(id="full-test", label="Full Test Suite", sort_order=5),
+    WorkflowStage(id="push", label="Push", sort_order=6),
+    WorkflowStage(id="done", label="Done", sort_order=7),
+]
 
+WRITING_STAGES = [
+    WorkflowStage(
+        id="concept", label="Concept", sort_order=0,
+        prompt_template=(
+            "Help the user brainstorm and develop the core concept."
+            " Read {{artifact}} if it exists and suggest expansions."
+        ),
+    ),
+    WorkflowStage(
+        id="outline", label="Outline", sort_order=1,
+        prompt_template=(
+            "Help structure and outline the content."
+            " Reference {{cross_refs}} for world consistency."
+        ),
+    ),
+    WorkflowStage(
+        id="draft", label="Draft", sort_order=2,
+        prompt_template=(
+            "Write or expand the draft. Use {{artifact}} as the working document."
+            " Reference {{cross_refs}} for world consistency."
+        ),
+    ),
+    WorkflowStage(
+        id="revise", label="Revise", sort_order=3,
+        prompt_template=(
+            "Review {{artifact}} for quality, consistency, and completeness."
+            " Cross-check against {{cross_refs}}. Suggest specific improvements."
+        ),
+    ),
+    WorkflowStage(
+        id="polish", label="Polish", sort_order=4,
+        prompt_template=(
+            "Final polish of {{artifact}}. Fix grammar, improve prose,"
+            " ensure consistency with {{cross_refs}}."
+        ),
+    ),
+    WorkflowStage(id="done", label="Done", sort_order=5),
+]
 
-def _task(title: str, artifact_type: str = "text") -> dict:
-    d: dict = {"title": title}
-    if artifact_type != "text":
-        d["artifact_type"] = artifact_type
-    return d
+CODING_ARTIFACT_TYPES = [
+    ArtifactType(id="text", label="Text"),
+]
 
-
-# ---------------------------------------------------------------------------
-# Template definitions
-# ---------------------------------------------------------------------------
-
-TEMPLATES: dict[str, dict] = {
-    "coding": {
-        "stages": [
-            _stage("refine-spec", "Refine Spec"),
-            _stage("implement", "Implement"),
-            _stage("feature-test", "Feature Test"),
-            _stage("code-review", "Code Review"),
-            _stage("merge", "Merge"),
-            _stage("full-test", "Full Test"),
-            _stage("push", "Push"),
-            _stage("done", "Done"),
-        ],
-        "initial_feature": {
-            "id": "f1-project-setup",
-            "title": "Project Setup",
-            "tasks": [
-                _task("Set up project structure and dependencies"),
-                _task("Configure linting and formatting"),
-                _task("Add CI/CD pipeline"),
-                _task("Write initial README"),
-            ],
-        },
-    },
-    "writing": {
-        "stages": [
-            _stage(
-                "concept",
-                "Concept",
-                "Help the user brainstorm and develop the core concept."
-                " Read {{artifact}} if it exists and suggest expansions.",
-            ),
-            _stage(
-                "outline",
-                "Outline",
-                "Help structure and outline the content. Reference {{cross_refs}} for world consistency.",
-            ),
-            _stage(
-                "draft",
-                "Draft",
-                "Write or expand the draft. Use {{artifact}} as the working document."
-                " Reference {{cross_refs}} for world consistency.",
-            ),
-            _stage(
-                "revise",
-                "Revise",
-                "Review {{artifact}} for quality, consistency, and completeness."
-                " Cross-check against {{cross_refs}}. Suggest specific improvements.",
-            ),
-            _stage(
-                "polish",
-                "Polish",
-                "Final polish of {{artifact}}. Fix grammar, improve prose, ensure consistency with {{cross_refs}}.",
-            ),
-            _stage("done", "Done"),
-        ],
-        "initial_features": [
-            {
-                "id": "f0-timeline",
-                "title": "Timeline & History",
-                "tasks": [
-                    _task("Establish world chronology", "timeline"),
-                ],
-            },
-            {
-                "id": "f1-locations",
-                "title": "Locations",
-                "tasks": [
-                    _task("Define major regions and geography", "location"),
-                    _task("Detail key cities and landmarks", "location"),
-                ],
-            },
-            {
-                "id": "f2-characters",
-                "title": "Characters",
-                "tasks": [
-                    _task("Create protagonist profile", "character"),
-                    _task("Create antagonist profile", "character"),
-                ],
-            },
-            {
-                "id": "f3-factions",
-                "title": "Factions & Organizations",
-                "tasks": [
-                    _task("Outline major factions and power structures", "faction"),
-                    _task("Define faction relationships and conflicts", "faction"),
-                ],
-            },
-            {
-                "id": "f4-magic-religion",
-                "title": "Magic & Religion",
-                "tasks": [
-                    _task("Define magic system rules and limitations", "magic-system"),
-                    _task("Outline religious traditions and beliefs", "magic-system"),
-                ],
-            },
-            {
-                "id": "f5-technology",
-                "title": "Technology",
-                "tasks": [
-                    _task("Define technology level and key inventions", "technology"),
-                ],
-            },
-            {
-                "id": "f6-items",
-                "title": "Items & Artifacts",
-                "tasks": [
-                    _task("Catalog significant items and their origins", "item"),
-                ],
-            },
-        ],
-    },
-}
+WRITING_ARTIFACT_TYPES = [
+    ArtifactType(id="timeline", label="Timeline & History"),
+    ArtifactType(id="location", label="Location"),
+    ArtifactType(id="character", label="Character"),
+    ArtifactType(id="faction", label="Faction / Organization"),
+    ArtifactType(id="magic-system", label="Magic & Religion"),
+    ArtifactType(id="technology", label="Technology"),
+    ArtifactType(id="item", label="Item / Artifact"),
+    ArtifactType(id="story-arc", label="Story Arc"),
+    ArtifactType(id="chapter", label="Chapter"),
+    ArtifactType(id="text", label="Text"),
+]
 
 
-def get_template(project_type: str) -> dict | None:
-    """Return the template for a project type, or None if not found."""
-    return TEMPLATES.get(project_type)
+def _scan_gguf_dir(directory: Path) -> list[ModelRegistryEntry]:
+    """Scan a directory for .gguf files and return ModelRegistryEntry objects."""
+    if not directory.is_dir():
+        return []
+    entries = []
+    for gguf_file in sorted(directory.glob("*.gguf")):
+        model_id = gguf_file.stem.lower().replace(" ", "-")
+        entries.append(ModelRegistryEntry(
+            id=model_id,
+            name=gguf_file.stem,
+            provider_type=ProviderType.local,
+            model_identifier=model_id,
+            file_path=str(gguf_file),
+        ))
+    return entries
+
+
+def discover_models(
+    project_root: Path,
+    global_config_dir: Path,
+) -> list[ModelRegistryEntry]:
+    """Discover models from the search path and existing registry.
+
+    Search order (later entries do NOT overwrite earlier ones):
+      1. $PCT_PROJECT_ROOT/models/  (scan .gguf)
+      2. $PCT_ROOT/models/          (scan .gguf)  — global_config_dir/models/
+      3. ~/.pct/registries/models.yaml  (existing registry entries)
+    """
+    from pct.storage.registry_io import load_model_registry
+
+    seen_ids: set[str] = set()
+    models: list[ModelRegistryEntry] = []
+
+    # Scan directories for .gguf files
+    for scan_dir in [project_root / "models", global_config_dir / "models"]:
+        for entry in _scan_gguf_dir(scan_dir):
+            if entry.id not in seen_ids:
+                seen_ids.add(entry.id)
+                models.append(entry)
+
+    # Load existing registry entries
+    for entry in load_model_registry(global_config_dir):
+        if entry.id not in seen_ids:
+            seen_ids.add(entry.id)
+            models.append(entry)
+
+    return models
+
+
+def _create_default_agents(models: list[ModelRegistryEntry]) -> list[Agent]:
+    """Create a USER agent plus one LLM agent per discovered model."""
+    agents: list[Agent] = [
+        Agent(
+            id="user",
+            name="User",
+            agent_type=AgentType.user,
+            model_id="",
+        ),
+    ]
+    for model in models:
+        agent_id = f"agent-{model.id}"
+        agents.append(Agent(
+            id=agent_id,
+            name=model.name,
+            agent_type=AgentType.llm,
+            model_id=model.id,
+        ))
+    return agents
+
+
+def create_project_from_template(
+    project_id: str,
+    name: str,
+    template: str,
+    directory: str = "",
+    models: list[ModelRegistryEntry] | None = None,
+) -> Project:
+    """Create a Project with template-appropriate stages, artifact types, and agents."""
+    if template == "writing":
+        stages = WRITING_STAGES
+        artifact_types = WRITING_ARTIFACT_TYPES
+    else:
+        stages = CODING_STAGES
+        artifact_types = CODING_ARTIFACT_TYPES
+
+    agents = _create_default_agents(models or [])
+
+    # Pick first LLM agent as default, fall back to user
+    llm_agents = [a for a in agents if a.agent_type == AgentType.llm]
+    default_id = llm_agents[0].id if llm_agents else "user"
+
+    return Project(
+        id=project_id,
+        name=name,
+        project_type=template,
+        directory=directory,
+        workflow_stages=stages,
+        artifact_types=artifact_types,
+        agents=agents,
+        default_agent_id=default_id,
+        planning_agent_id=default_id,
+    )

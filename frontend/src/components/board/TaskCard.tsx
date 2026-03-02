@@ -1,57 +1,40 @@
-import { Card, Tag, Typography } from 'antd';
+import { Card, Typography, Tag } from 'antd';
 import { Draggable } from '@hello-pangea/dnd';
-import type { Task } from '../../types/board';
 import { useBoardStore } from '../../stores/boardStore';
+import type { Task } from '../../types/board';
+import type { AgentType } from '../../types/enums';
 
 const { Text } = Typography;
 
-const AGENT_COLORS: Record<string, string> = {
+const agentBorderColors: Record<AgentType, string> = {
   llm: '#1890ff',
   user: '#52c41a',
   tool: '#faad14',
-};
-
-const ARTIFACT_TYPE_COLORS: Record<string, string> = {
-  timeline: '#13c2c2',
-  location: '#52c41a',
-  character: '#1890ff',
-  faction: '#722ed1',
-  'magic-system': '#eb2f96',
-  technology: '#fa8c16',
-  item: '#faad14',
-  'story-arc': '#2f54eb',
-  chapter: '#597ef7',
+  image_gen: '#eb2f96',
 };
 
 interface TaskCardProps {
   task: Task;
   index: number;
   featureId: string;
+  agentType?: AgentType;
 }
 
-export default function TaskCard({ task, index, featureId }: TaskCardProps) {
-  const isBlocked = task.depends_on.length > 0 || task.cross_depends_on.length > 0;
-  const borderColor = task.agent ? AGENT_COLORS[task.agent] || '#d9d9d9' : '#d9d9d9';
-  const setSelectedTask = useBoardStore((s) => s.setSelectedTask);
-  const selectedTask = useBoardStore((s) => s.selectedTask);
-  const isSelected = selectedTask?.taskId === task.id && selectedTask?.featureId === featureId;
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedTask({ featureId, taskId: task.id, task });
-  };
+export default function TaskCard({ task, index, featureId, agentType }: TaskCardProps) {
+  const selectTask = useBoardStore((s) => s.selectTask);
+  const isBlocked = task.blocked_by.length > 0;
+  const borderColor = agentType ? agentBorderColors[agentType] : '#d9d9d9';
 
   return (
-    <Draggable draggableId={`${featureId}:${task.id}`} index={index}>
+    <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          onClick={handleClick}
           style={{
-            marginBottom: 4,
-            cursor: 'pointer',
+            marginBottom: 6,
+            opacity: isBlocked ? 0.5 : 1,
             ...provided.draggableProps.style,
           }}
         >
@@ -59,42 +42,37 @@ export default function TaskCard({ task, index, featureId }: TaskCardProps) {
             size="small"
             style={{
               borderLeft: `3px solid ${borderColor}`,
-              opacity: isBlocked ? 0.6 : 1,
-              background: snapshot.isDragging ? '#e6f7ff' : isSelected ? '#e6f7ff' : undefined,
+              cursor: 'pointer',
+              boxShadow: snapshot.isDragging ? '0 4px 12px rgba(0,0,0,0.15)' : undefined,
             }}
-            bodyStyle={{ padding: '6px 8px' }}
+            onClick={() => selectTask(featureId, task.id)}
           >
-            <Text
-              ellipsis={{ tooltip: task.title }}
-              style={{ fontSize: 12, display: 'block', marginBottom: 2 }}
-            >
+            <Text strong ellipsis style={{ fontSize: 12 }}>
               {task.title}
             </Text>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              {task.artifact_type && task.artifact_type !== 'text' && (
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: ARTIFACT_TYPE_COLORS[task.artifact_type] || '#d9d9d9',
-                    display: 'inline-block',
-                    flexShrink: 0,
-                  }}
-                  title={task.artifact_type}
-                />
-              )}
-              {task.agent && (
+            <div style={{ marginTop: 4 }}>
+              {task.execution_status !== 'idle' && (
                 <Tag
-                  color={AGENT_COLORS[task.agent] || 'default'}
-                  style={{ fontSize: 10, margin: 0, lineHeight: '16px' }}
+                  color={
+                    task.execution_status === 'running'
+                      ? 'processing'
+                      : task.execution_status === 'error'
+                        ? 'error'
+                        : 'default'
+                  }
+                  style={{ fontSize: 10 }}
                 >
-                  {task.agent}
+                  {task.execution_status}
                 </Tag>
               )}
               {isBlocked && (
-                <Tag color="red" style={{ fontSize: 10, margin: 0, lineHeight: '16px' }}>
-                  blocked
+                <Tag color="red" style={{ fontSize: 10 }}>
+                  Blocked
+                </Tag>
+              )}
+              {task.is_bypassed && (
+                <Tag color="orange" style={{ fontSize: 10 }}>
+                  Bypassed
                 </Tag>
               )}
             </div>

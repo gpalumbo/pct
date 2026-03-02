@@ -1,36 +1,66 @@
+import { Typography } from 'antd';
 import { Droppable } from '@hello-pangea/dnd';
-import type { Task } from '../../types/board';
 import TaskCard from './TaskCard';
+import type { Task, WorkflowStage } from '../../types/board';
+
+const { Text } = Typography;
 
 interface StageColumnProps {
-  featureId: string;
-  stage: string;
+  stage: WorkflowStage;
   tasks: Task[];
+  featureId: string;
 }
 
-export default function StageColumn({ featureId, stage, tasks }: StageColumnProps) {
-  const droppableId = `${featureId}:${stage}`;
+export default function StageColumn({ stage, tasks, featureId }: StageColumnProps) {
+  const droppableId = `${featureId}::${stage.id}`;
 
   return (
-    <Droppable droppableId={droppableId}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.droppableProps}
-          style={{
-            minHeight: 40,
-            padding: 4,
-            background: snapshot.isDraggingOver ? '#f0f5ff' : undefined,
-            borderRadius: 4,
-            transition: 'background 0.2s',
-          }}
-        >
-          {tasks.map((task, index) => (
-            <TaskCard key={task.id} task={task} index={index} featureId={featureId} />
-          ))}
-          {provided.placeholder}
-        </div>
-      )}
-    </Droppable>
+    <div
+      style={{
+        minWidth: 180,
+        maxWidth: 220,
+        flex: '1 0 180px',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Text
+        type="secondary"
+        style={{
+          fontSize: 11,
+          textTransform: 'uppercase',
+          marginBottom: 4,
+          fontWeight: 600,
+        }}
+      >
+        {stage.label}
+      </Text>
+      <Droppable droppableId={droppableId}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            style={{
+              flex: 1,
+              minHeight: 60,
+              padding: 4,
+              borderRadius: 4,
+              backgroundColor: snapshot.isDraggingOver ? '#e6f7ff' : '#fafafa',
+              transition: 'background-color 0.2s',
+            }}
+          >
+            {tasks.map((task, idx) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                index={idx}
+                featureId={featureId}
+              />
+            ))}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </div>
   );
 }

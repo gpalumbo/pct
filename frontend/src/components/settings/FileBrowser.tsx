@@ -1,121 +1,76 @@
-import { useEffect, useState } from 'react';
-import { Button, Input, List, Modal, Space, Typography, message } from 'antd';
-import { FolderOutlined, FileOutlined, ArrowUpOutlined } from '@ant-design/icons';
-import { browseFiles, type FileEntry } from '../../api/configApi';
+import { useState } from 'react';
+import { List, Breadcrumb, Typography, Spin } from 'antd';
+import { FolderOutlined, FileOutlined } from '@ant-design/icons';
+import { useBrowseFiles } from '../../hooks/useConfigQueries';
+import type { FileEntry } from '../../types/config';
 
 const { Text } = Typography;
 
 interface FileBrowserProps {
-  open: boolean;
-  onCancel: () => void;
-  onSelect: (path: string) => void;
-  title?: string;
+  onSelect?: (entry: FileEntry) => void;
 }
 
-export default function FileBrowser({
-  open,
-  onCancel,
-  onSelect,
-  title = 'Browse Files',
-}: FileBrowserProps) {
-  const [currentPath, setCurrentPath] = useState('');
-  const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [pathInput, setPathInput] = useState('');
+export default function FileBrowser({ onSelect }: FileBrowserProps) {
+  const [currentPath, setCurrentPath] = useState<string | undefined>(undefined);
+  const { data: entries, isLoading } = useBrowseFiles(currentPath ?? '/');
 
-  const loadDir = async (path: string) => {
-    setLoading(true);
-    try {
-      const data = await browseFiles(path);
-      setEntries(data);
-      setCurrentPath(path);
-      setPathInput(path);
-    } catch {
-      message.error('Could not browse directory');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const pathParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
 
-  useEffect(() => {
-    if (open) {
-      loadDir('');
-    }
-  }, [open]);
-
-  const goUp = () => {
-    const parts = currentPath.replace(/\\/g, '/').split('/').filter(Boolean);
-    if (parts.length <= 1) {
-      // At root or one level deep — go to filesystem root
-      const root = currentPath.match(/^[A-Za-z]:/) ? currentPath.slice(0, 3) : '/';
-      loadDir(root);
-    } else {
-      parts.pop();
-      loadDir(parts.join('/'));
-    }
-  };
-
-  const handleNavigate = (entry: FileEntry) => {
+  const navigateTo = (entry: FileEntry) => {
     if (entry.is_dir) {
-      loadDir(entry.path);
+      setCurrentPath(entry.path);
     } else {
-      onSelect(entry.path);
+      onSelect?.(entry);
     }
   };
 
-  const handlePathSubmit = () => {
-    if (pathInput) loadDir(pathInput);
+  const navigateToBreadcrumb = (index: number) => {
+    if (index < 0) {
+      setCurrentPath(undefined);
+    } else {
+      const path = '/' + pathParts.slice(0, index + 1).join('/');
+      setCurrentPath(path);
+    }
   };
+
+  if (isLoading) return <Spin />;
 
   return (
-    <Modal title={title} open={open} onCancel={onCancel} footer={null} width={600}>
-      <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
-        <Input
-          value={pathInput}
-          onChange={(e) => setPathInput(e.target.value)}
-          onPressEnter={handlePathSubmit}
-          placeholder="Enter path..."
-        />
-        <Button onClick={handlePathSubmit}>Go</Button>
-      </Space.Compact>
-
-      <Button icon={<ArrowUpOutlined />} size="small" onClick={goUp} style={{ marginBottom: 8 }}>
-        Up
-      </Button>
-
+    <div>
+      <Breadcrumb
+        style={{ marginBottom: 12 }}
+        items={[
+          {
+            title: (
+              <a onClick={() => navigateToBreadcrumb(-1)}>Root</a>
+            ),
+          },
+          ...pathParts.map((part, i) => ({
+            title: (
+              <a onClick={() => navigateToBreadcrumb(i)}>{part}</a>
+            ),
+          })),
+        ]}
+      />
       <List
-        loading={loading}
         size="small"
-        style={{ maxHeight: 400, overflow: 'auto' }}
-        dataSource={entries}
-        renderItem={(entry) => (
+        dataSource={entries ?? []}
+        locale={{ emptyText: 'Empty directory' }}
+        renderItem={(entry: FileEntry) => (
           <List.Item
             style={{ cursor: 'pointer', padding: '4px 8px' }}
-            onClick={() => handleNavigate(entry)}
-            actions={
-              !entry.is_dir
-                ? [
-                    <Button
-                      size="small"
-                      type="link"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelect(entry.path);
-                      }}
-                    >
-                      Select
-                    </Button>,
-                  ]
-                : undefined
-            }
+            onClick={() => navigateTo(entry)}
           >
-            <Space>
-              {entry.is_dir ? <FolderOutlined style={{ color: '#faad14' }} /> : <FileOutlined />}
-              <Text>{entry.name}</Text>
-            </Space>
+            {entry.is_dir ? <FolderOutlined style={{ marginRight: 8 }} /> : <FileOutlined style={{ marginRight: 8 }} />}
+            <Text>{entry.name}</Text>
+            {!entry.is_dir && (
+              <Text type="secondary" style={{ marginLeft: 'auto' }}>
+                {(entry.size / 1024).toFixed(1)} KB
+              </Text>
+            )}
           </List.Item>
         )}
       />
-    </Modal>
+    </div>
   );
 }

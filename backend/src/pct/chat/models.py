@@ -1,38 +1,32 @@
-"""Data models for the planning chat system."""
+"""Chat request/response models."""
 
-from datetime import UTC, datetime
-from uuid import uuid4
+from pydantic import BaseModel
 
-from pydantic import BaseModel, Field
+from pct.models.enums import MessageRole
 
 
-class PlanningMessage(BaseModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12])
-    role: str  # "user", "assistant", "system"
+class SessionCreate(BaseModel):
+    session_id: str
+    session_type: str = "planning"  # "planning" or "task-stage"
+
+
+class MessageCreate(BaseModel):
     content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    tokens: int | None = None
-    included: bool = True
-    agent_id: str | None = None
-    model_id: str | None = None
+    role: MessageRole = MessageRole.user
 
 
-class ChatSession(BaseModel):
-    id: str
-    title: str = ""
-    agent_id: str | None = None
-    created: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    message_count: int = 0
-
-
-class SendMessageRequest(BaseModel):
-    content: str
-    agent_id: str | None = None
-    artifact_path: str | None = None
-
-
-class UpdateMessageRequest(BaseModel):
-    role: str | None = None
+class MessageUpdate(BaseModel):
     content: str | None = None
+    role: MessageRole | None = None
     included: bool | None = None
+
+
+class SendMessage(BaseModel):
+    content: str
+    agent_id: str | None = None
+
+
+class SSEEvent(BaseModel):
+    type: str  # "token", "done", "error"
+    content: str = ""
+    message_id: str | None = None

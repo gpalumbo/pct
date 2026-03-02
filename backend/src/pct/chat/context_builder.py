@@ -1,203 +1,78 @@
-"""Context builder: resolves cross-references, wikilinks, and RAG context for chat."""
+"""Context builder — resolve task context with template variable expansion."""
 
-from __future__ import annotations
+import re
+from pathlib import Path
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
-    """Resolve cross-reference context for a task chat session.
-
-    Parses the session ID (``task-{featureId}-{taskId}``), loads the task,
-    collects referenced artifacts from explicit ``cross_depends_on`` entries
-    and ``[[wikilinks]]`` found in the task body and artifact content.
-
-    Returns ``(cross_ref_context_text, artifact_type_prompt, stage_prompt)``
-    """
-    from pct.board import service as board_service
-    from pct.board.artifact_types import get_artifact_type_prompt
-    from pct.board.wikilinks import extract_wikilinks, resolve_wikilinks
-    from pct.settings import service as settings_service
-
-    # Parse session ID: "task-{featureId}-{taskId}"
-    if not session_id.startswith("task-"):
-        return ("", None, None)
-
-    rest = session_id[len("task-") :]
-    # Split from the right since feature IDs may contain hyphens
-    parts = rest.rsplit("-", 1)
-    if len(parts) != 2:
-        return ("", None, None)
-
-    feature_id, task_id = parts
-
-    task = board_service.get_task(feature_id, task_id)
-    if task is None:
-        return ("", None, None)
-
-    # Artifact type prompt
-    artifact_type_prompt = get_artifact_type_prompt(task.artifact_type) or None
-
-    # Collect referenced task IDs (deduped) from multiple sources
-    ref_pairs: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    def _add_ref(fid: str, tid: str) -> None:
-        key = (fid, tid)
-        if key not in seen:
-            ref_pairs.append(key)
-            seen.add(key)
-
-    # 1. Explicit cross_depends_on ("featureId:taskId")
-    for ref in task.cross_depends_on:
-        if ":" in ref:
-            fid, tid = ref.split(":", 1)
-            _add_ref(fid, tid)
-
-    # 2. Wikilinks from task body + artifact content
-    texts_to_scan: list[str] = []
-    if task.body:
-        texts_to_scan.append(task.body)
-
-    artifact_data = board_service.read_artifact(feature_id, task_id)
-    artifact_content = ""
-    if artifact_data.get("exists") and artifact_data.get("content"):
-        artifact_content = artifact_data["content"]
-        texts_to_scan.append(artifact_content)
-
-    if texts_to_scan:
-        all_links: list[str] = []
-        for text in texts_to_scan:
-            all_links.extend(extract_wikilinks(text))
-
-        if all_links:
-            features = board_service.list_features()
-            resolved = resolve_wikilinks(all_links, features)
-            for fid, tid in resolved:
-                _add_ref(fid, tid)
-
-    # Build context text from all referenced artifacts
-    sections: list[str] = []
-    for fid, tid in ref_pairs:
-        ref_task = board_service.get_task(fid, tid)
-        if ref_task is None:
-            continue
-
-        ref_artifact = board_service.read_artifact(fid, tid)
-        content = ref_artifact.get("content", "")
-        if not content:
-            continue
-
-        sections.append(f"--- Referenced: {ref_task.title} ({fid}/{tid}) ---\n{content}")
-
-    cross_ref_text = ""
-    if sections:
-        cross_ref_text = (
-            "## Cross-Reference Context\n"
-            "The following are referenced world artifacts relevant to this task:\n\n" + "\n\n".join(sections)
-        )
-
-    # Expand stage prompt template
-    stage_prompt = _expand_stage_prompt(
-        task=task,
-        feature_id=feature_id,
-        artifact_content=artifact_content,
-        cross_ref_text=cross_ref_text,
-        settings_service=settings_service,
-        board_service=board_service,
-    )
-
-    return (cross_ref_text, artifact_type_prompt, stage_prompt)
+from pct.board.wikilinks import parse_wikilink
+from pct.storage.feature_io import load_feature_spec
+from pct.storage.task_io import load_task, load_task_body
 
 
-def _expand_stage_prompt(
-    *,
-    task,
+def expand_template(template: str, variables: dict[str, str]) -> str:
+    """Expand {{variable}} placeholders. Missing variables left as-is."""
+    def replacer(match: re.Match) -> str:
+        key = match.group(1).strip()
+        return variables.get(key, match.group(0))
+
+    return re.sub(r"\{\{(\s*\w+\s*)\}\}", replacer, template)
+
+
+def resolve_task_context(
+    project_root: Path,
     feature_id: str,
-    artifact_content: str,
-    cross_ref_text: str,
-    settings_service,
-    board_service,
-) -> str | None:
-    """Look up the stage prompt_template for the task's status and expand variables."""
-    stages = settings_service.get_workflow_stages()
-    stage_cfg = None
-    for s in stages:
-        if s.stage == task.status:
-            stage_cfg = s
-            break
+    task_id: str,
+    custom_variables: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the full context variables for a task.
 
-    if stage_cfg is None or not stage_cfg.prompt_template:
-        return None
-
-    # Resolve feature title
-    feature_title = ""
-    feature = board_service.get_feature(feature_id)
-    if feature:
-        feature_title = feature.title
-
-    from pct.board.service import _resolve_main_artifact
-
-    artifact_main_path = ""
-    if task.artifact_path:
-        artifact_main_path = _resolve_main_artifact(task.artifact_path)
-
-    template = stage_cfg.prompt_template
-    template = template.replace("{{artifact}}", artifact_content or "(no artifact yet)")
-    template = template.replace("{{artifact_path}}", task.artifact_path or "")
-    template = template.replace("{{artifact_main_path}}", artifact_main_path)
-    template = template.replace("{{task_title}}", task.title or "")
-    template = template.replace("{{feature_title}}", feature_title)
-    template = template.replace("{{cross_refs}}", cross_ref_text or "(no cross-references)")
-
-    # Expand user-defined template variables
-    for tv in settings_service.get_template_variables():
-        template = template.replace("{{" + tv.key + "}}", tv.value)
-
-    return template
-
-
-def rag_search_context(project_id: str, query: str, max_results: int = 5) -> str:
-    """Perform RAG semantic search over indexed artifacts.
-
-    Returns formatted results or empty string if RAG is unavailable.
+    Returns a dict of variable_name → content suitable for template expansion.
     """
-    if not project_id or not query.strip():
-        return ""
+    variables: dict[str, str] = {}
 
-    try:
-        from pct.rag.indexer import _get_db, _get_model
-    except ImportError:
-        return ""
+    # Load task
+    task = load_task(project_root, feature_id, task_id)
+    if task is None:
+        return variables
 
-    try:
-        model = _get_model()
-        db = _get_db(project_id)
+    # Built-in variables
+    variables["task_title"] = task.title
+    variables["feature_title"] = feature_id  # Will be overridden if feature loads
+    variables["artifact_work_dir"] = f"work/{feature_id}/{task_id}/"
+    variables["artifact_file_path"] = f"work/{feature_id}/{feature_id}.md"
 
-        available = db.list_tables()
-        if "artifacts" not in available:
-            return ""
+    # Load artifact content
+    artifact_content = load_task_body(project_root, feature_id, task_id)
+    variables["artifact"] = artifact_content
 
-        vector = model.encode(query[:8192]).tolist()
-        table = db.open_table("artifacts")
-        results = table.search(vector).limit(max_results).to_list()
+    # Load feature spec for feature_title
+    feature_spec = load_feature_spec(project_root, feature_id)
+    if feature_spec:
+        variables["feature_title"] = feature_id
 
-        if not results:
-            return ""
+    # Resolve blocked_by content
+    blocked_by_parts = []
+    for link in task.blocked_by:
+        dep_feat, dep_task = parse_wikilink(link)
+        if dep_task:
+            dep_body = load_task_body(project_root, dep_feat, dep_task)
+            if dep_body:
+                blocked_by_parts.append(f"## {dep_feat}#{dep_task}\n{dep_body}")
+    variables["blocked_by"] = "\n\n".join(blocked_by_parts)
 
-        sections: list[str] = []
-        for r in results:
-            path = r.get("path", "unknown")
-            text = r.get("text", "")
-            snippet = text[:500] + "..." if len(text) > 500 else text
-            sections.append(f"[{path}]\n{snippet}")
+    # Resolve cross_refs content
+    cross_ref_parts = []
+    for link in task.cross_refs:
+        ref_feat, ref_task = parse_wikilink(link)
+        if ref_task:
+            ref_body = load_task_body(project_root, ref_feat, ref_task)
+            if ref_body:
+                cross_ref_parts.append(f"## {ref_feat}#{ref_task}\n{ref_body}")
+    variables["cross_refs"] = "\n\n".join(cross_ref_parts)
 
-        return (
-            "## World Knowledge (RAG)\n"
-            "Potentially relevant artifacts from the project knowledge base:\n\n" + "\n\n".join(sections)
-        )
-    except Exception:
-        logger.debug("RAG search failed", exc_info=True)
-        return ""
+    # Merge custom variables (user-defined take lower precedence than built-in)
+    if custom_variables:
+        for k, v in custom_variables.items():
+            if k not in variables:
+                variables[k] = v
+
+    return variables

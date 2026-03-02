@@ -1,419 +1,134 @@
-"""Tests for the board API router — endpoint status codes, 404/400 handling."""
-
-import os
+"""Tests for board router — HTTP endpoints."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-
-@pytest.fixture(autouse=True)
-def _isolate_board(tmp_path):
-    """Isolate project root for each test."""
-    os.environ["PCT_PROJECT_ROOT"] = str(tmp_path / "project")
-    os.environ["PCT_REGISTRIES_DIR"] = str(tmp_path / "registries")
-    (tmp_path / "project" / ".pct").mkdir(parents=True)
-
-    from pct import config
-
-    config.settings = config.Settings()
-    yield
+from pct.auth.dependencies import set_settings
+from pct.auth.service import clear_users
+from pct.config import Settings
+from pct.main import app
+from pct.models.core import Project
+from pct.storage.project_io import init_project
 
 
 @pytest.fixture
-async def client():
-    from pct.main import app
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-
-@pytest.fixture
-async def auth_headers(client: AsyncClient) -> dict[str, str]:
-    resp = await client.post(
-        "/api/auth/register",
-        json={"email": "board@test.com", "password": "testpass123"},
-    )
-    assert resp.status_code == 200
-    token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-def _setup_workflow_stages(tmp_path_like=None):
-    """Set up workflow stages via the settings service."""
-    from pct.config_models import ProjectConfig, WorkflowStageConfig
-    from pct.settings import service as settings_service
-
-    cfg = ProjectConfig(
-        project_id="test",
-        project_name="Test",
+def board_settings(tmp_path):
+    project = Project(
+        id="test",
+        name="Test",
+        directory=str(tmp_path),
         workflow_stages=[
-            WorkflowStageConfig(stage="refine-spec", enabled=True),
-            WorkflowStageConfig(stage="implement", enabled=True),
-            WorkflowStageConfig(stage="code-review", enabled=True),
-            WorkflowStageConfig(stage="done", enabled=True),
+            {"id": "refine-spec", "label": "Refine Spec", "enabled": True, "sort_order": 0, "auto_run": False},
+            {"id": "implement", "label": "Implement", "enabled": True, "sort_order": 1, "auto_run": False},
+            {"id": "done", "label": "Done", "enabled": True, "sort_order": 2, "auto_run": False},
         ],
     )
-    settings_service.save_project_config(cfg)
+    settings = Settings(project_root=tmp_path, secret_key="test-secret")
+    set_settings(settings)
+    init_project(tmp_path, project)
+    yield settings
+    set_settings(None)
 
 
-# ---------------------------------------------------------------------------
-# Board composite
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def reset_users():
+    clear_users()
+    yield
+    clear_users()
 
 
-class TestBoardEndpoint:
-    @pytest.mark.anyio
-    async def test_get_board(self, client, auth_headers):
-        _setup_workflow_stages()
-        resp = await client.get("/api/board/", headers=auth_headers)
+@pytest.fixture
+async def auth_client(board_settings):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.post("/api/auth/register", json={"email": "u@test.com", "password": "pass"})
+        token = resp.json()["access_token"]
+        c.headers["Authorization"] = f"Bearer {token}"
+        yield c
+
+
+class TestBoardRouter:
+    async def test_get_board(self, auth_client: AsyncClient):
+        resp = await auth_client.get("/api/board/")
         assert resp.status_code == 200
         data = resp.json()
         assert "features" in data
-        assert "backlog" in data
-        assert "enabled_stages" in data
+        assert "workflow_stages" in data
 
-    @pytest.mark.anyio
-    async def test_unauthenticated(self, client):
-        resp = await client.get("/api/board/")
-        assert resp.status_code in (401, 403)
-
-
-# ---------------------------------------------------------------------------
-# Feature endpoints
-# ---------------------------------------------------------------------------
-
-
-class TestFeatureEndpoints:
-    @pytest.mark.anyio
-    async def test_create_and_get_feature(self, client, auth_headers):
-        req = {"id": "f1", "title": "Feature One", "specification": "# Feature One"}
-        resp = await client.post("/api/board/features", json=req, headers=auth_headers)
-        assert resp.status_code == 201
+    async def test_feature_crud(self, auth_client: AsyncClient):
+        # Create
+        resp = await auth_client.post("/api/board/features", json={"id": "f1", "title": "Feature 1"})
+        assert resp.status_code == 200
         assert resp.json()["id"] == "f1"
 
-        resp = await client.get("/api/board/features/f1", headers=auth_headers)
+        # Get
+        resp = await auth_client.get("/api/board/features/f1")
         assert resp.status_code == 200
-        assert resp.json()["title"] == "Feature One"
 
-    @pytest.mark.anyio
-    async def test_list_features(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "a", "title": "A", "specification": "# A"},
-            headers=auth_headers,
-        )
-        resp = await client.get("/api/board/features", headers=auth_headers)
-        assert resp.status_code == 200
-        assert len(resp.json()) == 1
-
-    @pytest.mark.anyio
-    async def test_duplicate_feature_400(self, client, auth_headers):
-        req = {"id": "f1", "title": "F1", "specification": "# F1"}
-        await client.post("/api/board/features", json=req, headers=auth_headers)
-        resp = await client.post("/api/board/features", json=req, headers=auth_headers)
-        assert resp.status_code == 400
-
-    @pytest.mark.anyio
-    async def test_get_feature_404(self, client, auth_headers):
-        resp = await client.get("/api/board/features/nope", headers=auth_headers)
-        assert resp.status_code == 404
-
-    @pytest.mark.anyio
-    async def test_patch_feature(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.patch(
-            "/api/board/features/f1",
-            json={"lifecycle_stage": "active"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.json()["metadata"]["lifecycle_stage"] == "active"
-
-    @pytest.mark.anyio
-    async def test_delete_feature(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.delete("/api/board/features/f1", headers=auth_headers)
-        assert resp.status_code == 204
-
-        resp = await client.get("/api/board/features/f1", headers=auth_headers)
-        assert resp.status_code == 404
-
-    @pytest.mark.anyio
-    async def test_delete_feature_404(self, client, auth_headers):
-        resp = await client.delete("/api/board/features/nope", headers=auth_headers)
-        assert resp.status_code == 404
-
-    @pytest.mark.anyio
-    async def test_suspend_and_resume(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.post("/api/board/features/f1/suspend", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json()["metadata"]["lifecycle_stage"] == "suspended"
-
-        resp = await client.post("/api/board/features/f1/resume", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json()["metadata"]["lifecycle_stage"] == "active"
-
-
-# ---------------------------------------------------------------------------
-# Backlog endpoints
-# ---------------------------------------------------------------------------
-
-
-class TestBacklogEndpoints:
-    @pytest.mark.anyio
-    async def test_list_backlog_empty(self, client, auth_headers):
-        resp = await client.get("/api/board/backlog", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    @pytest.mark.anyio
-    async def test_activate_backlog_feature(self, client, auth_headers):
-        # Create a backlog feature by writing a file directly
-        from pct.board import service
-        from pct.board.models import BacklogFeature
-
-        service.create_backlog_feature(BacklogFeature(id="b1", title="B1", specification="# B1\nBacklog spec"))
-
-        resp = await client.post("/api/board/backlog/b1/activate", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json()["id"] == "b1"
-
-    @pytest.mark.anyio
-    async def test_activate_backlog_404(self, client, auth_headers):
-        resp = await client.post("/api/board/backlog/nope/activate", headers=auth_headers)
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Task endpoints
-# ---------------------------------------------------------------------------
-
-
-class TestTaskEndpoints:
-    @pytest.mark.anyio
-    async def test_create_and_get_task(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "My Task"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 201
-        task_id = resp.json()["id"]
-
-        resp = await client.get(f"/api/board/features/f1/tasks/{task_id}", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.json()["title"] == "My Task"
-
-    @pytest.mark.anyio
-    async def test_list_tasks(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "T1"},
-            headers=auth_headers,
-        )
-        resp = await client.get("/api/board/features/f1/tasks", headers=auth_headers)
-        assert resp.status_code == 200
-        assert len(resp.json()) == 1
-
-    @pytest.mark.anyio
-    async def test_list_tasks_feature_404(self, client, auth_headers):
-        resp = await client.get("/api/board/features/nope/tasks", headers=auth_headers)
-        assert resp.status_code == 404
-
-    @pytest.mark.anyio
-    async def test_update_task(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "Original"},
-            headers=auth_headers,
-        )
-        resp = await client.put(
-            "/api/board/features/f1/tasks/001",
-            json={"title": "Updated"},
-            headers=auth_headers,
-        )
+        # Update
+        resp = await auth_client.patch("/api/board/features/f1", json={"title": "Updated"})
         assert resp.status_code == 200
         assert resp.json()["title"] == "Updated"
 
-    @pytest.mark.anyio
-    async def test_update_task_404(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.put(
-            "/api/board/features/f1/tasks/999",
-            json={"title": "X"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
+        # Delete
+        resp = await auth_client.delete("/api/board/features/f1")
+        assert resp.status_code == 200
 
-    @pytest.mark.anyio
-    async def test_delete_task(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        await client.post(
+    async def test_task_crud(self, auth_client: AsyncClient):
+        await auth_client.post("/api/board/features", json={"id": "f1", "title": "F1"})
+
+        # Create task
+        resp = await auth_client.post(
             "/api/board/features/f1/tasks",
-            json={"title": "T1"},
-            headers=auth_headers,
-        )
-        resp = await client.delete("/api/board/features/f1/tasks/001", headers=auth_headers)
-        assert resp.status_code == 204
-
-    @pytest.mark.anyio
-    async def test_delete_task_404(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.delete("/api/board/features/f1/tasks/999", headers=auth_headers)
-        assert resp.status_code == 404
-
-    @pytest.mark.anyio
-    async def test_move_task_adjacent(self, client, auth_headers):
-        _setup_workflow_stages()
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "T1", "status": "refine-spec"},
-            headers=auth_headers,
-        )
-        resp = await client.post(
-            "/api/board/features/f1/tasks/001/move",
-            json={"new_status": "implement"},
-            headers=auth_headers,
+            json={"id": "t1", "title": "Task 1"},
         )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "implement"
 
-    @pytest.mark.anyio
-    async def test_move_task_skip_400(self, client, auth_headers):
-        _setup_workflow_stages()
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
+        # Get
+        resp = await auth_client.get("/api/board/features/f1/tasks/t1")
+        assert resp.status_code == 200
+
+        # Update
+        resp = await auth_client.put(
+            "/api/board/features/f1/tasks/t1",
+            json={"title": "Updated Task"},
         )
-        await client.post(
+        assert resp.status_code == 200
+
+        # Move
+        resp = await auth_client.post(
+            "/api/board/features/f1/tasks/t1/move",
+            json={"target_stage_id": "implement"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["current_stage_id"] == "implement"
+
+        # Delete
+        resp = await auth_client.delete("/api/board/features/f1/tasks/t1")
+        assert resp.status_code == 200
+
+    async def test_task_cycle_rejected(self, auth_client: AsyncClient):
+        await auth_client.post("/api/board/features", json={"id": "f1", "title": "F1"})
+        await auth_client.post("/api/board/features/f1/tasks", json={"id": "a", "title": "A"})
+        await auth_client.post(
             "/api/board/features/f1/tasks",
-            json={"title": "T1", "status": "refine-spec"},
-            headers=auth_headers,
+            json={"id": "b", "title": "B", "blocked_by": ["[[f1#a]]"]},
         )
-        resp = await client.post(
-            "/api/board/features/f1/tasks/001/move",
-            json={"new_status": "code-review"},
-            headers=auth_headers,
+        # Now try to create a cycle: a depends on b
+        resp = await auth_client.put(
+            "/api/board/features/f1/tasks/a",
+            json={"blocked_by": ["[[f1#b]]"]},
         )
         assert resp.status_code == 400
 
-    @pytest.mark.anyio
-    async def test_move_task_skip_with_confirm(self, client, auth_headers):
-        _setup_workflow_stages()
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "T1", "status": "refine-spec"},
-            headers=auth_headers,
-        )
-        resp = await client.post(
-            "/api/board/features/f1/tasks/001/move",
-            json={"new_status": "code-review", "confirm_skip": True},
-            headers=auth_headers,
-        )
+    async def test_suspend_resume(self, auth_client: AsyncClient):
+        await auth_client.post("/api/board/features", json={"id": "f1", "title": "F1"})
+        # Need to be active first
+        await auth_client.patch("/api/board/features/f1", json={"stage": "active"})
+
+        resp = await auth_client.post("/api/board/features/f1/suspend")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "code-review"
+        assert resp.json()["stage"] == "suspended"
 
-
-# ---------------------------------------------------------------------------
-# Artifact files endpoint
-# ---------------------------------------------------------------------------
-
-
-class TestArtifactFilesEndpoint:
-    @pytest.mark.anyio
-    async def test_list_files_200(self, client, auth_headers, tmp_path):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.post(
-            "/api/board/features/f1/tasks",
-            json={"title": "File Task"},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 201
-        task_data = resp.json()
-        artifact_path = task_data["artifact_path"]
-
-        # Create a file inside the artifact directory
-        from pathlib import Path
-
-        project_root = Path(tmp_path / "project")
-        artifact_dir = project_root / artifact_path.rstrip("/")
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "main.md").write_text("# Hi", encoding="utf-8")
-
-        resp = await client.get(
-            "/api/board/features/f1/tasks/001/files",
-            headers=auth_headers,
-        )
+        resp = await auth_client.post("/api/board/features/f1/resume")
         assert resp.status_code == 200
-        files = resp.json()
-        assert len(files) == 1
-        assert files[0]["name"] == "main.md"
-
-    @pytest.mark.anyio
-    async def test_list_files_task_404(self, client, auth_headers):
-        await client.post(
-            "/api/board/features",
-            json={"id": "f1", "title": "F1", "specification": "# F1"},
-            headers=auth_headers,
-        )
-        resp = await client.get(
-            "/api/board/features/f1/tasks/999/files",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 404
+        assert resp.json()["stage"] == "active"

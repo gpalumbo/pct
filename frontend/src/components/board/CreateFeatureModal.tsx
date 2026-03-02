@@ -1,60 +1,50 @@
-import { useEffect, useState } from 'react';
-import { Input, Modal } from 'antd';
+import { Modal, Form, Input, message } from 'antd';
+import { useCreateFeature } from '../../hooks/useBoardQueries';
+import type { FeatureCreate } from '../../types/board';
 
 interface CreateFeatureModalProps {
   open: boolean;
-  onCancel: () => void;
-  onSubmit: (id: string, title: string) => void;
-  loading: boolean;
+  onClose: () => void;
 }
 
-export default function CreateFeatureModal({
-  open,
-  onCancel,
-  onSubmit,
-  loading,
-}: CreateFeatureModalProps) {
-  const [featureId, setFeatureId] = useState('');
-  const [title, setTitle] = useState('');
+export default function CreateFeatureModal({ open, onClose }: CreateFeatureModalProps) {
+  const [form] = Form.useForm();
+  const createFeature = useCreateFeature();
 
-  useEffect(() => {
-    if (!open) {
-      setFeatureId('');
-      setTitle('');
-    }
-  }, [open]);
-
-  const handleOk = () => {
-    const id = featureId.trim();
-    const t = title.trim();
-    if (id && t) {
-      onSubmit(id, t);
+  const onFinish = async () => {
+    try {
+      const values = await form.validateFields();
+      const data: FeatureCreate = {
+        id: crypto.randomUUID(),
+        title: values.title,
+        spec_content: values.spec_content,
+      };
+      await createFeature.mutateAsync(data);
+      message.success('Feature created');
+      form.resetFields();
+      onClose();
+    } catch {
+      message.error('Failed to create feature');
     }
   };
 
   return (
     <Modal
-      title="New Feature"
       open={open}
-      onCancel={onCancel}
-      onOk={handleOk}
-      confirmLoading={loading}
-      okButtonProps={{ disabled: !featureId.trim() || !title.trim() }}
+      title="Create New Feature"
+      onOk={onFinish}
+      onCancel={onClose}
+      confirmLoading={createFeature.isPending}
+      okText="Create"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
-        <Input
-          placeholder="Feature ID (e.g. f3-auth-system)"
-          value={featureId}
-          onChange={(e) => setFeatureId(e.target.value)}
-          autoFocus
-        />
-        <Input
-          placeholder="Feature title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onPressEnter={handleOk}
-        />
-      </div>
+      <Form form={form} layout="vertical">
+        <Form.Item name="title" label="Feature Title" rules={[{ required: true, message: 'Title is required' }]}>
+          <Input placeholder="e.g. User Authentication" />
+        </Form.Item>
+        <Form.Item name="spec_content" label="Spec Content (optional)">
+          <Input.TextArea rows={6} placeholder="Initial specification content..." />
+        </Form.Item>
+      </Form>
     </Modal>
   );
 }

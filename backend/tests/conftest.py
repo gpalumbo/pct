@@ -1,29 +1,47 @@
-"""Test configuration - sets env vars before importing pct modules."""
+"""Shared test fixtures."""
 
-import os
-
-# Set test env vars BEFORE any pct imports
-os.environ["PCT_SECRET_KEY"] = "test-secret-key-that-is-at-least-32-bytes-long"
-os.environ["PCT_GOOGLE_CLIENT_ID"] = ""
+from pathlib import Path
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
-
-@pytest.fixture(autouse=True)
-def _isolate_users(tmp_path):
-    """Give each test its own user data directory."""
-    os.environ["PCT_USER_DATA_DIR"] = str(tmp_path)
-    from pct import config
-
-    config.settings = config.Settings()
-    yield
+import yaml
 
 
 @pytest.fixture
-async def client():
-    from pct.main import app
+def tmp_project_root(tmp_path: Path) -> Path:
+    """Create a temporary project root with basic structure."""
+    (tmp_path / "pct-admin" / "active-features").mkdir(parents=True)
+    (tmp_path / "pct-admin" / "feature_backlog").mkdir(parents=True)
+    (tmp_path / ".pct").mkdir()
+    (tmp_path / "work").mkdir()
+    return tmp_path
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+
+@pytest.fixture
+def sample_pct_yaml(tmp_project_root: Path) -> Path:
+    """Write a minimal pct.yaml and return its path."""
+    config = {
+        "id": "test-project",
+        "name": "Test Project",
+        "project_type": "coding",
+        "directory": str(tmp_project_root),
+        "default_agent_id": "default-agent",
+        "planning_agent_id": "planning-agent",
+        "max_remote_agents": 2,
+        "max_local_agents": 1,
+        "font_size": 14,
+        "features": [],
+        "workflow_stages": [
+            {"id": "refine-spec", "label": "Refine Spec", "enabled": True, "auto_run": False, "sort_order": 0},
+            {"id": "implement", "label": "Implement", "enabled": True, "auto_run": False, "sort_order": 1},
+            {"id": "done", "label": "Done", "enabled": True, "auto_run": False, "sort_order": 2},
+        ],
+        "agents": [],
+        "artifact_types": [{"id": "text", "label": "Text"}],
+        "users": [],
+        "template_variables": [],
+        "prompt_templates": [],
+        "planning_messages": [],
+    }
+    yaml_path = tmp_project_root / "pct.yaml"
+    yaml_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    return yaml_path

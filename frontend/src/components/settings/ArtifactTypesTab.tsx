@@ -1,155 +1,261 @@
-import { useEffect, useState } from 'react';
-import { Button, Input, Space, Tooltip, Typography, message } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useArtifactTypes, useSaveArtifactTypes } from '../../hooks/useConfigQueries';
-import type { ArtifactTypeConfig } from '../../types/config';
+import { useState } from 'react';
+import {
+  Table,
+  Typography,
+  Button,
+  Space,
+  Tag,
+  Modal,
+  Form,
+  Input,
+  Popconfirm,
+  ColorPicker,
+  message,
+} from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
+import type { ArtifactType } from '../../types/config';
 
-const { Text } = Typography;
-const { TextArea } = Input;
+const { Title } = Typography;
 
-function slugify(label: string): string {
-  return label
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+interface FormValues {
+  label: string;
+  color?: string | null;
+  template_hint?: string | null;
 }
 
 export default function ArtifactTypesTab() {
-  const { data: savedTypes = [] } = useArtifactTypes();
-  const saveTypes = useSaveArtifactTypes();
+  const { data: project } = useProject();
+  const updateProject = useUpdateProject();
+  const types: ArtifactType[] = project?.artifact_types ?? [];
 
-  const [types, setTypes] = useState<ArtifactTypeConfig[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingType, setEditingType] = useState<ArtifactType | null>(null);
+  const [form] = Form.useForm<FormValues>();
 
-  useEffect(() => {
-    setTypes(savedTypes);
-  }, [savedTypes]);
-
-  const updateType = (index: number, patch: Partial<ArtifactTypeConfig>) => {
-    setTypes((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+  const openAdd = () => {
+    setEditingType(null);
+    form.resetFields();
+    setModalOpen(true);
   };
 
-  const addType = () => {
-    const label = 'New Type';
-    let id = slugify(label);
-    const existing = new Set(types.map((t) => t.id));
-    let counter = 1;
-    while (existing.has(id)) {
-      id = slugify(label) + '-' + counter++;
-    }
-    setTypes((prev) => [...prev, { id, label, template_hint: '' }]);
+  const openEdit = (record: ArtifactType) => {
+    setEditingType(record);
+    form.setFieldsValue({
+      label: record.label,
+      color: record.color ?? undefined,
+      template_hint: record.template_hint ?? undefined,
+    });
+    setModalOpen(true);
   };
 
-  const removeType = (index: number) => {
-    setTypes((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleLabelChange = (index: number, newLabel: string) => {
-    const t = types[index];
-    const oldSlug = slugify(t.label);
-    const isAutoId = t.id === oldSlug || t.id.startsWith('new-type');
-    const patch: Partial<ArtifactTypeConfig> = { label: newLabel };
-    if (isAutoId) {
-      const newSlug = slugify(newLabel);
-      const existing = new Set(types.filter((_, i) => i !== index).map((x) => x.id));
-      if (newSlug && !existing.has(newSlug)) {
-        patch.id = newSlug;
-      }
-    }
-    updateType(index, patch);
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingType(null);
+    form.resetFields();
   };
 
   const handleSave = async () => {
-    await saveTypes.mutateAsync(types);
-    message.success('Artifact types saved');
+    if (!project) return;
+    try {
+      const values = await form.validateFields();
+      let updated: ArtifactType[];
+
+      if (editingType) {
+        // Edit existing
+        updated = types.map((t) =>
+          t.id === editingType.id
+            ? {
+                ...t,
+                label: values.label,
+                color: values.color || null,
+                template_hint: values.template_hint || null,
+              }
+            : t,
+        );
+      } else {
+        // Add new
+        const id = crypto.randomUUID();
+        const newType: ArtifactType = {
+          id,
+          label: values.label,
+          color: values.color || null,
+          template_hint: values.template_hint || null,
+        };
+        updated = [...types, newType];
+      }
+
+      await updateProject.mutateAsync({
+        ...project,
+        artifact_types: updated,
+      });
+
+      message.success(editingType ? 'Artifact type updated' : 'Artifact type added');
+      closeModal();
+    } catch {
+      // validation error — form will show inline messages
+    }
   };
+
+  const handleDelete = async (id: string) => {
+    if (!project) return;
+    const updated = types.filter((t) => t.id !== id);
+    await updateProject.mutateAsync({
+      ...project,
+      artifact_types: updated,
+    });
+    message.success('Artifact type deleted');
+  };
+
+  const columns = [
+    { title: 'Label', dataIndex: 'label', key: 'label' },
+    {
+      title: 'Color',
+      dataIndex: 'color',
+      key: 'color',
+      render: (color: string | null | undefined) =>
+        color ? (
+          <Space size={8}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                backgroundColor: color,
+                border: '1px solid #d9d9d9',
+                verticalAlign: 'middle',
+              }}
+            />
+            <Tag color={color}>{color}</Tag>
+          </Space>
+        ) : (
+          <span style={{ color: '#999' }}>Default</span>
+        ),
+    },
+    {
+      title: 'Template Hint',
+      dataIndex: 'template_hint',
+      key: 'template_hint',
+      render: (hint: string | null | undefined) =>
+        hint ? (
+          <span style={{ maxWidth: 300, display: 'inline-block' }}>{hint}</span>
+        ) : (
+          <span style={{ color: '#999' }}>--</span>
+        ),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
+      render: (_: unknown, record: ArtifactType) => (
+        <Space size="small">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEdit(record)}
+          />
+          <Popconfirm
+            title="Delete artifact type"
+            description={`Remove "${record.label}"?`}
+            onConfirm={() => handleDelete(record.id)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <div>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-        Artifact types determine how the AI assistant approaches each task. The template hint is
-        injected into the system prompt when working on a task of that type.
-      </Text>
-
-      {/* Header */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '120px 160px 1fr 40px',
-          gap: 8,
-          alignItems: 'center',
-          padding: '4px 8px',
-          fontWeight: 600,
-          fontSize: 13,
-          color: '#888',
-          borderBottom: '1px solid #303030',
-        }}
-      >
-        <div>ID</div>
-        <div>Label</div>
-        <div>Template Hint</div>
-        <div></div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {types.map((t, index) => (
-          <div
-            key={t.id + '-' + index}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '120px 160px 1fr 40px',
-              gap: 8,
-              alignItems: 'center',
-              padding: '6px 8px',
-              borderBottom: '1px solid #222',
-            }}
-          >
-            {/* ID (read-only, auto-derived from label) */}
-            <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
-              {t.id}
-            </Text>
-
-            {/* Label */}
-            <Input
-              size="small"
-              value={t.label}
-              maxLength={40}
-              onChange={(e) => handleLabelChange(index, e.target.value)}
-              placeholder="Display label"
-            />
-
-            {/* Template hint */}
-            <TextArea
-              size="small"
-              autoSize={{ minRows: 1, maxRows: 4 }}
-              value={t.template_hint}
-              onChange={(e) => updateType(index, { template_hint: e.target.value })}
-              placeholder="LLM prompt hint for this artifact type"
-              style={{ fontSize: 12 }}
-            />
-
-            {/* Delete */}
-            <Tooltip title="Remove type">
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => removeType(index)}
-              />
-            </Tooltip>
-          </div>
-        ))}
-      </div>
-
-      <Space style={{ marginTop: 16 }}>
-        <Button icon={<PlusOutlined />} onClick={addType}>
-          Add Type
-        </Button>
-        <Button type="primary" onClick={handleSave} loading={saveTypes.isPending}>
-          Save Changes
+      <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+        <Title level={5} style={{ margin: 0 }}>
+          Artifact Types
+        </Title>
+        <Button icon={<PlusOutlined />} type="primary" onClick={openAdd}>
+          Add Artifact Type
         </Button>
       </Space>
+      <Table
+        dataSource={types}
+        columns={columns}
+        rowKey="id"
+        pagination={false}
+        locale={{ emptyText: 'No artifact types defined yet' }}
+        size="small"
+      />
+
+      <Modal
+        title={editingType ? 'Edit Artifact Type' : 'Add Artifact Type'}
+        open={modalOpen}
+        onOk={handleSave}
+        onCancel={closeModal}
+        confirmLoading={updateProject.isPending}
+        okText={editingType ? 'Save' : 'Add'}
+      >
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="label"
+            label="Label"
+            rules={[{ required: true, message: 'Label is required' }]}
+          >
+            <Input placeholder="e.g. Design Document" />
+          </Form.Item>
+
+          <Form.Item name="color" label="Color">
+            <ColorInput />
+          </Form.Item>
+
+          <Form.Item name="template_hint" label="Template Hint">
+            <Input.TextArea
+              rows={3}
+              placeholder="Hint text describing what content should go in this artifact type"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
+  );
+}
+
+/**
+ * Custom color input that combines a text input with Ant Design's ColorPicker.
+ * Accepts and emits hex color strings for Form compatibility.
+ */
+function ColorInput({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (value: string | undefined) => void;
+}) {
+  const handleColorPick = (_: unknown, hex: string) => {
+    onChange?.(hex);
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    onChange?.(v || undefined);
+  };
+
+  return (
+    <Space>
+      <ColorPicker
+        value={value || '#1677ff'}
+        onChange={handleColorPick}
+        size="middle"
+      />
+      <Input
+        value={value ?? ''}
+        onChange={handleTextChange}
+        placeholder="#1677ff"
+        style={{ width: 140 }}
+        allowClear
+      />
+    </Space>
   );
 }

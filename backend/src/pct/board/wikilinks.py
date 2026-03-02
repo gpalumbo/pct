@@ -1,53 +1,36 @@
-"""Wikilink extraction and resolution for cross-referencing world artifacts."""
-
-from __future__ import annotations
+"""WikiLink parsing and resolution — [[feature_id#task_id]] format."""
 
 import re
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from pct.board.models import Feature
-
-# Match [[...]] patterns, capturing the inner text
-_WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 
 def extract_wikilinks(text: str) -> list[str]:
-    """Extract all ``[[Name]]`` link targets from markdown text."""
-    return _WIKILINK_RE.findall(text)
+    """Extract all WikiLink strings from text."""
+    return WIKILINK_RE.findall(text)
 
 
-def resolve_wikilinks(
-    link_targets: list[str],
-    features: list[Feature],
-) -> list[tuple[str, str]]:
-    """Resolve wikilink targets to ``(feature_id, task_id)`` tuples.
+def parse_wikilink(link: str) -> tuple[str, str | None]:
+    """Parse a WikiLink inner content into (feature_id, task_id | None).
 
-    For each link target, searches all tasks across all features for a
-    case-insensitive title match.  Prefers exact matches over substring.
+    '[[f1#task-1]]' → ('f1', 'task-1')
+    '[[f1]]' → ('f1', None)
     """
-    results: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    # Strip [[ and ]] if present
+    inner = link.strip("[]")
+    if "#" in inner:
+        parts = inner.split("#", 1)
+        return parts[0], parts[1]
+    return inner, None
 
-    for target in link_targets:
-        target_lower = target.strip().lower()
-        exact: tuple[str, str] | None = None
-        substring: tuple[str, str] | None = None
 
-        for feature in features:
-            for task in feature.tasks:
-                title_lower = task.title.strip().lower()
-                if title_lower == target_lower:
-                    exact = (feature.id, task.id)
-                    break
-                if target_lower in title_lower and substring is None:
-                    substring = (feature.id, task.id)
-            if exact:
-                break
+def format_wikilink(feature_id: str, task_id: str | None = None) -> str:
+    """Format a WikiLink string."""
+    if task_id:
+        return f"[[{feature_id}#{task_id}]]"
+    return f"[[{feature_id}]]"
 
-        match = exact or substring
-        if match and match not in seen:
-            results.append(match)
-            seen.add(match)
 
-    return results
+def resolve_wikilink(link: str) -> tuple[str, str | None]:
+    """Resolve a raw WikiLink string (including brackets)."""
+    return parse_wikilink(link)

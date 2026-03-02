@@ -1,38 +1,29 @@
-"""Tests for the registry factory — verify all tools are registered."""
+"""Tests for tool registry factory."""
 
-from __future__ import annotations
+from pathlib import Path
 
-from pct.agent.tools.registry_factory import create_global_registry
-
-EXPECTED_TOOLS = [
-    "bash",
-    "file",
-    "read",
-    "search",
-    "todo",
-]
+from pct.agent.tools.registry_factory import create_global_registry, reset_global_registry
 
 
 class TestRegistryFactory:
-    def test_all_tools_registered(self, tmp_path):
-        registry = create_global_registry(
-            project_root=tmp_path,
-            project_id="test-project",
-        )
-        definitions = registry.get_definitions()
-        names = [d["function"]["name"] for d in definitions]
+    def setup_method(self):
+        reset_global_registry()
 
-        assert len(definitions) == 5
-        for expected in EXPECTED_TOOLS:
-            assert expected in names, f"Missing tool: {expected}"
+    def test_creates_registry_with_all_tools(self, tmp_path: Path):
+        registry = create_global_registry(tmp_path)
+        assert "read" in registry.tool_names
+        assert "file" in registry.tool_names
+        assert "search" in registry.tool_names
+        assert "todo" in registry.tool_names
+        assert "bash" in registry.tool_names
 
-    def test_definitions_are_valid_schemas(self, tmp_path):
-        registry = create_global_registry(
-            project_root=tmp_path,
-            project_id="test-project",
-        )
-        for defn in registry.get_definitions():
-            assert defn["type"] == "function"
-            assert "name" in defn["function"]
-            assert "parameters" in defn["function"]
-            assert "properties" in defn["function"]["parameters"]
+    def test_singleton(self, tmp_path: Path):
+        r1 = create_global_registry(tmp_path)
+        r2 = create_global_registry(tmp_path)
+        assert r1 is r2
+
+    def test_reset(self, tmp_path: Path):
+        r1 = create_global_registry(tmp_path)
+        reset_global_registry()
+        r2 = create_global_registry(tmp_path)
+        assert r1 is not r2

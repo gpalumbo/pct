@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-// jsdom doesn't implement matchMedia — required by Ant Design's responsive observer
+// Mock window.matchMedia for Ant Design in jsdom
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({

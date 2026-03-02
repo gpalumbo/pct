@@ -1,206 +1,98 @@
-"""Persistence service for planning chat sessions and messages.
+"""Chat service — session and message CRUD."""
 
-Storage layout:
-  <project_root>/.pct/chat_history/sessions.yaml
-  <project_root>/.pct/chat_history/planning-<nnn>.jsonl
-"""
-
-from __future__ import annotations
-
-import contextlib
-import json
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-import yaml
-
-from pct import config
-from pct.chat.models import ChatSession, PlanningMessage, UpdateMessageRequest
-
-# ---------------------------------------------------------------------------
-# Path helpers
-# ---------------------------------------------------------------------------
+from pct.models.chat import ChatMessage
+from pct.models.enums import MessageRole
+from pct.storage.chat_io import append_message, list_sessions, load_messages, new_session
 
 
-def _chat_history_dir() -> Path:
-    root = Path(config.settings.project_root) if config.settings.project_root else Path.cwd()
-    base = root / ".pct" / "chat_history"
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+class ChatService:
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
 
+    def list_sessions(self) -> list[str]:
+        return list_sessions(self.project_root)
 
-def _sessions_path() -> Path:
-    return _chat_history_dir() / "sessions.yaml"
+    def get_or_create_session(self, session_id: str) -> list[ChatMessage]:
+        messages = load_messages(self.project_root, session_id)
+        if not messages:
+            new_session(self.project_root, session_id)
+        return messages
 
+    def create_session(self, session_id: str) -> str:
+        new_session(self.project_root, session_id)
+        return session_id
 
-def _messages_path(session_id: str) -> Path:
-    return _chat_history_dir() / f"{session_id}.jsonl"
+    def get_messages(self, session_id: str) -> list[ChatMessage]:
+        return load_messages(self.project_root, session_id)
 
+    def add_message(self, session_id: str, role: MessageRole, content: str) -> ChatMessage:
+        msg = ChatMessage(
+            id=str(uuid.uuid4())[:8],
+            role=role,
+            content=content,
+            created_at=datetime.now(UTC),
+        )
+        append_message(self.project_root, session_id, msg)
+        return msg
 
-# ---------------------------------------------------------------------------
-# Session CRUD
-# ---------------------------------------------------------------------------
+    def update_message(
+        self,
+        session_id: str,
+        message_id: str,
+        content: str | None = None,
+        role: MessageRole | None = None,
+        included: bool | None = None,
+    ) -> ChatMessage | None:
+        """Update a message by rewriting the session file."""
+        messages = load_messages(self.project_root, session_id)
+        target = None
+        for msg in messages:
+            if msg.id == message_id:
+                if content is not None:
+                    msg.content = content
+                if role is not None:
+                    msg.role = role
+                if included is not None:
+                    msg.included = included
+                target = msg
+                break
+        if target is None:
+            return None
+        self._rewrite_session(session_id, messages)
+        return target
 
+    def delete_message(self, session_id: str, message_id: str) -> bool:
+        messages = load_messages(self.project_root, session_id)
+        filtered = [m for m in messages if m.id != message_id]
+        if len(filtered) == len(messages):
+            return False
+        self._rewrite_session(session_id, filtered)
+        return True
 
-def _load_sessions() -> list[dict]:
-    path = _sessions_path()
-    if not path.exists():
-        return []
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    return data if isinstance(data, list) else []
+    def truncate_from(self, session_id: str, message_id: str) -> int:
+        """Delete the specified message and all subsequent. Returns count deleted."""
+        messages = load_messages(self.project_root, session_id)
+        idx = None
+        for i, m in enumerate(messages):
+            if m.id == message_id:
+                idx = i
+                break
+        if idx is None:
+            return 0
+        kept = messages[:idx]
+        deleted_count = len(messages) - idx
+        self._rewrite_session(session_id, kept)
+        return deleted_count
 
+    def _rewrite_session(self, session_id: str, messages: list[ChatMessage]) -> None:
+        """Rewrite entire session from message list."""
+        import json
 
-def _save_sessions(sessions: list[dict]) -> None:
-    path = _sessions_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        yaml.safe_dump(sessions, f, default_flow_style=False, sort_keys=False)
-
-
-def list_sessions() -> list[ChatSession]:
-    return [ChatSession(**s) for s in _load_sessions()]
-
-
-def get_session(session_id: str) -> ChatSession | None:
-    for s in _load_sessions():
-        if s.get("id") == session_id:
-            return ChatSession(**s)
-    return None
-
-
-def create_session(
-    title: str,
-    agent_id: str | None = None,
-    session_id: str | None = None,
-) -> ChatSession:
-    sessions = _load_sessions()
-
-    if session_id is None:
-        # Derive next session number
-        existing_nums = []
-        for s in sessions:
-            sid = s.get("id", "")
-            if sid.startswith("planning-"):
-                with contextlib.suppress(ValueError):
-                    existing_nums.append(int(sid.split("-", 1)[1]))
-        next_num = max(existing_nums, default=0) + 1
-        session_id = f"planning-{next_num:03d}"
-
-    session = ChatSession(id=session_id, title=title, agent_id=agent_id)
-    sessions.append(session.model_dump(mode="json"))
-    _save_sessions(sessions)
-    return session
-
-
-def get_or_create_session(session_id: str, title: str = "", agent_id: str | None = None) -> ChatSession:
-    """Return an existing session or create one with the given ID."""
-    existing = get_session(session_id)
-    if existing is not None:
-        return existing
-    return create_session(title=title or session_id, agent_id=agent_id, session_id=session_id)
-
-
-def get_or_create_default_session() -> ChatSession:
-    sessions = list_sessions()
-    if sessions:
-        return sessions[0]
-    return create_session("Planning")
-
-
-def _update_session_metadata(session_id: str) -> None:
-    """Update message_count and updated timestamp for a session."""
-    sessions = _load_sessions()
-    messages = load_messages(session_id)
-    for i, s in enumerate(sessions):
-        if s.get("id") == session_id:
-            s["message_count"] = len(messages)
-            s["updated"] = datetime.now(UTC).isoformat()
-            sessions[i] = s
-            _save_sessions(sessions)
-            return
-
-
-# ---------------------------------------------------------------------------
-# Message I/O (JSONL)
-# ---------------------------------------------------------------------------
-
-
-def load_messages(session_id: str) -> list[PlanningMessage]:
-    path = _messages_path(session_id)
-    if not path.exists():
-        return []
-    messages = []
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                messages.append(PlanningMessage(**json.loads(line)))
-    return messages
-
-
-def append_message(session_id: str, msg: PlanningMessage) -> PlanningMessage:
-    path = _messages_path(session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a") as f:
-        f.write(msg.model_dump_json() + "\n")
-    _update_session_metadata(session_id)
-    return msg
-
-
-def update_message(session_id: str, message_id: str, updates: UpdateMessageRequest) -> PlanningMessage | None:
-    """Update a message by rewriting the JSONL file."""
-    messages = load_messages(session_id)
-    target = None
-    for i, m in enumerate(messages):
-        if m.id == message_id:
-            if updates.role is not None:
-                m.role = updates.role
-            if updates.content is not None:
-                m.content = updates.content
-            if updates.included is not None:
-                m.included = updates.included
-            messages[i] = m
-            target = m
-            break
-    if target is None:
-        return None
-    # Rewrite the file
-    path = _messages_path(session_id)
-    with open(path, "w") as f:
-        for m in messages:
-            f.write(m.model_dump_json() + "\n")
-    return target
-
-
-def delete_message(session_id: str, message_id: str) -> bool:
-    """Delete a message by rewriting the JSONL file without it."""
-    messages = load_messages(session_id)
-    new_messages = [m for m in messages if m.id != message_id]
-    if len(new_messages) == len(messages):
-        return False
-    path = _messages_path(session_id)
-    with open(path, "w") as f:
-        for m in new_messages:
-            f.write(m.model_dump_json() + "\n")
-    _update_session_metadata(session_id)
-    return True
-
-
-def truncate_from_message(session_id: str, message_id: str) -> bool:
-    """Delete a message and everything after it by rewriting the JSONL file."""
-    messages = load_messages(session_id)
-    idx = next((i for i, m in enumerate(messages) if m.id == message_id), None)
-    if idx is None:
-        return False
-    new_messages = messages[:idx]
-    path = _messages_path(session_id)
-    with open(path, "w") as f:
-        for m in new_messages:
-            f.write(m.model_dump_json() + "\n")
-    _update_session_metadata(session_id)
-    return True
-
-
-def get_included_messages(session_id: str) -> list[PlanningMessage]:
-    return [m for m in load_messages(session_id) if m.included]
+        path = self.project_root / ".pct" / "chat_history" / f"{session_id}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(m.model_dump(mode="json"), ensure_ascii=False) + "\n" for m in messages]
+        path.write_text("".join(lines), encoding="utf-8")

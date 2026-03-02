@@ -1,4 +1,4 @@
-"""Pydantic models for image generation."""
+"""Image generation request/response models."""
 
 from __future__ import annotations
 
@@ -7,58 +7,46 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class JobStatus(StrEnum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 class GenerateRequest(BaseModel):
+    """Request to generate images for a task."""
+
     feature_id: str
     task_id: str
     prompt: str
-    negative_prompt: str = ""
+    negative_prompt: str | None = None
     guidance_scale: float = 7.5
-    num_inference_steps: int = 30
-    width: int = 512
-    height: int = 512
-    source_image: str | None = None
-    divergence: float = Field(default=0.5, ge=0.1, le=0.9)
-    seed: int | None = None
+    divergence: float | None = None
+    source_image_id: str | None = None
 
 
-class GeneratedImage(BaseModel):
-    filename: str
-    seed: int
-    round: int
-    index: int
+class JobStatus(StrEnum):
+    """Image generation job lifecycle states."""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
 
 
-class JobResponse(BaseModel):
+class GenerateResponse(BaseModel):
+    """Response after submitting a generation request."""
+
+    job_id: str
+    status: JobStatus = JobStatus.pending
+
+
+class JobStatusResponse(BaseModel):
+    """Status of an image generation job."""
+
     job_id: str
     status: JobStatus
-    progress: float = 0.0
-    images: list[GeneratedImage] = Field(default_factory=list)
+    feature_id: str | None = None
+    task_id: str | None = None
+    images: list[dict] = Field(default_factory=list)
     error: str | None = None
 
 
-class GenerationRound(BaseModel):
-    round: int
-    prompt: str
-    params: dict = Field(default_factory=dict)
-    images: list[GeneratedImage] = Field(default_factory=list)
-    selected_image: str | None = None
-
-
-class SessionMetadata(BaseModel):
-    feature_id: str
-    task_id: str
-    model_id: str = "runwayml/stable-diffusion-v1-5"
-    rounds: list[GenerationRound] = Field(default_factory=list)
-    current_round: int = 0
-
-
 class SelectImageRequest(BaseModel):
-    round: int
-    filename: str
+    """Request to select a generated image as the accepted output."""
+
+    image_id: str

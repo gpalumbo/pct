@@ -1,623 +1,257 @@
-"""YAML / frontmatter CRUD service for Features, Tasks, and the Kanban board."""
+"""Board service — feature/task CRUD, workflow movement, lifecycle."""
 
-from __future__ import annotations
-
-import os
-import re
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
-
-import frontmatter
-import yaml
-
-from pct import config
-from pct.board.models import (
-    BacklogFeature,
-    BoardResponse,
-    CreateFeatureRequest,
-    CreateTaskRequest,
-    Feature,
-    FeatureMetadata,
-    FeatureStage,
-    MoveTaskRequest,
-    ReassignTaskRequest,
-    Task,
-    UpdateFeatureMetadataRequest,
-    UpdateTaskRequest,
-)
-from pct.config_models import WorkflowStageConfig
-
-# ---------------------------------------------------------------------------
-# Path helpers
-# ---------------------------------------------------------------------------
-
-
-def _project_root() -> Path:
-    if config.settings.project_root:
-        return Path(config.settings.project_root)
-    return Path.cwd()
-
-
-def _active_features_dir() -> Path:
-    return _project_root() / ".pct" / "active-features"
-
-
-def _backlog_dir() -> Path:
-    return _project_root() / ".pct" / "feature_backlog"
-
-
-# ---------------------------------------------------------------------------
-# Generic YAML I/O
-# ---------------------------------------------------------------------------
-
-
-def _load_yaml_dict(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    return data if isinstance(data, dict) else None
-
-
-def _save_yaml_dict(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
-
-
-# ---------------------------------------------------------------------------
-# Feature spec I/O
-# ---------------------------------------------------------------------------
-
-
-def _feature_dir(feature_id: str) -> Path:
-    return _active_features_dir() / feature_id
-
-
-def _load_feature_spec(feature_id: str) -> str:
-    path = _feature_dir(feature_id) / "feature_spec.md"
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
-
-
-def _save_feature_spec(feature_id: str, spec: str) -> None:
-    path = _feature_dir(feature_id) / "feature_spec.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(spec, encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Feature metadata I/O
-# ---------------------------------------------------------------------------
-
-
-def _load_feature_metadata(feature_id: str) -> FeatureMetadata:
-    path = _feature_dir(feature_id) / "metadata.yaml"
-    data = _load_yaml_dict(path)
-    if data is None:
-        return FeatureMetadata()
-    return FeatureMetadata(**data)
-
-
-def _save_feature_metadata(feature_id: str, meta: FeatureMetadata) -> None:
-    path = _feature_dir(feature_id) / "metadata.yaml"
-    _save_yaml_dict(path, meta.model_dump(mode="json"))
-
-
-# ---------------------------------------------------------------------------
-# Task I/O  (YAML frontmatter + markdown body)
-# ---------------------------------------------------------------------------
-
-
-def _tasks_dir(feature_id: str) -> Path:
-    return _feature_dir(feature_id) / "tasks"
-
-
-def _find_task_file(feature_id: str, task_id: str) -> Path | None:
-    """Find a task file by ID prefix match (e.g. '001' matches '001-my-task.md')."""
-    tasks = _tasks_dir(feature_id)
-    if not tasks.exists():
-        return None
-    for p in tasks.iterdir():
-        if p.is_file() and p.name.startswith(task_id + "-"):
-            return p
-    return None
-
-
-def _load_task(feature_id: str, path: Path) -> Task:
-    """Load a task from its frontmatter-markdown file."""
-    post = frontmatter.load(str(path))
-    meta = dict(post.metadata)
-    meta["body"] = post.content
-    meta["feature"] = feature_id
-    return Task(**meta)
-
-
-def _save_task(feature_id: str, task: Task) -> None:
-    """Save a task as a YAML-frontmatter + markdown file."""
-    tasks = _tasks_dir(feature_id)
-    tasks.mkdir(parents=True, exist_ok=True)
-
-    # Remove old file if it exists (title/slug may have changed)
-    old = _find_task_file(feature_id, task.id)
-    if old is not None:
-        old.unlink()
-
-    filename = f"{task.id}-{task.slug}.md"
-    path = tasks / filename
-
-    # Build frontmatter dict (exclude body, feature)
-    data = task.model_dump(mode="json", exclude={"body", "feature", "slug"})
-    post = frontmatter.Post(task.body, **data)
-    path.write_text(frontmatter.dumps(post), encoding="utf-8")
-
-
-def _list_tasks(feature_id: str) -> list[Task]:
-    tasks = _tasks_dir(feature_id)
-    if not tasks.exists():
-        return []
-    result = []
-    for p in sorted(tasks.iterdir()):
-        if p.is_file() and p.suffix == ".md":
-            result.append(_load_task(feature_id, p))
-    return result
-
-
-def _artifact_slug(text: str, max_words: int = 3) -> str:
-    """Create a short underscore-delimited slug from text for artifact paths."""
-    words = re.findall(r"[a-z0-9]+", text.lower())
-    if len(words) > max_words:
-        words = words[:max_words]
-    return "_".join(words) if words else "untitled"
-
-
-def _get_feature_title(feature_id: str) -> str:
-    """Get just the feature title without loading all tasks."""
-    spec = _load_feature_spec(feature_id)
-    if spec:
-        first_line = spec.strip().split("\n", 1)[0]
-        title = re.sub(r"^#+\s*", "", first_line).strip()
-        if title:
-            return title
-    return feature_id
-
-
-def _next_task_id(feature_id: str) -> str:
-    """Generate the next sequential task ID (e.g. '001', '002', ...)."""
-    existing = _list_tasks(feature_id)
-    if not existing:
-        return "001"
-    max_id = max(int(t.id) for t in existing if t.id.isdigit())
-    return f"{max_id + 1:03d}"
-
-
-# ---------------------------------------------------------------------------
-# Feature CRUD
-# ---------------------------------------------------------------------------
-
-
-def list_features() -> list[Feature]:
-    base = _active_features_dir()
-    if not base.exists():
-        return []
-    features = []
-    for d in sorted(base.iterdir()):
-        if d.is_dir():
-            feature = _load_feature(d.name)
-            if feature is not None:
-                features.append(feature)
-    return features
-
-
-def _load_feature(feature_id: str) -> Feature | None:
-    d = _feature_dir(feature_id)
-    if not d.exists():
-        return None
-    spec = _load_feature_spec(feature_id)
-    meta = _load_feature_metadata(feature_id)
-    tasks = _list_tasks(feature_id)
-    # Derive title from first heading in spec, or use the ID
-    title = feature_id
-    if spec:
-        first_line = spec.strip().split("\n", 1)[0]
-        title = re.sub(r"^#+\s*", "", first_line).strip() or feature_id
-    return Feature(id=feature_id, title=title, specification=spec, metadata=meta, tasks=tasks)
-
-
-def get_feature(feature_id: str) -> Feature | None:
-    return _load_feature(feature_id)
-
-
-def create_feature(req: CreateFeatureRequest) -> Feature:
-    d = _feature_dir(req.id)
-    d.mkdir(parents=True, exist_ok=True)
-
-    _save_feature_spec(req.id, req.specification)
-    meta = req.metadata if req.metadata is not None else FeatureMetadata()
-    _save_feature_metadata(req.id, meta)
-
-    return Feature(
-        id=req.id,
-        title=req.title,
-        specification=req.specification,
-        metadata=meta,
-        tasks=[],
-    )
-
-
-def update_feature_metadata(feature_id: str, req: UpdateFeatureMetadataRequest) -> Feature | None:
-    feature = get_feature(feature_id)
-    if feature is None:
-        return None
-
-    update_data = req.model_dump(exclude_none=True)
-    if update_data:
-        current = feature.metadata.model_dump(mode="json")
-        current.update(update_data)
-        current["updated"] = datetime.now(UTC).isoformat()
-        new_meta = FeatureMetadata(**current)
-        _save_feature_metadata(feature_id, new_meta)
-        feature.metadata = new_meta
-
-    return feature
-
-
-def delete_feature(feature_id: str) -> bool:
-    import shutil
-
-    d = _feature_dir(feature_id)
-    if not d.exists():
-        return False
-    shutil.rmtree(d)
-    return True
-
-
-def suspend_feature(feature_id: str) -> Feature | None:
-    return update_feature_metadata(
-        feature_id,
-        UpdateFeatureMetadataRequest(lifecycle_stage=FeatureStage.SUSPENDED),
-    )
-
-
-def resume_feature(feature_id: str) -> Feature | None:
-    return update_feature_metadata(
-        feature_id,
-        UpdateFeatureMetadataRequest(lifecycle_stage=FeatureStage.ACTIVE),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Backlog CRUD
-# ---------------------------------------------------------------------------
-
-
-def list_backlog() -> list[BacklogFeature]:
-    base = _backlog_dir()
-    if not base.exists():
-        return []
-    result = []
-    for p in sorted(base.iterdir()):
-        if p.is_file() and p.suffix == ".md":
-            content = p.read_text(encoding="utf-8")
-            name = p.stem
-            # Derive title from first heading
-            title = name
-            if content:
-                first_line = content.strip().split("\n", 1)[0]
-                title = re.sub(r"^#+\s*", "", first_line).strip() or name
-            result.append(BacklogFeature(id=name, title=title, specification=content))
-    return result
-
-
-def create_backlog_feature(feature: BacklogFeature) -> BacklogFeature:
-    base = _backlog_dir()
-    base.mkdir(parents=True, exist_ok=True)
-    path = base / f"{feature.id}.md"
-    path.write_text(feature.specification, encoding="utf-8")
-    return feature
-
-
-def activate_backlog_feature(backlog_id: str) -> Feature | None:
-    """Move a feature from backlog to active-features."""
-    base = _backlog_dir()
-    path = base / f"{backlog_id}.md"
-    if not path.exists():
-        return None
-
-    content = path.read_text(encoding="utf-8")
-    title = backlog_id
-    if content:
-        first_line = content.strip().split("\n", 1)[0]
-        title = re.sub(r"^#+\s*", "", first_line).strip() or backlog_id
-
-    feature = create_feature(
-        CreateFeatureRequest(
-            id=backlog_id,
-            title=title,
-            specification=content,
-            metadata=FeatureMetadata(lifecycle_stage=FeatureStage.PLANNING),
-        )
-    )
-
-    path.unlink()
-    return feature
-
-
-# ---------------------------------------------------------------------------
-# Task CRUD
-# ---------------------------------------------------------------------------
-
-
-def get_task(feature_id: str, task_id: str) -> Task | None:
-    path = _find_task_file(feature_id, task_id)
-    if path is None:
-        return None
-    return _load_task(feature_id, path)
-
-
-def list_tasks(feature_id: str) -> list[Task]:
-    return _list_tasks(feature_id)
-
-
-def create_task(feature_id: str, req: CreateTaskRequest) -> Task | None:
-    if not _feature_dir(feature_id).exists():
-        return None
-
-    task_id = _next_task_id(feature_id)
-
-    # Auto-generate artifact path from feature title / task title if not provided
-    feature_title = _get_feature_title(feature_id)
-    feature_slug = _artifact_slug(feature_title)
-    task_slug = _artifact_slug(req.title)
-    artifact_path = req.artifact_path or f"work/{feature_slug}/{task_slug}/"
-
-    task = Task(
-        id=task_id,
-        title=req.title,
-        feature=feature_id,
-        status=req.status,
-        agent=req.agent,
-        depends_on=req.depends_on,
-        cross_depends_on=req.cross_depends_on,
-        tags=req.tags,
-        priority=req.priority,
-        artifact_path=artifact_path,
-        body=req.body,
-        artifact_type=req.artifact_type,
-    )
-    _save_task(feature_id, task)
-    return task
-
-
-def update_task(feature_id: str, task_id: str, req: UpdateTaskRequest) -> Task | None:
-    task = get_task(feature_id, task_id)
-    if task is None:
-        return None
-
-    update_data = req.model_dump(exclude_none=True)
-    if update_data:
-        current = task.model_dump(mode="json")
-        current.update(update_data)
-        current["updated"] = datetime.now(UTC).isoformat()
-        task = Task(**current)
-        _save_task(feature_id, task)
-
-    return task
-
-
-def delete_task(feature_id: str, task_id: str) -> bool:
-    path = _find_task_file(feature_id, task_id)
-    if path is None:
-        return False
-    path.unlink()
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Artifact I/O
-# ---------------------------------------------------------------------------
-
-
-def _resolve_main_artifact(artifact_path: str) -> str:
-    """If path has a file extension, return as-is (legacy). Otherwise append /main.md."""
-    p = PurePosixPath(artifact_path.rstrip("/"))
-    if p.suffix:  # e.g. ".md" — legacy single-file
-        return artifact_path
-    return artifact_path.rstrip("/") + "/main.md"
-
-
-def read_artifact(feature_id: str, task_id: str) -> dict:
-    """Read a task's artifact file. Returns {path, content, exists}."""
-    task = get_task(feature_id, task_id)
-    if task is None:
-        return {"path": "", "content": "", "exists": False}
-
-    artifact_path = task.artifact_path
-    if not artifact_path:
-        return {"path": "", "content": "", "exists": False}
-
-    main_file = _resolve_main_artifact(artifact_path)
-    full_path = _project_root() / main_file
-    if full_path.exists():
+from pathlib import Path
+
+from pct.board.dag_validation import validate_dag
+from pct.board.models import FeatureCreate, FeatureUpdate, TaskCreate, TaskMove, TaskUpdate
+from pct.board.pert import PertData, build_pert_data
+from pct.board.wikilinks import parse_wikilink
+from pct.models.core import Feature, Project, Task
+from pct.models.enums import ExecutionStatus, FeatureStage
+from pct.storage.feature_io import activate_feature, list_features, load_feature, save_feature_metadata
+from pct.storage.project_io import load_project_config
+from pct.storage.task_io import delete_task, list_tasks, load_task, save_task
+
+
+class BoardService:
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+
+    def _load_project(self) -> Project:
+        project = load_project_config(self.project_root)
+        if project is None:
+            raise ValueError("Project not initialized")
+        return project
+
+    def _stage_ids(self) -> list[str]:
+        project = self._load_project()
+        return [s.id for s in project.workflow_stages if s.enabled]
+
+    def _done_stage_id(self) -> str:
+        stages = self._stage_ids()
+        return stages[-1] if stages else "done"
+
+    def get_board_state(self) -> dict:
+        """Get full board state."""
+        project = self._load_project()
+        features = list_features(self.project_root)
+        feature_data = []
+        for f in features:
+            tasks = list_tasks(self.project_root, f.id)
+            feature_data.append({
+                **f.model_dump(mode="json"),
+                "tasks": [t.model_dump(mode="json") for t in tasks],
+            })
         return {
-            "path": artifact_path,
-            "content": full_path.read_text(encoding="utf-8"),
-            "exists": True,
+            "features": feature_data,
+            "workflow_stages": [s.model_dump(mode="json") for s in project.workflow_stages],
         }
-    return {"path": artifact_path, "content": "", "exists": False}
+
+    # ── Feature CRUD ──
+
+    def create_feature(self, req: FeatureCreate) -> Feature:
+        stages = self._stage_ids()
+        first_stage = stages[0] if stages else "refine-spec"
+
+        feature = Feature(
+            id=req.id,
+            title=req.title,
+            stage=FeatureStage.planning,
+            spec_path=f"pct-admin/active-features/{req.id}/feature_spec.md",
+        )
+        activate_feature(self.project_root, feature)
+
+        # Create Refine Feature task at first stage
+        refine_task = Task(
+            id="refine-feature",
+            title=f"Refine Feature: {req.title}",
+            feature_id=req.id,
+            current_stage_id=first_stage,
+        )
+        save_task(self.project_root, refine_task, body=f"# Refine Feature: {req.title}\n\n{req.spec_content}")
+
+        return feature
+
+    def get_feature(self, feature_id: str) -> Feature | None:
+        return load_feature(self.project_root, feature_id)
+
+    def update_feature(self, feature_id: str, req: FeatureUpdate) -> Feature | None:
+        feature = load_feature(self.project_root, feature_id)
+        if feature is None:
+            return None
+        if req.title is not None:
+            feature.title = req.title
+        if req.stage is not None:
+            feature.stage = req.stage
+        feature.updated_at = datetime.now(UTC)
+        save_feature_metadata(self.project_root, feature)
+        return feature
+
+    def delete_feature(self, feature_id: str) -> bool:
+        feature = load_feature(self.project_root, feature_id)
+        if feature is None:
+            return False
+        # Delete all task files
+        tasks = list_tasks(self.project_root, feature_id)
+        for t in tasks:
+            delete_task(self.project_root, feature_id, t.id)
+        # Remove feature admin dir
+        admin_dir = self.project_root / "pct-admin" / "active-features" / feature_id
+        if admin_dir.exists():
+            import shutil
+
+            shutil.rmtree(admin_dir)
+        return True
+
+    def suspend_feature(self, feature_id: str) -> Feature | None:
+        return self.update_feature(feature_id, FeatureUpdate(stage=FeatureStage.suspended))
+
+    def resume_feature(self, feature_id: str) -> Feature | None:
+        return self.update_feature(feature_id, FeatureUpdate(stage=FeatureStage.active))
+
+    # ── Task CRUD ──
+
+    def create_task(self, feature_id: str, req: TaskCreate) -> Task:
+        stages = self._stage_ids()
+        first_stage = stages[0] if stages else "refine-spec"
+
+        task = Task(
+            id=req.id,
+            title=req.title,
+            feature_id=feature_id,
+            current_stage_id=first_stage,
+            artifact_type_id=req.artifact_type_id,
+            blocked_by=req.blocked_by,
+            cross_refs=req.cross_refs,
+        )
+
+        # Validate DAG if there are blocked_by refs
+        if task.blocked_by:
+            self._validate_dag_with_task(task)
+
+        save_task(self.project_root, task, body=f"# {req.title}\n\n## Spec\n\n## Acceptance Criteria\n")
+        return task
+
+    def get_task(self, feature_id: str, task_id: str) -> Task | None:
+        return load_task(self.project_root, feature_id, task_id)
+
+    def update_task(self, feature_id: str, task_id: str, req: TaskUpdate) -> Task | None:
+        task = load_task(self.project_root, feature_id, task_id)
+        if task is None:
+            return None
+        if req.title is not None:
+            task.title = req.title
+        if req.artifact_type_id is not None:
+            task.artifact_type_id = req.artifact_type_id
+        if req.blocked_by is not None:
+            task.blocked_by = req.blocked_by
+        if req.cross_refs is not None:
+            task.cross_refs = req.cross_refs
+
+        if req.blocked_by is not None:
+            self._validate_dag_with_task(task)
+
+        task.updated_at = datetime.now(UTC)
+        save_task(self.project_root, task)
+        return task
+
+    def delete_task_by_id(self, feature_id: str, task_id: str) -> bool:
+        return delete_task(self.project_root, feature_id, task_id)
+
+    # ── Task Movement ──
+
+    def move_task(self, feature_id: str, task_id: str, req: TaskMove) -> Task | None:
+        task = load_task(self.project_root, feature_id, task_id)
+        if task is None:
+            return None
+
+        done_stage = self._done_stage_id()
+
+        # Check if task is blocked (unless bypassing)
+        if not req.bypass and task.blocked_by:
+            is_blocked = self._check_blocked(task)
+            if is_blocked:
+                return None  # Blocked — cannot move without bypass
+
+        if req.bypass and task.blocked_by:
+            task.is_bypassed = True
+
+        task.current_stage_id = req.target_stage_id
+        task.execution_status = ExecutionStatus.idle
+        task.updated_at = datetime.now(UTC)
+
+        save_task(self.project_root, task)
+
+        # Check if all tasks in feature are done → trigger integration test
+        if req.target_stage_id == done_stage:
+            self._check_feature_completion(feature_id)
+
+        return task
 
 
-def write_artifact(feature_id: str, task_id: str, content: str) -> dict:
-    """Write content to a task's artifact file. Returns {path, content, exists}."""
-    task = get_task(feature_id, task_id)
-    if task is None:
-        return {"path": "", "content": "", "exists": False}
+    # ── PERT Chart ──
 
-    artifact_path = task.artifact_path
-    if not artifact_path:
-        return {"path": "", "content": "", "exists": False}
+    def get_feature_pert(self, feature_id: str) -> PertData:
+        """Load tasks for a feature and build PERT data."""
+        feature = load_feature(self.project_root, feature_id)
+        if feature is None:
+            raise ValueError(f"Feature not found: {feature_id}")
+        tasks = list_tasks(self.project_root, feature_id)
+        done_stage = self._done_stage_id()
+        return build_pert_data(tasks, feature_id=feature_id, done_stage=done_stage)
 
-    main_file = _resolve_main_artifact(artifact_path)
-    full_path = _project_root() / main_file
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content, encoding="utf-8")
-    return {"path": artifact_path, "content": content, "exists": True}
+    def get_project_pert(self) -> PertData:
+        """Load all active feature tasks and build PERT data."""
+        features = list_features(self.project_root)
+        all_tasks: list[Task] = []
+        for f in features:
+            if f.stage in (FeatureStage.active, FeatureStage.planning, FeatureStage.integration_test):
+                tasks = list_tasks(self.project_root, f.id)
+                all_tasks.extend(tasks)
+        done_stage = self._done_stage_id()
+        return build_pert_data(all_tasks, done_stage=done_stage)
 
+    # ── Helpers ──
 
-_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
+    def _check_blocked(self, task: Task) -> bool:
+        """Check if any blocked_by dependency is not at Done stage."""
+        done_stage = self._done_stage_id()
+        for dep_link in task.blocked_by:
+            feat_id, dep_task_id = parse_wikilink(dep_link)
+            if dep_task_id:
+                dep_task = load_task(self.project_root, feat_id, dep_task_id)
+                if dep_task is None or dep_task.current_stage_id != done_stage:
+                    return True
+        return False
 
+    def _check_feature_completion(self, feature_id: str) -> None:
+        """If all tasks are at Done, transition feature to integration_test."""
+        done_stage = self._done_stage_id()
+        tasks = list_tasks(self.project_root, feature_id)
+        if not tasks:
+            return
+        all_done = all(t.current_stage_id == done_stage for t in tasks)
+        if all_done:
+            feature = load_feature(self.project_root, feature_id)
+            if feature and feature.stage == FeatureStage.active:
+                feature.stage = FeatureStage.integration_test
+                feature.updated_at = datetime.now(UTC)
+                save_feature_metadata(self.project_root, feature)
 
-def list_artifact_files(feature_id: str, task_id: str) -> list[dict]:
-    """List all files under a task's artifact directory.
+    def _validate_dag_with_task(self, task: Task) -> None:
+        """Validate DAG including the given task's blocked_by."""
+        # Build full graph from all features
+        all_tasks: dict[str, list[str]] = {}
+        features = list_features(self.project_root)
+        for f in features:
+            tasks = list_tasks(self.project_root, f.id)
+            for t in tasks:
+                key = f"{t.feature_id}#{t.id}"
+                all_tasks[key] = t.blocked_by
 
-    Returns [{path, name, size, is_image}] for each file.
-    For legacy single-file paths, returns a single-element list.
-    """
-    task = get_task(feature_id, task_id)
-    if task is None:
-        return []
+        # Override/add the task being validated
+        key = f"{task.feature_id}#{task.id}"
+        all_tasks[key] = task.blocked_by
 
-    artifact_path = task.artifact_path
-    if not artifact_path:
-        return []
-
-    # Legacy single-file path
-    p = PurePosixPath(artifact_path.rstrip("/"))
-    if p.suffix:
-        full = _project_root() / artifact_path
-        if not full.exists():
-            return []
-        return [
-            {
-                "path": artifact_path,
-                "name": full.name,
-                "size": full.stat().st_size,
-                "is_image": full.suffix.lower() in _IMAGE_EXTS,
-            }
-        ]
-
-    # Directory-based: walk recursively
-    base = _project_root() / artifact_path.rstrip("/")
-    if not base.exists():
-        return []
-
-    result = []
-    for root, _dirs, files in os.walk(base):
-        for fname in sorted(files):
-            fp = Path(root) / fname
-            rel = fp.relative_to(_project_root()).as_posix()
-            result.append(
-                {
-                    "path": rel,
-                    "name": fname,
-                    "size": fp.stat().st_size,
-                    "is_image": fp.suffix.lower() in _IMAGE_EXTS,
-                }
-            )
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Move task (drag-and-drop)
-# ---------------------------------------------------------------------------
-
-
-def _get_enabled_stages() -> list[str]:
-    """Return the ordered list of enabled workflow stage names."""
-    from pct.settings.service import get_workflow_stages
-
-    stages: list[WorkflowStageConfig] = get_workflow_stages()
-    return [s.stage for s in stages if s.enabled]
-
-
-def move_task(
-    feature_id: str,
-    task_id: str,
-    req: MoveTaskRequest,
-) -> Task | None:
-    """Move a task to a new stage, optionally requiring skip confirmation."""
-    task = get_task(feature_id, task_id)
-    if task is None:
-        return None
-
-    enabled = _get_enabled_stages()
-    if req.new_status not in enabled:
-        raise ValueError(f"Stage '{req.new_status}' is not enabled")
-
-    # Check adjacency
-    if task.status in enabled and req.new_status in enabled:
-        cur_idx = enabled.index(task.status)
-        new_idx = enabled.index(req.new_status)
-        if abs(new_idx - cur_idx) > 1 and not req.confirm_skip:
-            raise ValueError(f"Non-adjacent move from '{task.status}' to '{req.new_status}' requires confirm_skip=true")
-
-    return update_task(feature_id, task_id, UpdateTaskRequest(status=req.new_status))
-
-
-# ---------------------------------------------------------------------------
-# Reassign task across features
-# ---------------------------------------------------------------------------
-
-
-def reassign_task(req: ReassignTaskRequest) -> Task:
-    """Move a task from one feature to another.
-
-    Generates a new sequential ID in the destination feature, copies all
-    fields (clearing feature-local depends_on), deletes the source task file,
-    and returns the new task.
-    """
-    src_task = get_task(req.src_feature_id, req.task_id)
-    if src_task is None:
-        raise ValueError(f"Task '{req.task_id}' not found in feature '{req.src_feature_id}'")
-
-    if not _feature_dir(req.dest_feature_id).exists():
-        raise ValueError(f"Destination feature '{req.dest_feature_id}' not found")
-
-    new_id = _next_task_id(req.dest_feature_id)
-
-    new_task = Task(
-        id=new_id,
-        title=src_task.title,
-        feature=req.dest_feature_id,
-        status=req.new_status,
-        agent=src_task.agent,
-        branch=src_task.branch,
-        depends_on=[],  # cleared — depends_on is feature-local
-        cross_depends_on=src_task.cross_depends_on,
-        tags=src_task.tags,
-        priority=src_task.priority,
-        attempt=src_task.attempt,
-        artifact_path=src_task.artifact_path,
-        body=src_task.body,
-        artifact_type=src_task.artifact_type,
-    )
-    _save_task(req.dest_feature_id, new_task)
-
-    # Delete the source task file
-    delete_task(req.src_feature_id, req.task_id)
-
-    return new_task
-
-
-# ---------------------------------------------------------------------------
-# Board assembly
-# ---------------------------------------------------------------------------
-
-
-def _get_stage_labels() -> dict[str, str]:
-    """Return a mapping of stage id -> display label."""
-    from pct.settings.service import get_workflow_stages
-
-    stages: list[WorkflowStageConfig] = get_workflow_stages()
-    return {s.stage: s.label or s.stage for s in stages}
-
-
-def get_board() -> BoardResponse:
-    """Build the composite board response."""
-    return BoardResponse(
-        features=list_features(),
-        backlog=list_backlog(),
-        enabled_stages=_get_enabled_stages(),
-        stage_labels=_get_stage_labels(),
-    )
+        validate_dag(all_tasks)

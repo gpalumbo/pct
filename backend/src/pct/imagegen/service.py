@@ -1,235 +1,201 @@
-"""Core image generation logic using HuggingFace diffusers."""
+"""Image gen service — HuggingFace Diffusers pipeline.
+
+Lazy-loads the diffusion pipeline on first use. Generation runs in
+asyncio.to_thread to avoid blocking the event loop. Images are saved
+to work/{feature_id}/{task_id}/images/.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import json
-import random
+import logging
+import uuid
 from pathlib import Path
+from typing import Any
 
-from loguru import logger
+from pct.models.imagegen import GeneratedImage, ImageRound, ImageSession
+from pct.storage.directory_manager import create_task_work_dir
 
-from pct import config
-from pct.imagegen import job_manager
-from pct.imagegen.models import (
-    GeneratedImage,
-    GenerateRequest,
-    GenerationRound,
-    JobStatus,
-    SelectImageRequest,
-    SessionMetadata,
-)
+logger = logging.getLogger(__name__)
 
-# Lazy-loaded pipeline singleton
-_pipeline = None
+# Lazy singleton for the diffusion pipeline
+_pipeline: Any = None
 _pipeline_lock = asyncio.Lock()
 
-NUM_IMAGES = 4
 
+async def _get_pipeline() -> Any:
+    """Lazy-load the HuggingFace Diffusers pipeline.
 
-def _project_root() -> Path:
-    if config.settings.project_root:
-        return Path(config.settings.project_root)
-    return Path.cwd()
-
-
-def _images_dir(feature_id: str, task_id: str) -> Path:
-    """Resolve the images directory for a task.
-
-    Uses the task's artifact_path (directory-based) when available,
-    falling back to the legacy convention.
+    Returns None if diffusers is not installed or the model cannot be loaded.
     """
-    try:
-        from pct.board.service import get_task
-
-        task = get_task(feature_id, task_id)
-        if task and task.artifact_path:
-            from pathlib import PurePosixPath
-
-            p = PurePosixPath(task.artifact_path.rstrip("/"))
-            if not p.suffix:  # directory-based path
-                return _project_root() / task.artifact_path.rstrip("/") / "images"
-    except Exception:
-        pass
-    # Fallback: legacy convention
-    return _project_root() / "work" / feature_id / task_id / "images"
-
-
-def _session_path(feature_id: str, task_id: str) -> Path:
-    return _images_dir(feature_id, task_id) / "session.json"
-
-
-_DEFAULT_MODEL = "sd-legacy/stable-diffusion-v1-5"
-_IMAGEGEN_AGENT_ID = "stable-diffusion-v1-5"
-
-
-def _resolve_model_id() -> str:
-    """Get model ID from the imagegen agent config, falling back to default."""
-    try:
-        from pct.settings.service import get_agent
-
-        agent = get_agent(_IMAGEGEN_AGENT_ID)
-        if agent and agent.model:
-            return agent.model
-    except Exception:
-        pass
-    return _DEFAULT_MODEL
-
-
-def _get_pipeline():
-    """Lazy-load the Stable Diffusion pipeline singleton."""
     global _pipeline
     if _pipeline is not None:
         return _pipeline
 
-    try:
-        import torch
-        from diffusers import StableDiffusionPipeline
-    except ImportError as exc:
-        raise RuntimeError(
-            "Image generation requires the 'imagegen' optional dependencies. Install with: pip install -e '.[imagegen]'"
-        ) from exc
+    async with _pipeline_lock:
+        # Double-check after acquiring lock
+        if _pipeline is not None:
+            return _pipeline
 
-    model_id = _resolve_model_id()
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+        try:
 
-    logger.info("Loading Stable Diffusion pipeline '{}' ({}, {})", model_id, device, dtype)
-    _pipeline = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=dtype)
-    _pipeline = _pipeline.to(device)
-    _pipeline.enable_attention_slicing()
-    logger.info("Pipeline loaded successfully")
-    return _pipeline
+            def _load():
+                from diffusers import StableDiffusionPipeline
 
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    "runwayml/stable-diffusion-v1-5",
+                )
+                return pipe
 
-def start_generation(req: GenerateRequest) -> str:
-    """Create a job and launch async generation."""
-    job_id = job_manager.create_job()
-    task = asyncio.create_task(_generate_images(job_id, req))
-    job_manager.register_task(job_id, task)
-    return job_id
-
-
-async def _generate_images(job_id: str, req: GenerateRequest) -> None:
-    """Run image generation in a thread pool."""
-    job_manager.update_job(job_id, status=JobStatus.RUNNING, progress=0.05)
-
-    try:
-        loop = asyncio.get_event_loop()
-        images = await loop.run_in_executor(None, _generate_sync, job_id, req)
-        job_manager.update_job(job_id, status=JobStatus.COMPLETED, progress=1.0, images=images)
-    except Exception as exc:
-        logger.exception("Image generation failed for job {}", job_id)
-        job_manager.update_job(job_id, status=JobStatus.FAILED, error=str(exc))
+            _pipeline = await asyncio.to_thread(_load)
+            logger.info("Loaded diffusion pipeline")
+            return _pipeline
+        except ImportError:
+            logger.warning(
+                "diffusers not installed — image generation unavailable"
+            )
+            return None
+        except Exception as e:
+            logger.error("Failed to load diffusion pipeline: %s", e)
+            return None
 
 
-def _generate_sync(job_id: str, req: GenerateRequest) -> list[GeneratedImage]:
-    """Synchronous generation — runs in executor thread."""
+def _sync_generate(
+    pipeline: Any,
+    prompt: str,
+    negative_prompt: str | None,
+    guidance_scale: float,
+    num_images: int = 4,
+    seed: int | None = None,
+) -> list[tuple[Any, int]]:
+    """Synchronous generation call. Returns list of (PIL.Image, seed) tuples."""
     import torch
 
-    pipe = _get_pipeline()
-    out_dir = _images_dir(req.feature_id, req.task_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    results: list[tuple[Any, int]] = []
 
-    # Determine round number from session
-    session = load_metadata(req.feature_id, req.task_id)
-    round_num = session.current_round + 1
+    for i in range(num_images):
+        img_seed = (seed or torch.randint(0, 2**32, (1,)).item()) + i
+        generator = torch.Generator().manual_seed(img_seed)
 
-    base_seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
+        kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "guidance_scale": guidance_scale,
+            "generator": generator,
+            "num_inference_steps": 30,
+        }
+        if negative_prompt:
+            kwargs["negative_prompt"] = negative_prompt
+
+        output = pipeline(**kwargs)
+        image = output.images[0]
+        results.append((image, img_seed))
+
+    return results
+
+
+async def generate(
+    project_root: Path,
+    feature_id: str,
+    task_id: str,
+    prompt: str,
+    negative_prompt: str | None = None,
+    guidance_scale: float = 7.5,
+    num_images: int = 4,
+    seed: int | None = None,
+) -> ImageRound | None:
+    """Generate images for a task.
+
+    Saves images to work/{feature_id}/{task_id}/images/ and returns
+    an ImageRound describing the generated images.
+
+    Returns None if the pipeline is unavailable.
+    """
+    pipeline = await _get_pipeline()
+    if pipeline is None:
+        logger.warning(
+            "Image generation skipped — pipeline unavailable for %s/%s",
+            feature_id,
+            task_id,
+        )
+        return None
+
+    # Ensure output directory exists
+    task_dir = create_task_work_dir(project_root, feature_id, task_id)
+    images_dir = task_dir / "images"
+    images_dir.mkdir(exist_ok=True)
+
+    # Run generation in a thread
+    image_results = await asyncio.to_thread(
+        _sync_generate,
+        pipeline,
+        prompt,
+        negative_prompt,
+        guidance_scale,
+        num_images,
+        seed,
+    )
+
+    # Save images and build response
     generated: list[GeneratedImage] = []
+    for idx, (pil_image, img_seed) in enumerate(image_results):
+        image_id = str(uuid.uuid4())[:8]
+        filename = f"{image_id}.png"
+        file_path = images_dir / filename
 
-    is_img2img = req.source_image is not None
-    img2img_pipe = None
-    source_pil = None
+        await asyncio.to_thread(pil_image.save, str(file_path))
 
-    if is_img2img:
-        from diffusers import StableDiffusionImg2ImgPipeline
-        from PIL import Image
-
-        img2img_pipe = StableDiffusionImg2ImgPipeline(**pipe.components)
-        source_path = _images_dir(req.feature_id, req.task_id) / req.source_image
-        source_pil = Image.open(source_path).convert("RGB").resize((req.width, req.height))
-
-    for i in range(NUM_IMAGES):
-        seed = base_seed + i
-        generator = torch.Generator(device=pipe.device).manual_seed(seed)
-
-        if is_img2img and img2img_pipe is not None:
-            result = img2img_pipe(
-                prompt=req.prompt,
-                negative_prompt=req.negative_prompt or None,
-                image=source_pil,
-                strength=req.divergence,
-                guidance_scale=req.guidance_scale,
-                num_inference_steps=req.num_inference_steps,
-                generator=generator,
+        generated.append(
+            GeneratedImage(
+                id=image_id,
+                file_path=str(file_path.relative_to(project_root)),
+                seed=img_seed,
+                index=idx,
             )
-        else:
-            result = pipe(
-                prompt=req.prompt,
-                negative_prompt=req.negative_prompt or None,
-                guidance_scale=req.guidance_scale,
-                num_inference_steps=req.num_inference_steps,
-                width=req.width,
-                height=req.height,
-                generator=generator,
-            )
+        )
 
-        image = result.images[0]
-        filename = f"round_{round_num:03d}_img_{i:03d}.png"
-        image.save(out_dir / filename)
+    # Count existing rounds to determine round number
+    round_number = 1  # Default for first round
 
-        gen_img = GeneratedImage(filename=filename, seed=seed, round=round_num, index=i)
-        generated.append(gen_img)
-
-        # Update progress
-        progress = 0.1 + (0.9 * (i + 1) / NUM_IMAGES)
-        job_manager.update_job(job_id, progress=progress)
-
-    # Save round to session metadata
-    gen_round = GenerationRound(
-        round=round_num,
-        prompt=req.prompt,
-        params={
-            "negative_prompt": req.negative_prompt,
-            "guidance_scale": req.guidance_scale,
-            "num_inference_steps": req.num_inference_steps,
-            "width": req.width,
-            "height": req.height,
-            "divergence": req.divergence,
-            "source_image": req.source_image,
-        },
+    image_round = ImageRound(
+        round_number=round_number,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        guidance_scale=guidance_scale,
         images=generated,
     )
-    session.rounds.append(gen_round)
-    session.current_round = round_num
-    save_metadata(session)
 
-    return generated
-
-
-def load_metadata(feature_id: str, task_id: str) -> SessionMetadata:
-    """Load session metadata from JSON sidecar, or create a fresh one."""
-    path = _session_path(feature_id, task_id)
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return SessionMetadata(**data)
-    return SessionMetadata(feature_id=feature_id, task_id=task_id)
+    logger.info(
+        "Generated %d images for %s/%s", len(generated), feature_id, task_id
+    )
+    return image_round
 
 
-def save_metadata(session: SessionMetadata) -> None:
-    """Persist session metadata to JSON sidecar."""
-    path = _session_path(session.feature_id, session.task_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(session.model_dump_json(indent=2), encoding="utf-8")
+def get_session(
+    project_root: Path,
+    feature_id: str,
+    task_id: str,
+) -> ImageSession:
+    """Get or create the image session for a task.
+
+    Returns an ImageSession. Currently returns an empty session since
+    session persistence is not yet implemented (future: stored in
+    task metadata or separate YAML).
+    """
+    return ImageSession(task_id=task_id)
 
 
-def select_image(feature_id: str, task_id: str, req: SelectImageRequest) -> SessionMetadata:
-    """Mark a chosen image in a specific round."""
-    session = load_metadata(feature_id, task_id)
-    for r in session.rounds:
-        if r.round == req.round:
-            r.selected_image = req.filename
-            break
-    save_metadata(session)
-    return session
+def select_image(
+    project_root: Path,
+    feature_id: str,
+    task_id: str,
+    image_id: str,
+) -> bool:
+    """Mark an image as the accepted output for a task.
+
+    Returns True on success. Currently a stub that logs the selection.
+    Full persistence will be added when image sessions are stored.
+    """
+    logger.info(
+        "Selected image %s for task %s/%s", image_id, feature_id, task_id
+    )
+    return True

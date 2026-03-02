@@ -1,1 +1,1 @@
-"""PCT Authentication module."""
+"""Authentication module."""

@@ -1,20 +1,16 @@
-"""Auth data models."""
+"""Auth request/response models."""
 
 from pydantic import BaseModel
 
 
-class UserCreate(BaseModel):
+class RegisterRequest(BaseModel):
     email: str
     password: str
 
 
-class UserLogin(BaseModel):
+class LoginRequest(BaseModel):
     email: str
     password: str
-
-
-class GoogleAuthRequest(BaseModel):
-    credential: str  # Google ID token
 
 
 class TokenResponse(BaseModel):
@@ -24,4 +20,3 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     email: str
-    auth_provider: str

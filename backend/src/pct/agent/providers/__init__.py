@@ -1,1 +1,1 @@
-"""Agent providers — concrete implementations of AgentProvider protocol."""
+"""Agent provider implementations."""

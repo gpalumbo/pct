@@ -1,250 +1,251 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Button, Input, Select, Space, Switch, Tooltip, Typography, message, Collapse } from 'antd';
+import { useState, useCallback } from 'react';
+import {
+  Typography,
+  Button,
+  Space,
+  Switch,
+  Tag,
+  Modal,
+  Form,
+  Input,
+  Select,
+  Popconfirm,
+  Tooltip,
+  message,
+} from 'antd';
 import {
   PlusOutlined,
+  EditOutlined,
   DeleteOutlined,
   HolderOutlined,
-  CheckOutlined,
-  UndoOutlined,
 } from '@ant-design/icons';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import {
-  useWorkflowStages,
-  useSaveWorkflowStages,
-  useAgents,
-  useTemplateVariables,
-  useSaveTemplateVariables,
-} from '../../hooks/useConfigQueries';
-import type { WorkflowStageConfig, TemplateVariable } from '../../types/config';
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from '@hello-pangea/dnd';
+import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
+import type { WorkflowStage, Project } from '../../types/config';
 
-const { Text } = Typography;
-const { TextArea } = Input;
+const { Title, Text } = Typography;
 
-function slugify(label: string): string {
-  return label
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+function generateId(): string {
+  return crypto.randomUUID();
 }
 
-/** Built-in variables resolved dynamically at runtime (read-only reference). */
-const BUILTIN_VARS: { key: string; description: string }[] = [
-  { key: 'artifact', description: 'Full content of the task artifact file' },
-  { key: 'artifact_path', description: 'Directory path to the task artifact folder' },
-  {
-    key: 'artifact_main_path',
-    description: 'Path to the main text file (e.g. main.md) inside the artifact directory',
-  },
-  { key: 'task_title', description: "The task's title" },
-  { key: 'feature_title', description: "The parent feature's title" },
-  { key: 'cross_refs', description: 'Cross-reference context from wikilinks' },
-];
+interface StageFormValues {
+  label: string;
+  enabled: boolean;
+  agent_id: string | null;
+  prompt_template: string | null;
+  auto_run: boolean;
+}
 
 export default function WorkflowTab() {
-  const { data: savedStages = [] } = useWorkflowStages();
-  const { data: agents = [] } = useAgents();
-  const saveStages = useSaveWorkflowStages();
+  const { data: project } = useProject();
+  const updateProject = useUpdateProject();
 
-  const { data: savedVars = [] } = useTemplateVariables();
-  const saveVars = useSaveTemplateVariables();
+  const stages: WorkflowStage[] = (project?.workflow_stages ?? [])
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const agents = project?.agents ?? [];
 
-  const [stages, setStages] = useState<WorkflowStageConfig[]>([]);
-  const [editState, setEditState] = useState<Record<number, { label: string; prompt: string }>>({});
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<WorkflowStage | null>(null);
+  const [form] = Form.useForm<StageFormValues>();
 
-  const [customVars, setCustomVars] = useState<TemplateVariable[]>([]);
-
-  useEffect(() => {
-    setStages(savedStages);
-    setEditState({});
-  }, [savedStages]);
-
-  useEffect(() => {
-    setCustomVars(savedVars);
-  }, [savedVars]);
-
-  // --- Stage helpers ---
-
-  const updateStage = (index: number, patch: Partial<WorkflowStageConfig>) => {
-    setStages((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
-  };
-
-  const addStage = () => {
-    const label = 'New Stage';
-    let id = slugify(label);
-    const existing = new Set(stages.map((s) => s.stage));
-    let counter = 1;
-    while (existing.has(id)) {
-      id = slugify(label) + '-' + counter++;
-    }
-    setStages((prev) => [
-      ...prev,
-      { stage: id, label, enabled: true, agent: null, prompt_template: '' },
-    ]);
-  };
-
-  const removeStage = (index: number) => {
-    setStages((prev) => prev.filter((_, i) => i !== index));
-    setEditState((prev) => {
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
-  };
-
-  const handleSave = async () => {
-    await saveStages.mutateAsync(stages);
-    message.success('Workflow stages saved');
-  };
-
-  const handleLabelChange = (index: number, newLabel: string) => {
-    const stage = stages[index];
-    const oldSlug = slugify(stage.label);
-    const isAutoId = stage.stage === oldSlug || stage.stage.startsWith('new-stage');
-    const patch: Partial<WorkflowStageConfig> = { label: newLabel };
-    if (isAutoId) {
-      const newSlug = slugify(newLabel);
-      const existing = new Set(stages.filter((_, i) => i !== index).map((s) => s.stage));
-      if (newSlug && !existing.has(newSlug)) {
-        patch.stage = newSlug;
-      }
-    }
-    updateStage(index, patch);
-  };
-
-  // --- Edit tracking helpers ---
-  const getEditValue = (index: number, field: 'label' | 'prompt') => {
-    return editState[index]?.[field];
-  };
-
-  const startEdit = (index: number, field: 'label' | 'prompt', value: string) => {
-    setEditState((prev) => ({
-      ...prev,
-      [index]: {
-        ...(prev[index] ?? {
-          label: stages[index].label,
-          prompt: stages[index].prompt_template || '',
-        }),
-        [field]: value,
-      },
-    }));
-  };
-
-  const isDirty = useCallback(
-    (index: number) => {
-      const edit = editState[index];
-      if (!edit) return false;
-      const stage = stages[index];
-      if (!stage) return false;
-      return edit.label !== stage.label || edit.prompt !== (stage.prompt_template || '');
+  const saveStages = useCallback(
+    (newStages: WorkflowStage[]) => {
+      if (!project) return;
+      const updated: Project = { ...project, workflow_stages: newStages };
+      updateProject.mutate(updated, {
+        onError: () => message.error('Failed to save workflow stages'),
+      });
     },
-    [editState, stages],
+    [project, updateProject],
   );
 
-  const commitEdit = (index: number) => {
-    const edit = editState[index];
-    if (!edit) return;
-    handleLabelChange(index, edit.label);
-    updateStage(index, { prompt_template: edit.prompt });
-    setEditState((prev) => {
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
-  };
-
-  const cancelEdit = (index: number) => {
-    setEditState((prev) => {
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
-  };
-
-  const ensureEdit = (index: number) => {
-    if (editState[index] == null) {
-      const stage = stages[index];
-      setEditState((prev) => ({
-        ...prev,
-        [index]: { label: stage.label, prompt: stage.prompt_template || '' },
-      }));
-    }
-  };
-
   // --- Drag and drop ---
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-    const from = result.source.index;
-    const to = result.destination.index;
-    if (from === to) return;
-    setStages((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
+  const onDragEnd = useCallback(
+    (result: DropResult) => {
+      if (!result.destination) return;
+      const srcIdx = result.source.index;
+      const destIdx = result.destination.index;
+      if (srcIdx === destIdx) return;
+
+      const reordered = [...stages];
+      const [moved] = reordered.splice(srcIdx, 1);
+      reordered.splice(destIdx, 0, moved);
+
+      // Reassign sort_order based on new positions
+      const updated = reordered.map((s, i) => ({ ...s, sort_order: i }));
+      saveStages(updated);
+    },
+    [stages, saveStages],
+  );
+
+  // --- Toggle handlers ---
+  const handleToggle = useCallback(
+    (stageId: string, field: 'enabled' | 'auto_run', value: boolean) => {
+      const updated = stages.map((s) =>
+        s.id === stageId ? { ...s, [field]: value } : s,
+      );
+      saveStages(updated);
+    },
+    [stages, saveStages],
+  );
+
+  // --- Add / Edit ---
+  const openAddModal = useCallback(() => {
+    setEditingStage(null);
+    form.resetFields();
+    form.setFieldsValue({
+      label: '',
+      enabled: true,
+      agent_id: null,
+      prompt_template: null,
+      auto_run: false,
     });
-    setEditState({});
-  };
+    setModalOpen(true);
+  }, [form]);
 
-  // --- Template variable helpers ---
-  const addCustomVar = () => {
-    setCustomVars((prev) => [...prev, { key: '', description: '', value: '' }]);
-  };
+  const openEditModal = useCallback(
+    (stage: WorkflowStage) => {
+      setEditingStage(stage);
+      form.setFieldsValue({
+        label: stage.label,
+        enabled: stage.enabled,
+        agent_id: stage.agent_id ?? null,
+        prompt_template: stage.prompt_template ?? null,
+        auto_run: stage.auto_run,
+      });
+      setModalOpen(true);
+    },
+    [form],
+  );
 
-  const updateCustomVar = (index: number, patch: Partial<TemplateVariable>) => {
-    setCustomVars((prev) => prev.map((v, i) => (i === index ? { ...v, ...patch } : v)));
-  };
+  const handleModalOk = useCallback(() => {
+    form
+      .validateFields()
+      .then((values) => {
+        if (editingStage) {
+          // Edit existing
+          const updated = stages.map((s) =>
+            s.id === editingStage.id
+              ? {
+                  ...s,
+                  label: values.label,
+                  enabled: values.enabled,
+                  agent_id: values.agent_id || null,
+                  prompt_template: values.prompt_template || null,
+                  auto_run: values.auto_run,
+                }
+              : s,
+          );
+          saveStages(updated);
+        } else {
+          // Add new
+          const newStage: WorkflowStage = {
+            id: generateId(),
+            label: values.label,
+            enabled: values.enabled,
+            agent_id: values.agent_id || null,
+            prompt_template: values.prompt_template || null,
+            auto_run: values.auto_run,
+            sort_order: stages.length,
+          };
+          saveStages([...stages, newStage]);
+        }
+        setModalOpen(false);
+        setEditingStage(null);
+        form.resetFields();
+      })
+      .catch(() => {
+        // validation failed, form will show errors
+      });
+  }, [form, editingStage, stages, saveStages]);
 
-  const removeCustomVar = (index: number) => {
-    setCustomVars((prev) => prev.filter((_, i) => i !== index));
-  };
+  const handleModalCancel = useCallback(() => {
+    setModalOpen(false);
+    setEditingStage(null);
+    form.resetFields();
+  }, [form]);
 
-  const handleSaveVars = async () => {
-    await saveVars.mutateAsync(customVars);
-    message.success('Template variables saved');
-  };
+  // --- Delete ---
+  const handleDelete = useCallback(
+    (stageId: string) => {
+      const filtered = stages
+        .filter((s) => s.id !== stageId)
+        .map((s, i) => ({ ...s, sort_order: i }));
+      saveStages(filtered);
+    },
+    [stages, saveStages],
+  );
+
+  // --- Agent name lookup ---
+  const agentName = useCallback(
+    (agentId: string | null | undefined): string => {
+      if (!agentId) return '';
+      const agent = agents.find((a) => a.id === agentId);
+      return agent?.name ?? agentId;
+    },
+    [agents],
+  );
 
   return (
     <div>
-      {/* Header row */}
-      <div
+      <Space
         style={{
-          display: 'grid',
-          gridTemplateColumns: '32px minmax(0, 320px) 2fr 60px 200px 70px',
-          gap: 8,
-          alignItems: 'center',
-          padding: '4px 8px',
-          fontWeight: 600,
-          fontSize: 13,
-          color: '#888',
-          borderBottom: '1px solid #303030',
+          marginBottom: 16,
+          display: 'flex',
+          justifyContent: 'space-between',
         }}
       >
-        <div></div>
-        <div>Name</div>
-        <div>Prompt</div>
-        <div>Enabled</div>
-        <div>Agent</div>
-        <div></div>
-      </div>
+        <Title level={5} style={{ margin: 0 }}>
+          Workflow Stages
+        </Title>
+        <Button icon={<PlusOutlined />} type="primary" onClick={openAddModal}>
+          Add Stage
+        </Button>
+      </Space>
 
-      <DragDropContext onDragEnd={onDragEnd}>
-        <Droppable droppableId="workflow-stages">
-          {(provided) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-              style={{ display: 'flex', flexDirection: 'column' }}
-            >
-              {stages.map((stage, index) => {
-                const editLabel = getEditValue(index, 'label') ?? stage.label;
-                const editPrompt = getEditValue(index, 'prompt') ?? (stage.prompt_template || '');
-                const dirty = isDirty(index);
+      {stages.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Text type="secondary">No workflow stages defined</Text>
+        </div>
+      ) : (
+        <DragDropContext onDragEnd={onDragEnd}>
+          <Droppable droppableId="workflow-stages">
+            {(provided) => (
+              <div ref={provided.innerRef} {...provided.droppableProps}>
+                {/* Table header */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    fontWeight: 600,
+                    fontSize: 12,
+                    color: '#8c8c8c',
+                    borderBottom: '1px solid #f0f0f0',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <div style={{ width: 36 }} />
+                  <div style={{ flex: 2, minWidth: 120 }}>Label</div>
+                  <div style={{ width: 80, textAlign: 'center' }}>Enabled</div>
+                  <div style={{ flex: 1, minWidth: 100 }}>Agent</div>
+                  <div style={{ width: 80, textAlign: 'center' }}>Auto Run</div>
+                  <div style={{ flex: 2, minWidth: 120 }}>Prompt Template</div>
+                  <div style={{ width: 80, textAlign: 'center' }}>Actions</div>
+                </div>
 
-                return (
+                {/* Draggable rows */}
+                {stages.map((stage, index) => (
                   <Draggable
-                    key={stage.stage + '-' + index}
-                    draggableId={stage.stage + '-' + index}
+                    key={stage.id}
+                    draggableId={stage.id}
                     index={index}
                   >
                     {(dragProvided, snapshot) => (
@@ -252,261 +253,202 @@ export default function WorkflowTab() {
                         ref={dragProvided.innerRef}
                         {...dragProvided.draggableProps}
                         style={{
-                          ...dragProvided.draggableProps.style,
-                          display: 'grid',
-                          gridTemplateColumns: '32px minmax(0, 320px) 2fr 60px 200px 70px',
-                          gap: 8,
+                          display: 'flex',
                           alignItems: 'center',
-                          padding: '6px 8px',
-                          borderBottom: '1px solid #222',
-                          background: snapshot.isDragging ? '#1a1a2e' : undefined,
-                          userSelect: 'none',
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #f0f0f0',
+                          background: snapshot.isDragging
+                            ? '#e6f4ff'
+                            : '#fff',
+                          boxShadow: snapshot.isDragging
+                            ? '0 2px 8px rgba(0,0,0,0.15)'
+                            : 'none',
+                          borderRadius: snapshot.isDragging ? 6 : 0,
+                          transition: 'background 0.2s',
+                          ...dragProvided.draggableProps.style,
                         }}
                       >
                         {/* Drag handle */}
                         <div
                           {...dragProvided.dragHandleProps}
                           style={{
-                            cursor: 'grab',
-                            color: '#666',
+                            width: 36,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            cursor: 'grab',
+                            color: '#bfbfbf',
                           }}
                         >
                           <HolderOutlined style={{ fontSize: 16 }} />
                         </div>
 
-                        {/* Name — always editable */}
-                        <Input
-                          size="small"
-                          value={editLabel}
-                          maxLength={50}
-                          onChange={(e) => {
-                            ensureEdit(index);
-                            startEdit(index, 'label', e.target.value);
-                          }}
-                          placeholder="Stage name"
-                          style={{ width: '100%' }}
-                        />
+                        {/* Label */}
+                        <div style={{ flex: 2, minWidth: 120, fontWeight: 500 }}>
+                          {stage.label}
+                        </div>
 
-                        {/* Prompt — always editable */}
-                        <TextArea
-                          size="small"
-                          autoSize={{ minRows: 1, maxRows: 4 }}
-                          value={editPrompt}
-                          onChange={(e) => {
-                            ensureEdit(index);
-                            startEdit(index, 'prompt', e.target.value);
-                          }}
-                          placeholder="Prompt template (optional)"
-                          style={{ fontSize: 12, width: '100%' }}
-                        />
-
-                        {/* Enabled toggle */}
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        {/* Enabled */}
+                        <div style={{ width: 80, textAlign: 'center' }}>
                           <Switch
                             size="small"
                             checked={stage.enabled}
-                            onChange={(v) => updateStage(index, { enabled: v })}
-                            style={{ minWidth: 28 }}
+                            onChange={(checked) =>
+                              handleToggle(stage.id, 'enabled', checked)
+                            }
                           />
                         </div>
 
-                        {/* Agent selector */}
-                        <Select
-                          allowClear
-                          size="small"
-                          style={{ width: '100%' }}
-                          value={stage.agent}
-                          onChange={(v) => updateStage(index, { agent: v ?? null })}
-                          options={agents.map((a) => ({ label: a.id, value: a.id }))}
-                          placeholder="Select agent"
-                        />
-
-                        {/* Actions: cancel/save when dirty, delete when clean */}
-                        <div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                          {dirty ? (
-                            <>
-                              <Tooltip title="Save edits">
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  icon={<CheckOutlined />}
-                                  onClick={() => commitEdit(index)}
-                                  style={{ color: '#52c41a' }}
-                                />
-                              </Tooltip>
-                              <Tooltip title="Cancel edits">
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  icon={<UndoOutlined />}
-                                  onClick={() => cancelEdit(index)}
-                                />
-                              </Tooltip>
-                            </>
+                        {/* Agent */}
+                        <div style={{ flex: 1, minWidth: 100 }}>
+                          {stage.agent_id ? (
+                            <Tag color="blue">{agentName(stage.agent_id)}</Tag>
                           ) : (
-                            <Tooltip title="Remove stage">
+                            <Tag color="default">None</Tag>
+                          )}
+                        </div>
+
+                        {/* Auto Run */}
+                        <div style={{ width: 80, textAlign: 'center' }}>
+                          <Switch
+                            size="small"
+                            checked={stage.auto_run}
+                            onChange={(checked) =>
+                              handleToggle(stage.id, 'auto_run', checked)
+                            }
+                          />
+                        </div>
+
+                        {/* Prompt Template (truncated) */}
+                        <div style={{ flex: 2, minWidth: 120 }}>
+                          {stage.prompt_template ? (
+                            <Tooltip title={stage.prompt_template}>
+                              <Text
+                                ellipsis
+                                style={{
+                                  maxWidth: '100%',
+                                  display: 'inline-block',
+                                  fontSize: 12,
+                                  color: '#595959',
+                                }}
+                              >
+                                {stage.prompt_template}
+                              </Text>
+                            </Tooltip>
+                          ) : (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              --
+                            </Text>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ width: 80, textAlign: 'center' }}>
+                          <Space size={4}>
+                            <Tooltip title="Edit">
                               <Button
                                 type="text"
                                 size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => removeStage(index)}
+                                icon={<EditOutlined />}
+                                onClick={() => openEditModal(stage)}
                               />
                             </Tooltip>
-                          )}
+                            <Popconfirm
+                              title="Delete this stage?"
+                              description={`"${stage.label}" will be permanently removed.`}
+                              onConfirm={() => handleDelete(stage.id)}
+                              okText="Delete"
+                              okButtonProps={{ danger: true }}
+                              cancelText="Cancel"
+                            >
+                              <Tooltip title="Delete">
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                />
+                              </Tooltip>
+                            </Popconfirm>
+                          </Space>
                         </div>
                       </div>
                     )}
                   </Draggable>
-                );
-              })}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
-
-      <Space style={{ marginTop: 16 }}>
-        <Button icon={<PlusOutlined />} onClick={addStage}>
-          Add Stage
-        </Button>
-        <Button type="primary" onClick={handleSave} loading={saveStages.isPending}>
-          Save Changes
-        </Button>
-      </Space>
-
-      {/* Template Variables */}
-      <Collapse
-        ghost
-        style={{ marginTop: 24 }}
-        items={[
-          {
-            key: 'template-vars',
-            label: (
-              <Text strong style={{ fontSize: 14 }}>
-                Template Variables
-              </Text>
-            ),
-            children: (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Built-in variables (read-only reference) */}
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Built-in variables (resolved at runtime):
-                </Text>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
-                  {BUILTIN_VARS.map((v) => (
-                    <div
-                      key={v.key}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '160px 1fr',
-                        gap: 8,
-                        alignItems: 'center',
-                        padding: '2px 0',
-                      }}
-                    >
-                      <code style={{ fontSize: 12, color: '#1890ff' }}>{`{{${v.key}}}`}</code>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {v.description}
-                      </Text>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Custom variables (editable) */}
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Custom variables (static text substituted into prompts):
-                </Text>
-
-                {/* Header */}
-                {customVars.length > 0 && (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '140px 1fr 2fr 32px',
-                      gap: 8,
-                      padding: '2px 0',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      color: '#888',
-                    }}
-                  >
-                    <div>Key</div>
-                    <div>Description</div>
-                    <div>Value</div>
-                    <div></div>
-                  </div>
-                )}
-
-                {customVars.map((v, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '140px 1fr 2fr 32px',
-                      gap: 8,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Input
-                      size="small"
-                      value={v.key}
-                      onChange={(e) =>
-                        updateCustomVar(i, {
-                          key: e.target.value.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
-                        })
-                      }
-                      placeholder="variable_name"
-                      style={{ fontFamily: 'monospace', fontSize: 12 }}
-                    />
-                    <Input
-                      size="small"
-                      value={v.description}
-                      onChange={(e) => updateCustomVar(i, { description: e.target.value })}
-                      placeholder="Description"
-                      style={{ fontSize: 12 }}
-                    />
-                    <TextArea
-                      size="small"
-                      autoSize={{ minRows: 1, maxRows: 3 }}
-                      value={v.value}
-                      onChange={(e) => updateCustomVar(i, { value: e.target.value })}
-                      placeholder="Value text"
-                      style={{ fontSize: 12 }}
-                    />
-                    <Tooltip title="Remove">
-                      <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => removeCustomVar(i)}
-                      />
-                    </Tooltip>
-                  </div>
                 ))}
-
-                <Space style={{ marginTop: 4 }}>
-                  <Button size="small" icon={<PlusOutlined />} onClick={addCustomVar}>
-                    Add Variable
-                  </Button>
-                  <Button
-                    size="small"
-                    type="primary"
-                    onClick={handleSaveVars}
-                    loading={saveVars.isPending}
-                  >
-                    Save Variables
-                  </Button>
-                </Space>
+                {provided.placeholder}
               </div>
-            ),
-          },
-        ]}
-      />
+            )}
+          </Droppable>
+        </DragDropContext>
+      )}
+
+      {/* Add / Edit Modal */}
+      <Modal
+        title={editingStage ? 'Edit Workflow Stage' : 'Add Workflow Stage'}
+        open={modalOpen}
+        onOk={handleModalOk}
+        onCancel={handleModalCancel}
+        okText={editingStage ? 'Save' : 'Add'}
+        confirmLoading={updateProject.isPending}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            label: '',
+            enabled: true,
+            agent_id: null,
+            prompt_template: null,
+            auto_run: false,
+          }}
+        >
+          <Form.Item
+            name="label"
+            label="Label"
+            rules={[
+              { required: true, message: 'Stage label is required' },
+              { max: 100, message: 'Label must be 100 characters or fewer' },
+            ]}
+          >
+            <Input placeholder="e.g. Code Review" />
+          </Form.Item>
+
+          <Form.Item
+            name="enabled"
+            label="Enabled"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item name="agent_id" label="Agent">
+            <Select
+              placeholder="Select an agent (optional)"
+              allowClear
+              options={agents.map((a) => ({
+                label: a.name,
+                value: a.id,
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item name="prompt_template" label="Prompt Template">
+            <Input.TextArea
+              rows={4}
+              placeholder="Optional prompt template for this stage..."
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="auto_run"
+            label="Auto Run"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

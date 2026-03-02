@@ -1,47 +1,22 @@
-export interface PlanningMessage {
+/** Chat types — mirrors backend models. */
+
+import type { MessageRole } from './enums';
+
+export interface ChatMessage {
   id: string;
-  role: string;
+  role: MessageRole;
   content: string;
-  timestamp: string;
-  tokens: number | null;
   included: boolean;
-  agent_id: string | null;
-  model_id: string | null;
+  created_at: string;
 }
 
-export interface ChatSession {
-  id: string;
-  title: string;
-  agent_id: string | null;
-  created: string;
-  updated: string;
-  message_count: number;
-}
-
-export interface SendMessageRequest {
+export interface SendMessage {
   content: string;
   agent_id?: string | null;
-  artifact_path?: string | null;
 }
 
-export interface UpdateMessageRequest {
-  role?: string;
+export interface SSEEvent {
+  type: 'token' | 'done' | 'error';
   content?: string;
-  included?: boolean;
+  message_id?: string;
 }
-
-// SSE event types
-export interface TokenEvent {
-  token: string;
-}
-
-export interface DoneEvent {
-  done: true;
-  message: PlanningMessage;
-}
-
-export interface ErrorEvent {
-  error: string;
-}
-
-export type SSEEvent = TokenEvent | DoneEvent | ErrorEvent;
