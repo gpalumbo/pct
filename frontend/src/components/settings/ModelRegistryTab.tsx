@@ -204,13 +204,11 @@ export default function ModelRegistryTab() {
       render: (_: unknown, record: ModelRegistryEntry) => (
         <Space size="small">
           <Button
-            type="link"
+            type="text"
             size="small"
             icon={<EditOutlined />}
             onClick={() => openEditModal(record)}
-          >
-            Edit
-          </Button>
+          />
           <Popconfirm
             title="Delete model"
             description={`Remove "${record.name}" from the registry?`}
@@ -218,9 +216,7 @@ export default function ModelRegistryTab() {
             okText="Delete"
             okButtonProps={{ danger: true }}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              Delete
-            </Button>
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
