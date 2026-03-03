@@ -6,15 +6,13 @@ completed/failed.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from pct.imagegen.models import JobStatus
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 @dataclass
@@ -69,7 +67,7 @@ class JobManager:
             divergence=divergence,
             source_image_id=source_image_id,
         )
-        logger.info("Created image gen job %s for %s/%s", job_id, feature_id, task_id)
+        logger.info("Created image gen job {} for {}/{}", job_id, feature_id, task_id)
         return job_id
 
     def get_job(self, job_id: str) -> JobRecord | None:
@@ -81,7 +79,7 @@ class JobManager:
         job = self._jobs.get(job_id)
         if job:
             job.status = JobStatus.running
-            logger.debug("Job %s -> running", job_id)
+            logger.debug("Job {} -> running", job_id)
 
     def set_completed(self, job_id: str, images: list[dict]) -> None:
         """Transition a job to completed state with results."""
@@ -90,7 +88,7 @@ class JobManager:
             job.status = JobStatus.completed
             job.images = images
             job.completed_at = datetime.now(UTC)
-            logger.info("Job %s completed with %d images", job_id, len(images))
+            logger.info("Job {} completed with {} images", job_id, len(images))
 
     def set_failed(self, job_id: str, error: str) -> None:
         """Transition a job to failed state."""
@@ -99,7 +97,7 @@ class JobManager:
             job.status = JobStatus.failed
             job.error = error
             job.completed_at = datetime.now(UTC)
-            logger.warning("Job %s failed: %s", job_id, error)
+            logger.warning("Job {} failed: {}", job_id, error)
 
     def list_jobs(
         self,
@@ -151,7 +149,7 @@ class JobManager:
 
         except Exception as e:
             self.set_failed(job_id, str(e))
-            logger.exception("Job %s failed with exception", job_id)
+            logger.exception("Job {} failed with exception", job_id)
 
 
 # Module-level singleton

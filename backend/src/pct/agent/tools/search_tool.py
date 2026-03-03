@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class SearchTool:
@@ -68,7 +67,7 @@ class SearchTool:
                 sections.append(f"## Web Results\n\n{web_result}")
 
             if isinstance(rag_result, Exception):
-                logger.debug("RAG search failed: %s", rag_result)
+                logger.debug("RAG search failed: {}", rag_result)
                 sections.append("## Project Results\n\nNo project index available.")
             else:
                 sections.append(f"## Project Results\n\n{rag_result}")

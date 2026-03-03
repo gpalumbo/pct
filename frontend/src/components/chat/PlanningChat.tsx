@@ -68,6 +68,7 @@ export default function PlanningChat({
         messages={chat.messages}
         streamingContent={chat.streamingContent}
         isStreaming={chat.isStreaming}
+        statusMessage={chat.statusMessage}
         onUpdateMessage={chat.handleUpdateMessage}
         onDeleteMessage={chat.handleDeleteMessage}
         onReplay={chat.handleReplay}

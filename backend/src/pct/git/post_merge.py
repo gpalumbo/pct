@@ -7,12 +7,10 @@ them in the RAG system so that context search stays up-to-date.
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
 from pct.rag.indexer import SUPPORTED_EXTENSIONS, index_file
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 async def _run_git(
@@ -44,7 +42,7 @@ async def get_changed_files(project_path: Path) -> list[str]:
     )
 
     if rc != 0:
-        logger.warning("Failed to get changed files: %s", stderr)
+        logger.warning("Failed to get changed files: {}", stderr)
         return []
 
     if not stdout:
@@ -78,7 +76,7 @@ async def reindex_changed_files(project_path: Path) -> int:
         indexed = await asyncio.to_thread(index_file, project_path, file_path)
         if indexed:
             count += 1
-            logger.debug("Re-indexed: %s", rel_path)
+            logger.debug("Re-indexed: {}", rel_path)
 
-    logger.info("Re-indexed %d files after merge", count)
+    logger.info("Re-indexed {} files after merge", count)
     return count

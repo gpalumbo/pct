@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import logging
-
 from pct.agent.models import AgentConfig
 from pct.agent.protocols import AgentProvider
 from pct.agent.providers.claude_code import ClaudeCodeProvider
 from pct.agent.providers.local_llm import LocalLLMProvider
+from pct.models.agents import ModelRegistryEntry
 from pct.models.enums import ProviderType
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
@@ -86,6 +84,39 @@ def _resolve_model_path(model_id: str) -> str | None:
     for m in models:
         if m.id == model_id:
             return m.file_path
+    return None
+
+
+def resolve_model_entry_for_agent(agent_id: str) -> ModelRegistryEntry | None:
+    """Look up the ModelRegistryEntry for an agent's configured model.
+
+    Returns ``None`` if the agent or model isn't found in the registry.
+    """
+    from pct.storage.project_io import load_project_config
+    from pct.storage.registry_io import load_model_registry
+
+    from pct import config
+
+    project = load_project_config(config.settings.project_root)
+    if project is None:
+        return None
+
+    agent_data = None
+    for agent in getattr(project, "agents", []):
+        if getattr(agent, "id", None) == agent_id:
+            agent_data = agent
+            break
+    if agent_data is None:
+        return None
+
+    model_id = getattr(agent_data, "model_id", "")
+    if not model_id:
+        return None
+
+    models = load_model_registry(config.settings.global_config_dir)
+    for m in models:
+        if m.id == model_id:
+            return m
     return None
 
 

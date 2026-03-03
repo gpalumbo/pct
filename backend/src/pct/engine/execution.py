@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,8 +17,7 @@ from pct.storage.execution_io import write_attempt
 from pct.storage.feature_io import list_features, load_feature_spec
 from pct.storage.project_io import load_project_config
 from pct.storage.task_io import list_tasks, load_task, load_task_body, save_task
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def _resolve_provider(project_root: Path, agent_id: str | None) -> AgentProvider | None:
@@ -223,7 +221,7 @@ async def execute_task(
         task.updated_at = datetime.now(UTC)
         save_task(project_root, task)
         logger.info(
-            "Task %s/%s completed stage, advanced to %s",
+            "Task {}/{} completed stage, advanced to {}",
             feature_id,
             task_id,
             task.current_stage_id,
@@ -238,7 +236,7 @@ async def execute_task(
         task.updated_at = datetime.now(UTC)
         save_task(project_root, task)
         logger.warning(
-            "Task %s/%s execution failed: %s",
+            "Task {}/{} execution failed: {}",
             feature_id,
             task_id,
             result.error,

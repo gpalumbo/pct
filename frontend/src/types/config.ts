@@ -32,7 +32,15 @@ export interface ModelRegistryEntry {
   context_length: number;
   api_base_url?: string | null;
   file_path?: string | null;
+  gguf_filename?: string | null;
   download_status?: DownloadStatus | null;
+}
+
+export interface HfGgufFile {
+  filename: string;
+  display_name: string;
+  total_size: number;
+  shard_count: number;
 }
 
 export interface LoRAVersion {

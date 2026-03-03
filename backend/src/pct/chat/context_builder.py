@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def expand_template(template: str, variables: dict[str, str]) -> str:
@@ -233,5 +232,5 @@ def rag_search_context(project_id: str, query: str, max_results: int = 5) -> str
             + "\n\n".join(sections)
         )
     except Exception:
-        logger.debug("RAG search failed", exc_info=True)
+        logger.opt(exception=True).debug("RAG search failed")
         return ""

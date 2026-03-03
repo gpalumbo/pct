@@ -6,13 +6,11 @@ iteration this could be backed by a YAML file or database.
 
 from __future__ import annotations
 
-import logging
 import uuid
 
 from pct.models.enums import NotificationEventType, NotificationState
 from pct.models.notifications import NotificationEvent
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class NotificationService:
@@ -58,7 +56,7 @@ class NotificationService:
         )
         self._events.append(event)
         logger.info(
-            "Created notification: type=%s message=%s",
+            "Created notification: type={} message={}",
             event_type.value,
             message[:80],
         )
@@ -103,7 +101,7 @@ class NotificationService:
         for event in self._events:
             if event.id == event_id:
                 event.acknowledged = True
-                logger.debug("Acknowledged notification %s", event_id)
+                logger.debug("Acknowledged notification {}", event_id)
                 return True
         return False
 
@@ -118,7 +116,7 @@ class NotificationService:
                 event.acknowledged = True
                 count += 1
         if count:
-            logger.info("Acknowledged %d notifications", count)
+            logger.info("Acknowledged {} notifications", count)
         return count
 
     def badge_count(self) -> int:

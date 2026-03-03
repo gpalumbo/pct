@@ -6,11 +6,9 @@ SMTP configuration is provided, so callers don't need to check.
 
 from __future__ import annotations
 
-import logging
+from loguru import logger
 
 from pct.models.core import SmtpConfig
-
-logger = logging.getLogger(__name__)
 
 
 async def send_email(
@@ -34,7 +32,7 @@ async def send_email(
         True if email was sent successfully, False otherwise.
     """
     if smtp_config is None:
-        logger.debug("No SMTP config — skipping email to %s", to_address)
+        logger.debug("No SMTP config — skipping email to {}", to_address)
         return False
 
     try:
@@ -57,15 +55,15 @@ async def send_email(
             use_tls=smtp_config.tls,
         )
 
-        logger.info("Sent email to %s: %s", to_address, subject)
+        logger.info("Sent email to {}: {}", to_address, subject)
         return True
 
     except ImportError:
-        logger.debug("aiosmtplib not installed — skipping email to %s", to_address)
+        logger.debug("aiosmtplib not installed — skipping email to {}", to_address)
         return False
 
     except Exception as e:
-        logger.error("Failed to send email to %s: %s", to_address, e)
+        logger.error("Failed to send email to {}: {}", to_address, e)
         return False
 
 

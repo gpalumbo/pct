@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Debug
     debug: bool = False
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
 
 
 # Module-level singleton — lazily instantiated

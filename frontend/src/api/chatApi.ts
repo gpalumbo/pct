@@ -43,6 +43,7 @@ export function sendMessageStream(
   onDone: (message: ChatMessage) => void,
   onError: (error: string) => void,
   artifactPath?: string,
+  onStatus?: (status: string) => void,
 ): AbortController {
   const controller = new AbortController();
   const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -94,6 +95,8 @@ export function sendMessageStream(
               onDone(event.message);
             } else if ('error' in event) {
               onError(event.error);
+            } else if ('status' in event) {
+              onStatus?.(event.status);
             }
           } catch {
             // skip malformed lines
@@ -162,6 +165,8 @@ export const chatApi = {
               event = { type: 'done', message: raw.message };
             } else if ('error' in raw) {
               event = { type: 'error', content: raw.error };
+            } else if ('status' in raw) {
+              event = { type: 'status', content: raw.status };
             } else {
               continue;
             }

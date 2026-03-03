@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Table,
   Typography,
@@ -15,9 +15,10 @@ import {
   message,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
+import { useProject, useUpdateProject, useModels, useLoras } from '../../hooks/useConfigQueries';
 import type { Agent, Project } from '../../types/config';
 import type { AgentType } from '../../types/enums';
+import { toSlug } from '../../utils/slug';
 
 const { Title } = Typography;
 
@@ -36,6 +37,7 @@ const AGENT_TYPE_COLORS: Record<AgentType, string> = {
 };
 
 interface AgentFormValues {
+  id: string;
   name: string;
   agent_type: AgentType;
   model_id: string;
@@ -51,14 +53,34 @@ interface AgentFormValues {
 export default function AgentsTab() {
   const { data: project } = useProject();
   const updateProject = useUpdateProject();
+  const { data: modelsList } = useModels();
+  const { data: lorasList } = useLoras();
   const agents: Agent[] = project?.agents ?? [];
+  const users = useMemo(() => project?.users ?? [], [project?.users]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [form] = Form.useForm<AgentFormValues>();
+  const [selectedAgentType, setSelectedAgentType] = useState<AgentType | null>(null);
+
+  const modelOptions = useMemo(
+    () => (modelsList ?? []).map((m) => ({ label: `${m.name} (${m.model_identifier})`, value: m.id })),
+    [modelsList],
+  );
+
+  const loraOptions = useMemo(
+    () => (lorasList ?? []).map((l) => ({ label: `${l.name} (${l.base_model_id})`, value: l.id })),
+    [lorasList],
+  );
+
+  const userOptions = useMemo(
+    () => users.map((u) => ({ label: u.display_name || u.email || u.id, value: u.id })),
+    [users],
+  );
 
   const openAddModal = () => {
     setEditingAgent(null);
+    setSelectedAgentType(null);
     form.resetFields();
     form.setFieldsValue({ notify_on_waiting: false });
     setModalOpen(true);
@@ -66,7 +88,9 @@ export default function AgentsTab() {
 
   const openEditModal = (agent: Agent) => {
     setEditingAgent(agent);
+    setSelectedAgentType(agent.agent_type as AgentType);
     form.setFieldsValue({
+      id: agent.id,
       name: agent.name,
       agent_type: agent.agent_type as AgentType,
       model_id: agent.model_id,
@@ -84,6 +108,7 @@ export default function AgentsTab() {
   const handleCancel = () => {
     setModalOpen(false);
     setEditingAgent(null);
+    setSelectedAgentType(null);
     form.resetFields();
   };
 
@@ -99,8 +124,11 @@ export default function AgentsTab() {
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      const agentId = editingAgent
+        ? editingAgent.id
+        : (values.id?.trim() || toSlug(values.name));
       const agentData: Agent = {
-        id: editingAgent?.id ?? crypto.randomUUID(),
+        id: agentId,
         name: values.name,
         agent_type: values.agent_type,
         model_id: values.model_id,
@@ -108,7 +136,7 @@ export default function AgentsTab() {
         prompt_template: values.prompt_template || null,
         temperature: values.temperature ?? null,
         context_length_override: values.context_length_override ?? null,
-        cli_command: values.cli_command || null,
+        cli_command: values.agent_type === 'tool' ? (values.cli_command || null) : null,
         linked_user_id: values.linked_user_id || null,
         notify_on_waiting: values.notify_on_waiting ?? false,
       };
@@ -117,12 +145,18 @@ export default function AgentsTab() {
       if (editingAgent) {
         updatedAgents = agents.map((a) => (a.id === editingAgent.id ? agentData : a));
       } else {
+        // Check for duplicate ID
+        if (agents.some((a) => a.id === agentId)) {
+          message.error(`Agent ID "${agentId}" already exists`);
+          return;
+        }
         updatedAgents = [...agents, agentData];
       }
 
       saveAgents(updatedAgents);
       setModalOpen(false);
       setEditingAgent(null);
+      setSelectedAgentType(null);
       form.resetFields();
     } catch {
       // validation failed — form will show inline errors
@@ -260,6 +294,26 @@ export default function AgentsTab() {
           initialValues={{ notify_on_waiting: false }}
         >
           <Form.Item
+            name="id"
+            label="Agent ID"
+            tooltip="A short, readable identifier (auto-generated from name if left blank). Cannot be changed after creation."
+            rules={editingAgent ? [] : [
+              {
+                validator: (_, value) => {
+                  if (!value) return Promise.resolve(); // auto-generated
+                  if (/^[a-z0-9][a-z0-9-]*$/.test(value)) return Promise.resolve();
+                  return Promise.reject('ID must be lowercase alphanumeric with hyphens');
+                },
+              },
+            ]}
+          >
+            <Input
+              placeholder="e.g. primary-llm (auto from name if blank)"
+              disabled={!!editingAgent}
+            />
+          </Form.Item>
+
+          <Form.Item
             name="name"
             label="Name"
             rules={[{ required: true, message: 'Agent name is required' }]}
@@ -272,19 +326,35 @@ export default function AgentsTab() {
             label="Agent Type"
             rules={[{ required: true, message: 'Agent type is required' }]}
           >
-            <Select placeholder="Select agent type" options={AGENT_TYPE_OPTIONS} />
+            <Select
+              placeholder="Select agent type"
+              options={AGENT_TYPE_OPTIONS}
+              onChange={(val: AgentType) => setSelectedAgentType(val)}
+            />
           </Form.Item>
 
           <Form.Item
             name="model_id"
-            label="Model ID"
-            rules={[{ required: true, message: 'Model ID is required' }]}
+            label="Model"
+            rules={[{ required: true, message: 'Model is required' }]}
           >
-            <Input placeholder="e.g. gpt-4o or local-llama-3" />
+            <Select
+              placeholder="Select a model"
+              options={modelOptions}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+            />
           </Form.Item>
 
-          <Form.Item name="lora_id" label="LoRA ID">
-            <Input placeholder="Optional LoRA adapter ID" />
+          <Form.Item name="lora_id" label="LoRA Adapter">
+            <Select
+              placeholder="None"
+              options={loraOptions}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+            />
           </Form.Item>
 
           <Form.Item name="prompt_template" label="Prompt Template">
@@ -299,12 +369,20 @@ export default function AgentsTab() {
             <InputNumber min={1} step={1} placeholder="Override model default" style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item name="cli_command" label="CLI Command">
-            <Input placeholder="Command for tool-type agents" />
-          </Form.Item>
+          {selectedAgentType === 'tool' && (
+            <Form.Item name="cli_command" label="CLI Command">
+              <Input placeholder="Command to execute for this tool agent" />
+            </Form.Item>
+          )}
 
-          <Form.Item name="linked_user_id" label="Linked User ID">
-            <Input placeholder="Optional user ID to link" />
+          <Form.Item name="linked_user_id" label="Linked User">
+            <Select
+              placeholder="None"
+              options={userOptions}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+            />
           </Form.Item>
 
           <Form.Item name="notify_on_waiting" label="Notify on Waiting" valuePropName="checked">

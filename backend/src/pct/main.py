@@ -1,10 +1,12 @@
 """FastAPI application — entry point."""
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from pct.auth.dependencies import get_settings
 from pct.auth.router import router as auth_router
@@ -16,20 +18,34 @@ from pct.notifications.router import router as notifications_router
 from pct.settings.router import router as settings_router
 from pct.training.router import router as training_router
 
-logger = logging.getLogger("pct")
+
+class InterceptHandler(logging.Handler):
+    """Route stdlib logging (uvicorn, fastapi) into loguru."""
+
+    def emit(self, record):
+        level = logger.level(record.levelname).name
+        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
+
+def configure_logging(log_level: str):
+    pass  # TODO: re-enable loguru once we have a better solution for the logging configuration (e.g. via settings file or env vars)
+    # logger.remove()
+    # logger.add(
+    #     sys.stderr,
+    #     level=log_level,
+    #     format="{time:YYYY-MM-DD HH:mm:ss} {name} {level} {message}",
+    # )
+    # logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     settings = get_settings()
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
-    logger.info("PCT_ROOT = %s", settings.root.resolve())
-    logger.info("PCT_PROJECT_ROOT = %s", settings.project_root.resolve())
-    logger.info("PCT_GLOBAL_CONFIG_DIR = %s", settings.global_config_dir.resolve())
+    configure_logging(settings.log_level)
+    logger.info("PCT_ROOT = {}", settings.root.resolve())
+    logger.info("PCT_PROJECT_ROOT = {}", settings.project_root.resolve())
+    logger.info("PCT_GLOBAL_CONFIG_DIR = {}", settings.global_config_dir.resolve())
     init_user_store(settings.global_config_dir)
     yield
     # Shutdown

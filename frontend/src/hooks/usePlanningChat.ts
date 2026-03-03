@@ -40,6 +40,7 @@ export interface UsePlanningChatReturn {
   messages: ChatMessage[];
   isStreaming: boolean;
   streamingContent: string;
+  statusMessage: string | null;
   selectedAgent: string | null;
   handleAgentChange: (agentId: string | null) => void;
   handleSend: (content: string, agentId: string | null) => void;
@@ -107,6 +108,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const selectedAgentRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -220,12 +222,14 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
       setIsStreaming(true);
       isStreamingRef.current = true;
       setStreamingContent('');
+      setStatusMessage(null);
 
       const onDone = (message: ChatMessage) => {
         setMessages((prev) => [...prev, message]);
         setIsStreaming(false);
         isStreamingRef.current = false;
         setStreamingContent('');
+        setStatusMessage(null);
         abortRef.current = null;
         queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
       };
@@ -250,6 +254,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
           });
         },
         artifactPath,
+        (status) => setStatusMessage(status),
       );
       abortRef.current = controller;
     },
@@ -261,6 +266,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
     setIsStreaming(false);
     isStreamingRef.current = false;
     setStreamingContent('');
+    setStatusMessage(null);
     abortRef.current = null;
   }, []);
 
@@ -311,6 +317,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
     messages,
     isStreaming,
     streamingContent,
+    statusMessage,
     selectedAgent,
     handleAgentChange,
     handleSend,

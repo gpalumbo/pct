@@ -96,14 +96,18 @@ export default function ChatInput({
             <Select
               value={selectedAgent}
               onChange={onAgentChange}
-              placeholder={defaultAgentId ? `Default: ${defaultAgentId}` : 'Agent'}
+              placeholder={
+                defaultAgentId
+                  ? `Default: ${agents.find((a) => a.id === defaultAgentId)?.name ?? defaultAgentId}`
+                  : 'Agent'
+              }
               allowClear
               style={{ width: 200 }}
               options={agents
                 .filter((a) => a.agent_type !== 'user')
                 .map((a) => ({
                   label:
-                    a.id === defaultAgentId ? `${a.id} (${a.model_id}) *` : `${a.id} (${a.model_id})`,
+                    a.id === defaultAgentId ? `${a.name} *` : a.name,
                   value: a.id,
                 }))}
             />

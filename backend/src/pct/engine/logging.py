@@ -6,13 +6,11 @@ additional convenience methods.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 from pct.storage.execution_io import read_attempts, write_attempt
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def log_execution_start(
@@ -24,7 +22,7 @@ def log_execution_start(
 ) -> None:
     """Log that a task execution is starting."""
     logger.info(
-        "Execution started: task=%s feature=%s stage=%s agent=%s",
+        "Execution started: task={} feature={} stage={} agent={}",
         task_id,
         feature_id,
         stage_id,
@@ -65,14 +63,14 @@ def log_execution_result(
 
     if error:
         logger.warning(
-            "Execution failed: task=%s outcome=%s error=%s",
+            "Execution failed: task={} outcome={} error={}",
             task_id,
             outcome,
             error,
         )
     else:
         logger.info(
-            "Execution completed: task=%s outcome=%s duration=%.2fs",
+            "Execution completed: task={} outcome={} duration={:.2f}s",
             task_id,
             outcome,
             duration_seconds,

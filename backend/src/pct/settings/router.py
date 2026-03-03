@@ -1,5 +1,6 @@
 """Settings router — /api/config endpoints."""
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,10 @@ from pct.models.enums import DownloadStatus, ProviderType
 from pct.settings.service import browse_files, get_project_config, get_project_status, initialize_project, update_project_config
 from pct.settings.templates import create_project_from_template, discover_models
 from pct.storage.registry_io import load_lora_registry, load_model_registry, save_lora_registry, save_model_registry
+from loguru import logger
+
+# Matches GGUF split shard pattern: -NNNNN-of-NNNNN.gguf
+_GGUF_SHARD_RE = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$", re.IGNORECASE)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -29,6 +34,7 @@ class ModelCreateRequest(BaseModel):
     context_length: int = Field(default=0, ge=0)
     api_base_url: str | None = None
     file_path: str | None = None
+    gguf_filename: str | None = None
     download_status: DownloadStatus | None = None
 
 
@@ -39,6 +45,7 @@ class ModelUpdateRequest(BaseModel):
     context_length: int | None = Field(default=None, ge=0)
     api_base_url: str | None = None
     file_path: str | None = None
+    gguf_filename: str | None = None
     download_status: DownloadStatus | None = None
 
 
@@ -102,6 +109,70 @@ async def browse(
     _user: str = Depends(get_current_user),
 ):
     return browse_files(settings.project_root, path)
+
+
+# ── HuggingFace GGUF variant listing ─────────────────────────────
+
+
+@router.get("/hf-gguf-files")
+async def list_hf_gguf_files(
+    repo_id: str = Query(..., description="HuggingFace repo ID, e.g. Qwen/Qwen2.5-3B-Instruct-GGUF"),
+    _user: str = Depends(get_current_user),
+):
+    """List GGUF file variants in a HuggingFace repo, grouping split shards."""
+    try:
+        from huggingface_hub import list_repo_tree
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="huggingface-hub is not installed. Install with: pip install huggingface-hub",
+        )
+
+    try:
+        tree = list_repo_tree(repo_id)
+        gguf_files = [
+            item for item in tree
+            if hasattr(item, "rfilename") and item.rfilename.endswith(".gguf")
+        ]
+    except Exception as e:
+        logger.warning("Failed to list repo tree for {}: {}", repo_id, e)
+        raise HTTPException(status_code=400, detail=f"Could not fetch repo '{repo_id}': {e}")
+
+    if not gguf_files:
+        return []
+
+    # Group split shards into single variant entries
+    variants: dict[str, dict] = {}  # key = display_name or filename
+    for item in gguf_files:
+        fname = item.rfilename
+        size = getattr(item, "size", 0) or 0
+        shard_match = _GGUF_SHARD_RE.search(fname)
+
+        if shard_match:
+            shard_num = int(shard_match.group(1))
+            total_shards = int(shard_match.group(2))
+            # Build the base display name by stripping the shard suffix
+            base = fname[: shard_match.start()]
+            if base not in variants:
+                variants[base] = {
+                    "filename": fname,  # first shard filename (will be updated)
+                    "display_name": base,
+                    "total_size": 0,
+                    "shard_count": total_shards,
+                }
+            variants[base]["total_size"] += size
+            # Always store the first shard as the filename
+            if shard_num == 1:
+                variants[base]["filename"] = fname
+        else:
+            variants[fname] = {
+                "filename": fname,
+                "display_name": fname,
+                "total_size": size,
+                "shard_count": 1,
+            }
+
+    return sorted(variants.values(), key=lambda v: v["display_name"])
 
 
 # ── Model registry CRUD ──────────────────────────────────────────

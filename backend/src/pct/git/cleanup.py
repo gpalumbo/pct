@@ -7,12 +7,10 @@ After a task completes its execution:
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from pct.git.worktree import remove_worktree
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 async def cleanup_on_success(
@@ -25,14 +23,14 @@ async def cleanup_on_success(
     """
     wt = Path(worktree_path)
     if not wt.exists():
-        logger.debug("Worktree already gone: %s", worktree_path)
+        logger.debug("Worktree already gone: {}", worktree_path)
         return True
 
     ok = await remove_worktree(project_path, wt)
     if ok:
-        logger.info("Cleaned up worktree after success: %s", worktree_path)
+        logger.info("Cleaned up worktree after success: {}", worktree_path)
     else:
-        logger.warning("Failed to clean up worktree: %s", worktree_path)
+        logger.warning("Failed to clean up worktree: {}", worktree_path)
     return ok
 
 
@@ -46,7 +44,7 @@ async def cleanup_on_failure(
     can inspect the state for debugging.
     """
     logger.info(
-        "Preserving worktree for debugging after failure: %s", worktree_path
+        "Preserving worktree for debugging after failure: {}", worktree_path
     )
 
 
@@ -65,5 +63,5 @@ async def force_cleanup(
 
     ok = await remove_worktree(project_path, wt, force=True)
     if ok:
-        logger.info("Force-cleaned worktree: %s", worktree_path)
+        logger.info("Force-cleaned worktree: {}", worktree_path)
     return ok

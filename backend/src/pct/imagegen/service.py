@@ -8,15 +8,13 @@ to work/{feature_id}/{task_id}/images/.
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
 from pct.models.imagegen import GeneratedImage, ImageRound, ImageSession
 from pct.storage.directory_manager import create_task_work_dir
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Lazy singleton for the diffusion pipeline
 _pipeline: Any = None
@@ -56,7 +54,7 @@ async def _get_pipeline() -> Any:
             )
             return None
         except Exception as e:
-            logger.error("Failed to load diffusion pipeline: %s", e)
+            logger.error("Failed to load diffusion pipeline: {}", e)
             return None
 
 
@@ -113,7 +111,7 @@ async def generate(
     pipeline = await _get_pipeline()
     if pipeline is None:
         logger.warning(
-            "Image generation skipped — pipeline unavailable for %s/%s",
+            "Image generation skipped — pipeline unavailable for {}/{}",
             feature_id,
             task_id,
         )
@@ -165,7 +163,7 @@ async def generate(
     )
 
     logger.info(
-        "Generated %d images for %s/%s", len(generated), feature_id, task_id
+        "Generated {} images for {}/{}", len(generated), feature_id, task_id
     )
     return image_round
 
@@ -196,6 +194,6 @@ def select_image(
     Full persistence will be added when image sessions are stored.
     """
     logger.info(
-        "Selected image %s for task %s/%s", image_id, feature_id, task_id
+        "Selected image {} for task {}/{}", image_id, feature_id, task_id
     )
     return True

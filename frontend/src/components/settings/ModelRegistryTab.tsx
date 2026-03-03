@@ -15,11 +15,12 @@ import {
   App,
   List,
   Breadcrumb,
+  Spin,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FolderOpenOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons';
 import { useModels, useCreateModel, useUpdateModel, useDeleteModel, useProject } from '../../hooks/useConfigQueries';
 import { configApi } from '../../api/configApi';
-import type { ModelRegistryEntry, FileEntry } from '../../types/config';
+import type { ModelRegistryEntry, FileEntry, HfGgufFile } from '../../types/config';
 import type { ProviderType, DownloadStatus } from '../../types/enums';
 
 const { Title } = Typography;
@@ -52,6 +53,13 @@ interface ModelFormValues {
   context_length: number;
   api_base_url?: string;
   file_path?: string;
+  gguf_filename?: string;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
 }
 
 export default function ModelRegistryTab() {
@@ -71,6 +79,11 @@ export default function ModelRegistryTab() {
   const [browseEntries, setBrowseEntries] = useState<FileEntry[]>([]);
   const [browsePath, setBrowsePath] = useState('');
   const [browseLoading, setBrowseLoading] = useState(false);
+
+  // GGUF variant picker state
+  const [ggufFiles, setGgufFiles] = useState<HfGgufFile[]>([]);
+  const [ggufLoading, setGgufLoading] = useState(false);
+  const [ggufError, setGgufError] = useState<string | null>(null);
 
   const loadBrowseDir = async (path: string) => {
     setBrowseLoading(true);
@@ -101,6 +114,24 @@ export default function ModelRegistryTab() {
     }
   };
 
+  const fetchGgufVariants = async (repoId: string) => {
+    if (!repoId) return;
+    setGgufLoading(true);
+    setGgufError(null);
+    setGgufFiles([]);
+    try {
+      const files = await configApi.getHfGgufFiles(repoId);
+      setGgufFiles(files);
+      if (files.length === 0) {
+        setGgufError('No GGUF files found in this repository.');
+      }
+    } catch {
+      setGgufError('Failed to fetch GGUF files. Check the repo ID.');
+    } finally {
+      setGgufLoading(false);
+    }
+  };
+
   // Auto-default file_path for HuggingFace models when model_identifier changes
   const handleProviderOrIdChange = () => {
     const providerType = form.getFieldValue('provider_type');
@@ -112,6 +143,10 @@ export default function ModelRegistryTab() {
         ? `${projectDir}/models/${safeName}`.replace(/\\/g, '/')
         : `models/${safeName}`;
       form.setFieldsValue({ file_path: defaultPath });
+      fetchGgufVariants(modelId);
+    } else {
+      setGgufFiles([]);
+      setGgufError(null);
     }
   };
 
@@ -119,6 +154,8 @@ export default function ModelRegistryTab() {
     setEditingModel(null);
     form.resetFields();
     form.setFieldsValue({ context_length: 0 });
+    setGgufFiles([]);
+    setGgufError(null);
     setModalOpen(true);
   };
 
@@ -131,7 +168,15 @@ export default function ModelRegistryTab() {
       context_length: record.context_length,
       api_base_url: record.api_base_url ?? undefined,
       file_path: record.file_path ?? undefined,
+      gguf_filename: record.gguf_filename ?? undefined,
     });
+    // Pre-load GGUF variants when editing a HuggingFace model
+    if (record.provider_type === 'huggingface' && record.model_identifier) {
+      fetchGgufVariants(record.model_identifier);
+    } else {
+      setGgufFiles([]);
+      setGgufError(null);
+    }
     setModalOpen(true);
   };
 
@@ -151,6 +196,7 @@ export default function ModelRegistryTab() {
         ...values,
         api_base_url: values.api_base_url || null,
         file_path: values.file_path || null,
+        gguf_filename: values.gguf_filename || null,
       };
 
       if (editingModel) {
@@ -172,6 +218,8 @@ export default function ModelRegistryTab() {
     setModalOpen(false);
     form.resetFields();
     setEditingModel(null);
+    setGgufFiles([]);
+    setGgufError(null);
   };
 
   const columns = [
@@ -293,6 +341,38 @@ export default function ModelRegistryTab() {
               placeholder="e.g. gpt-4o, meta-llama/Llama-3.1-8B"
               onBlur={handleProviderOrIdChange}
             />
+          </Form.Item>
+
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.provider_type !== cur.provider_type}>
+            {() =>
+              form.getFieldValue('provider_type') === 'huggingface' && (
+                <Form.Item
+                  name="gguf_filename"
+                  label="GGUF Variant"
+                  tooltip="Select which quantization variant to download. Split-shard models will download all parts."
+                >
+                  {ggufLoading ? (
+                    <Spin size="small" />
+                  ) : ggufError ? (
+                    <Alert type="warning" message={ggufError} showIcon style={{ marginBottom: 0 }} />
+                  ) : ggufFiles.length > 0 ? (
+                    <Select
+                      placeholder="Select a GGUF variant"
+                      allowClear
+                      options={ggufFiles.map((f) => ({
+                        label:
+                          f.shard_count > 1
+                            ? `${f.display_name} — ${formatSize(f.total_size)} (${f.shard_count} parts)`
+                            : `${f.display_name} — ${formatSize(f.total_size)}`,
+                        value: f.filename,
+                      }))}
+                    />
+                  ) : (
+                    <Select placeholder="Enter a model identifier first" disabled />
+                  )}
+                </Form.Item>
+              )
+            }
           </Form.Item>
 
           <Form.Item

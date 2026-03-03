@@ -9,6 +9,7 @@ interface Props {
   messages: ChatMessage[];
   streamingContent: string;
   isStreaming: boolean;
+  statusMessage?: string | null;
   onUpdateMessage?: (
     id: string,
     updates: { role?: string; content?: string; included?: boolean },
@@ -24,6 +25,7 @@ export default function MessageList({
   messages,
   streamingContent,
   isStreaming,
+  statusMessage,
   onUpdateMessage,
   onDeleteMessage,
   onReplay,
@@ -66,6 +68,11 @@ export default function MessageList({
           <Tag color="green" style={{ marginBottom: 2 }}>
             assistant
           </Tag>
+          {statusMessage && (
+            <Tag color="blue" style={{ marginBottom: 4 }}>
+              {statusMessage}
+            </Tag>
+          )}
           <div
             style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
           >

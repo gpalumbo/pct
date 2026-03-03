@@ -1,7 +1,7 @@
 /** Config API wrapper. */
 
 import client from './client';
-import type { FileEntry, LoRARegistryEntry, ModelRegistryEntry, Project, ProjectStatus } from '../types/config';
+import type { FileEntry, HfGgufFile, LoRARegistryEntry, ModelRegistryEntry, Project, ProjectStatus } from '../types/config';
 
 export const configApi = {
   getProjectStatus: () =>
@@ -41,6 +41,9 @@ export const configApi = {
     client.put<ModelRegistryEntry>(`/api/config/models/${id}`, data).then((r) => r.data),
 
   deleteModel: (id: string) => client.delete(`/api/config/models/${id}`),
+
+  getHfGgufFiles: (repoId: string) =>
+    client.get<HfGgufFile[]>('/api/config/hf-gguf-files', { params: { repo_id: repoId } }).then((r) => r.data),
 
   // LoRA registry
   getLoras: () => client.get<LoRARegistryEntry[]>('/api/config/loras').then((r) => r.data),

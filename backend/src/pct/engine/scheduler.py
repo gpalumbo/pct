@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
 from pct.agent.pool import AgentPool
@@ -11,8 +10,7 @@ from pct.engine.execution import _is_task_blocked, execute_task
 from pct.models.enums import ExecutionStatus
 from pct.storage.feature_io import list_features
 from pct.storage.task_io import list_tasks
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def get_runnable_tasks(project_root: Path) -> list[tuple[str, str]]:
@@ -52,6 +50,6 @@ async def schedule_tasks(
         coro = execute_task(project_root, feature_id, task_id)
         atask = asyncio.create_task(coro, name=f"exec-{feature_id}-{task_id}")
         running.append(atask)
-        logger.info("Scheduled task %s/%s for execution", feature_id, task_id)
+        logger.info("Scheduled task {}/{} for execution", feature_id, task_id)
 
     return running

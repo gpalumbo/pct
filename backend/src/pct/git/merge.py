@@ -7,10 +7,9 @@ conflicts from concurrent task completions.
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 # Module-level dict of asyncio.Lock per feature_id.
 # This ensures only one merge into a feature branch happens at a time.
@@ -66,7 +65,7 @@ async def merge_task_branch(
         )
         if rc != 0:
             logger.error(
-                "Failed to checkout %s: %s", feature_branch, stderr
+                "Failed to checkout {}: {}", feature_branch, stderr
             )
             return False
 
@@ -82,7 +81,7 @@ async def merge_task_branch(
 
         if rc != 0:
             logger.error(
-                "Merge conflict merging %s into %s: %s",
+                "Merge conflict merging {} into {}: {}",
                 task_branch,
                 feature_branch,
                 stderr,
@@ -92,7 +91,7 @@ async def merge_task_branch(
             return False
 
         logger.info(
-            "Successfully merged %s into %s", task_branch, feature_branch
+            "Successfully merged {} into {}", task_branch, feature_branch
         )
         return True
 
@@ -108,7 +107,7 @@ async def detect_conflicts(project_path: Path) -> list[str]:
     )
 
     if rc != 0:
-        logger.error("Failed to detect conflicts: %s", stderr)
+        logger.error("Failed to detect conflicts: {}", stderr)
         return []
 
     if not stdout:

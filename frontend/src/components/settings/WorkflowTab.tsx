@@ -27,12 +27,9 @@ import {
 } from '@hello-pangea/dnd';
 import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
 import type { WorkflowStage, Project } from '../../types/config';
+import { toSlug } from '../../utils/slug';
 
 const { Title, Text } = Typography;
-
-function generateId(): string {
-  return crypto.randomUUID();
-}
 
 interface StageFormValues {
   label: string;
@@ -146,8 +143,13 @@ export default function WorkflowTab() {
           saveStages(updated);
         } else {
           // Add new
+          const newId = toSlug(values.label);
+          if (stages.some((s) => s.id === newId)) {
+            message.error(`Stage "${newId}" already exists`);
+            return;
+          }
           const newStage: WorkflowStage = {
-            id: generateId(),
+            id: newId,
             label: values.label,
             enabled: values.enabled,
             agent_id: values.agent_id || null,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -11,8 +10,7 @@ from datetime import UTC, datetime
 from pct.agent.models import AgentResult, AssembledContext, LLMMessage, TaskOutcome, ToolCall
 from pct.agent.protocols import AgentProvider
 from pct.agent.tools._base import ToolRegistry
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def build_messages(
@@ -67,7 +65,7 @@ async def execute_chat_turn(
     try:
         for _iteration in range(max_tool_iterations + 1):
             logger.debug(
-                "Executing chat turn with %d messages and %d tools",
+                "Executing chat turn with {} messages and {} tools",
                 len(messages),
                 len(tool_definitions or []),
             )
@@ -76,7 +74,7 @@ async def execute_chat_turn(
                 result = await asyncio.wait_for(coro, timeout=timeout_seconds)
             else:
                 result = await coro
-            logger.debug("LLM result: %s", result)
+            logger.debug("LLM result: {}", result)
 
             # No tool calls — final response
             if not result.tool_calls or tool_registry is None:
@@ -105,7 +103,7 @@ async def execute_chat_turn(
 
             # Execute each tool and append results
             for tc in result.tool_calls:
-                logger.info("Tool call: %s(%s)", tc.function_name, tc.arguments)
+                logger.info("Tool call: {}({})", tc.function_name, tc.arguments)
                 try:
                     output = await tool_registry.execute(tc.function_name, tc.arguments)
                     error = None
@@ -115,10 +113,10 @@ async def execute_chat_turn(
 
                 content = error if error else output
                 if error:
-                    logger.warning("Tool error [%s]: %s", tc.function_name, error)
+                    logger.warning("Tool error [{}]: {}", tc.function_name, error)
                 else:
                     preview = output[:200] + ("..." if len(output) > 200 else "")
-                    logger.info("Tool result [%s]: %s", tc.function_name, preview)
+                    logger.info("Tool result [{}]: {}", tc.function_name, preview)
                 messages.append(
                     {
                         "role": "tool",
@@ -134,7 +132,7 @@ async def execute_chat_turn(
     except TimeoutError:
         raise
     except Exception as exc:
-        logger.error("LLM exception: %s", exc)
+        logger.error("LLM exception: {}", exc)
         elapsed = time.monotonic() - start
         return AgentResult(
             outcome=TaskOutcome.error,

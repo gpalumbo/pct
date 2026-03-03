@@ -15,6 +15,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
 import type { ArtifactType } from '../../types/config';
+import { toSlug } from '../../utils/slug';
 
 const { Title } = Typography;
 
@@ -76,7 +77,11 @@ export default function ArtifactTypesTab() {
         );
       } else {
         // Add new
-        const id = crypto.randomUUID();
+        const id = toSlug(values.label);
+        if (types.some((t) => t.id === id)) {
+          message.error(`Artifact type "${id}" already exists`);
+          return;
+        }
         const newType: ArtifactType = {
           id,
           label: values.label,

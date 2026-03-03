@@ -36,4 +36,5 @@ export interface UpdateMessageRequest {
 export type SSEEvent =
   | { type: 'token'; content: string; message?: undefined }
   | { type: 'done'; content?: undefined; message: ChatMessage }
-  | { type: 'error'; content: string; message?: undefined };
+  | { type: 'error'; content: string; message?: undefined }
+  | { type: 'status'; content: string; message?: undefined };

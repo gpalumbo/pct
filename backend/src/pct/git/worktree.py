@@ -7,10 +7,9 @@ feature development. All operations are async using subprocess.
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 async def _run_git(
@@ -62,14 +61,14 @@ async def create_worktree(
 
     if rc != 0:
         logger.error(
-            "Failed to create worktree at %s on branch %s: %s",
+            "Failed to create worktree at {} on branch {}: {}",
             worktree_path,
             branch,
             stderr,
         )
         return False
 
-    logger.info("Created worktree at %s on branch %s", worktree_path, branch)
+    logger.info("Created worktree at {} on branch {}", worktree_path, branch)
     return True
 
 
@@ -83,7 +82,7 @@ async def list_worktrees(project_path: Path) -> list[dict[str, str]]:
     )
 
     if rc != 0:
-        logger.error("Failed to list worktrees: %s", stderr)
+        logger.error("Failed to list worktrees: {}", stderr)
         return []
 
     worktrees: list[dict[str, str]] = []
@@ -129,8 +128,8 @@ async def remove_worktree(
     rc, stdout, stderr = await _run_git(*args, cwd=project_path)
 
     if rc != 0:
-        logger.error("Failed to remove worktree %s: %s", worktree_path, stderr)
+        logger.error("Failed to remove worktree {}: {}", worktree_path, stderr)
         return False
 
-    logger.info("Removed worktree at %s", worktree_path)
+    logger.info("Removed worktree at {}", worktree_path)
     return True

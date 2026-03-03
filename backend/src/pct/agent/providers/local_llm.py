@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -13,8 +12,7 @@ from typing import Any
 from pct.agent.models import AgentResult, ToolCall
 from pct.agent.protocols import CompletionBackend
 from pct.models.enums import TaskOutcome
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def _brace_fix_candidates(raw: str):

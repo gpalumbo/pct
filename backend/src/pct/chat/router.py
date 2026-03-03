@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -22,10 +20,14 @@ from pct.chat.models import (
     SendMessageRequest,
     UpdateMessageRequest,
 )
-from pct.chat.provider_factory import get_default_planning_agent_id, resolve_provider
+from pct.agent.model_downloader import ensure_model_ready
+from pct.chat.provider_factory import (
+    get_default_planning_agent_id,
+    resolve_model_entry_for_agent,
+    resolve_provider,
+)
 from pct.config import settings
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -180,14 +182,22 @@ async def send_message(
     # 4. Stream response
     async def event_stream():
         collected_tokens: list[str] = []
-        token_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        event_queue: asyncio.Queue[dict | None] = asyncio.Queue()
 
         async def on_token(token: str) -> None:
             collected_tokens.append(token)
-            await token_queue.put(token)
+            await event_queue.put({"token": token})
+
+        async def on_status(msg: str) -> None:
+            await event_queue.put({"status": msg})
 
         async def run_chat():
             try:
+                # Auto-download HuggingFace models if needed
+                model_entry = resolve_model_entry_for_agent(agent_id)
+                if model_entry is not None:
+                    await ensure_model_ready(model_entry, on_status)
+
                 provider, agent_cfg = resolve_provider(agent_id)
                 system_prompt = agent_cfg.prompt_template or ""
                 if stage_prompt:
@@ -214,16 +224,16 @@ async def send_message(
                 logger.exception("Chat turn failed")
                 raise
             finally:
-                await token_queue.put(None)
+                await event_queue.put(None)
 
         task = asyncio.create_task(run_chat())
 
-        # Stream tokens as they arrive
+        # Stream events as they arrive
         while True:
-            token = await token_queue.get()
-            if token is None:
+            item = await event_queue.get()
+            if item is None:
                 break
-            yield _sse({"token": token})
+            yield _sse(item)
 
         try:
             assistant_msg = await task

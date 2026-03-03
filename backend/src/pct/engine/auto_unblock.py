@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,8 +10,7 @@ from pct.models.enums import ExecutionStatus
 from pct.storage.feature_io import list_features
 from pct.storage.project_io import load_project_config
 from pct.storage.task_io import list_tasks, load_task, save_task
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def _done_stage_id(project_root: Path) -> str:
@@ -112,7 +110,7 @@ def check_unblocked(
                 save_task(project_root, task)
                 newly_queued.append((feature.id, task.id))
                 logger.info(
-                    "Auto-queued task %s/%s after %s/%s completed",
+                    "Auto-queued task {}/{} after {}/{} completed",
                     feature.id,
                     task.id,
                     completed_feature_id,

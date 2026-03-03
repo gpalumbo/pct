@@ -1,12 +1,10 @@
 """Settings service — config CRUD backed by storage layer."""
 
-import logging
 from pathlib import Path
 
 from pct.models.core import Project
 from pct.storage.project_io import init_project, load_project_config, save_project_config
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def get_project_status(project_root: Path) -> dict:
@@ -62,7 +60,7 @@ def _apply_initial_features(project_root: Path, project_type: str) -> None:
                     ),
                 )
         except Exception:
-            logger.exception("Failed to create initial feature %s", feat_tpl["id"])
+            logger.exception("Failed to create initial feature {}", feat_tpl["id"])
 
 
 def browse_files(base_path: Path, rel_path: str = "") -> list[dict]:

@@ -1,6 +1,7 @@
 import { Modal, Form, Input, App } from 'antd';
 import { useCreateFeature } from '../../hooks/useBoardQueries';
 import type { FeatureCreate } from '../../types/board';
+import { toSlug } from '../../utils/slug';
 
 interface CreateFeatureModalProps {
   open: boolean;
@@ -16,7 +17,7 @@ export default function CreateFeatureModal({ open, onClose }: CreateFeatureModal
     try {
       const values = await form.validateFields();
       const data: FeatureCreate = {
-        id: crypto.randomUUID(),
+        id: toSlug(values.title),
         title: values.title,
         spec_content: values.spec_content,
       };
