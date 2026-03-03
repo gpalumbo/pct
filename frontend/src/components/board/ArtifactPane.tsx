@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Button, Spin, Typography, Empty } from 'antd';
+import { Button, Spin, Typography, Empty, App } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { boardApi } from '../../api/boardApi';
+import { useSaveArtifact } from '../../hooks/useBoardQueries';
 import ArtifactEditorModal from './ArtifactEditorModal';
 
 const { Title } = Typography;
@@ -15,6 +16,8 @@ interface ArtifactPaneProps {
 
 export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
   const [editorOpen, setEditorOpen] = useState(false);
+  const { message } = App.useApp();
+  const saveMutation = useSaveArtifact();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['artifact', featureId, taskId],
@@ -25,6 +28,17 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
   if (isLoading) return <Spin size="small" />;
 
   const content = data?.content ?? '';
+
+  const handleSave = async (md: string) => {
+    try {
+      await saveMutation.mutateAsync({ featureId, taskId, content: md });
+      message.success('Artifact saved');
+      setEditorOpen(false);
+      refetch();
+    } catch {
+      message.error('Failed to save artifact');
+    }
+  };
 
   return (
     <div>
@@ -58,12 +72,8 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
       <ArtifactEditorModal
         open={editorOpen}
         content={content}
-        featureId={featureId}
-        taskId={taskId}
-        onClose={() => {
-          setEditorOpen(false);
-          refetch();
-        }}
+        onSave={handleSave}
+        onCancel={() => setEditorOpen(false)}
       />
     </div>
   );

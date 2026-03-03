@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import TaskCard from './TaskCard';
 import type { Task, WorkflowStage } from '../../types/board';
@@ -8,7 +9,7 @@ interface StageColumnProps {
   featureId: string;
 }
 
-export default function StageColumn({ stage, tasks, featureId }: StageColumnProps) {
+function StageColumnInner({ stage, tasks, featureId }: StageColumnProps) {
   const droppableId = `${featureId}::${stage.id}`;
 
   return (
@@ -50,3 +51,6 @@ export default function StageColumn({ stage, tasks, featureId }: StageColumnProp
     </div>
   );
 }
+
+const StageColumn = memo(StageColumnInner);
+export default StageColumn;

@@ -11,15 +11,24 @@ import {
   Popconfirm,
   Alert,
   Tag,
+  Spin,
+  App,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useLoras, useCreateLora, useUpdateLora, useDeleteLora, useAddLoraVersion } from '../../hooks/useConfigQueries';
 import type { LoRARegistryEntry, LoRAVersion } from '../../types/config';
 
 const { Title } = Typography;
 
 export default function LoRARegistryTab() {
-  const [entries, setEntries] = useState<LoRARegistryEntry[]>([]);
+  const { message } = App.useApp();
+  const { data: entries = [], isLoading } = useLoras();
+  const createLora = useCreateLora();
+  const updateLora = useUpdateLora();
+  const deleteLora = useDeleteLora();
+  const addVersion = useAddLoraVersion();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LoRARegistryEntry | null>(null);
   const [versionModalOpen, setVersionModalOpen] = useState(false);
@@ -51,23 +60,14 @@ export default function LoRARegistryTab() {
     try {
       const values = await form.validateFields();
       if (editingEntry) {
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.id === editingEntry.id
-              ? { ...e, ...values }
-              : e,
-          ),
-        );
+        await updateLora.mutateAsync({
+          id: editingEntry.id,
+          data: values,
+        });
+        message.success('LoRA adapter updated');
       } else {
-        const newEntry: LoRARegistryEntry = {
-          id: crypto.randomUUID(),
-          name: values.name,
-          base_model_id: values.base_model_id,
-          description: values.description ?? '',
-          versions: [],
-          active_version: values.active_version ?? 1,
-        };
-        setEntries((prev) => [...prev, newEntry]);
+        await createLora.mutateAsync(values);
+        message.success('LoRA adapter added');
       }
       setModalOpen(false);
       form.resetFields();
@@ -76,8 +76,9 @@ export default function LoRARegistryTab() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+  const handleDelete = async (id: string) => {
+    await deleteLora.mutateAsync(id);
+    message.success('LoRA adapter deleted');
   };
 
   // ── Version CRUD ───────────────────────────────────────────
@@ -92,22 +93,14 @@ export default function LoRARegistryTab() {
     try {
       const values = await versionForm.validateFields();
       if (!versionTargetId) return;
-      setEntries((prev) =>
-        prev.map((e) => {
-          if (e.id !== versionTargetId) return e;
-          const nextVersion =
-            e.versions.length > 0
-              ? Math.max(...e.versions.map((v) => v.version)) + 1
-              : 1;
-          const newVersion: LoRAVersion = {
-            version: nextVersion,
-            file_path: values.file_path,
-            training_job_id: values.training_job_id || null,
-            created_at: new Date().toISOString(),
-          };
-          return { ...e, versions: [...e.versions, newVersion] };
-        }),
-      );
+      await addVersion.mutateAsync({
+        loraId: versionTargetId,
+        data: {
+          file_path: values.file_path,
+          training_job_id: values.training_job_id || null,
+        },
+      });
+      message.success('Version added');
       setVersionModalOpen(false);
       versionForm.resetFields();
     } catch {
@@ -186,6 +179,8 @@ export default function LoRARegistryTab() {
 
   // ── Render ─────────────────────────────────────────────────
 
+  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />;
+
   return (
     <div>
       <Alert
@@ -246,6 +241,7 @@ export default function LoRARegistryTab() {
           form.resetFields();
         }}
         okText={editingEntry ? 'Save' : 'Add'}
+        confirmLoading={createLora.isPending || updateLora.isPending}
       >
         <Form form={form} layout="vertical" initialValues={{ active_version: 1 }}>
           <Form.Item
@@ -281,6 +277,7 @@ export default function LoRARegistryTab() {
           versionForm.resetFields();
         }}
         okText="Add"
+        confirmLoading={addVersion.isPending}
       >
         <Form form={versionForm} layout="vertical">
           <Form.Item

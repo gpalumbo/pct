@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # Project root — where pct.yaml lives
     project_root: Path = Field(default_factory=lambda: Path.cwd())
 
-    # PCT deployment directory ($PCT_ROOT) — where the PCT application is installed
-    root: Path = Field(default_factory=lambda: Path(__file__).resolve().parent.parent.parent)
+    # PCT deployment directory ($PCT_ROOT) — product install root (backend/..)
+    root: Path = Field(default_factory=lambda: Path(__file__).resolve().parent.parent.parent.parent)
 
     # Global registry dir (~/.pct)
     global_config_dir: Path = Field(default_factory=lambda: Path.home() / ".pct")

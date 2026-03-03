@@ -1,8 +1,8 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { Spin, Empty, Typography } from 'antd';
 import Swimlane from './Swimlane';
-import { useBoardQuery } from '../../hooks/useBoardQueries';
+import { useBoardQuery, useMoveTaskDynamic } from '../../hooks/useBoardQueries';
 import { useBoardStore } from '../../stores/boardStore';
 
 const { Text } = Typography;
@@ -10,6 +10,7 @@ const { Text } = Typography;
 export default function KanbanBoard() {
   const { data: board, isLoading } = useBoardQuery();
   const setBoard = useBoardStore((s) => s.setBoard);
+  const moveTask = useMoveTaskDynamic();
 
   // Keep store in sync with query data
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function KanbanBoard() {
 
   const features = board?.features ?? [];
   const stages = board?.workflow_stages ?? [];
-  const enabledStages = stages.filter((s) => s.enabled);
+  const enabledStages = useMemo(() => stages.filter((s) => s.enabled), [stages]);
 
   const onDragEnd = useCallback(
     (result: DropResult) => {
@@ -37,14 +38,14 @@ export default function KanbanBoard() {
       const taskId = result.draggableId;
 
       if (destStageId && sourceFeatureId && taskId) {
-        // Fire the mutation -- useMoveTask requires featureId/taskId at call site
-        // We use the board API directly here for simplicity
-        import('../../api/boardApi').then(({ boardApi }) => {
-          boardApi.moveTask(sourceFeatureId, taskId, { target_stage_id: destStageId });
+        moveTask.mutate({
+          featureId: sourceFeatureId,
+          taskId,
+          data: { target_stage_id: destStageId },
         });
       }
     },
-    [],
+    [moveTask],
   );
 
   if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />;

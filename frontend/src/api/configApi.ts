@@ -1,7 +1,7 @@
 /** Config API wrapper. */
 
 import client from './client';
-import type { FileEntry, ModelRegistryEntry, Project, ProjectStatus } from '../types/config';
+import type { FileEntry, LoRARegistryEntry, ModelRegistryEntry, Project, ProjectStatus } from '../types/config';
 
 export const configApi = {
   getProjectStatus: () =>
@@ -41,4 +41,18 @@ export const configApi = {
     client.put<ModelRegistryEntry>(`/api/config/models/${id}`, data).then((r) => r.data),
 
   deleteModel: (id: string) => client.delete(`/api/config/models/${id}`),
+
+  // LoRA registry
+  getLoras: () => client.get<LoRARegistryEntry[]>('/api/config/loras').then((r) => r.data),
+
+  createLora: (data: Omit<LoRARegistryEntry, 'id' | 'versions'>) =>
+    client.post<LoRARegistryEntry>('/api/config/loras', data).then((r) => r.data),
+
+  updateLora: (id: string, data: Partial<Omit<LoRARegistryEntry, 'id' | 'versions'>>) =>
+    client.put<LoRARegistryEntry>(`/api/config/loras/${id}`, data).then((r) => r.data),
+
+  deleteLora: (id: string) => client.delete(`/api/config/loras/${id}`),
+
+  addLoraVersion: (loraId: string, data: { file_path: string; training_job_id?: string | null }) =>
+    client.post<LoRARegistryEntry>(`/api/config/loras/${loraId}/versions`, data).then((r) => r.data),
 };

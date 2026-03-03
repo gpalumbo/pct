@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { configApi } from '../api/configApi';
-import type { ModelRegistryEntry, Project } from '../types/config';
+import type { LoRARegistryEntry, ModelRegistryEntry, Project } from '../types/config';
 
 export function useProjectStatus() {
   return useQuery({
@@ -80,5 +80,49 @@ export function useDeleteModel() {
   return useMutation({
     mutationFn: (id: string) => configApi.deleteModel(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+  });
+}
+
+// ── LoRA registry hooks ─────────────────────────────────────────
+
+export function useLoras() {
+  return useQuery({
+    queryKey: ['loras'],
+    queryFn: configApi.getLoras,
+    staleTime: 5000,
+  });
+}
+
+export function useCreateLora() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<LoRARegistryEntry, 'id' | 'versions'>) => configApi.createLora(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
+  });
+}
+
+export function useUpdateLora() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<LoRARegistryEntry, 'id' | 'versions'>> }) =>
+      configApi.updateLora(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
+  });
+}
+
+export function useDeleteLora() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => configApi.deleteLora(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
+  });
+}
+
+export function useAddLoraVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loraId, data }: { loraId: string; data: { file_path: string; training_job_id?: string | null } }) =>
+      configApi.addLoraVersion(loraId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loras'] }),
   });
 }

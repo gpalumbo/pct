@@ -13,10 +13,13 @@ import {
   Popconfirm,
   Alert,
   App,
+  List,
+  Breadcrumb,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useModels, useCreateModel, useUpdateModel, useDeleteModel } from '../../hooks/useConfigQueries';
-import type { ModelRegistryEntry } from '../../types/config';
+import { PlusOutlined, EditOutlined, DeleteOutlined, FolderOpenOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons';
+import { useModels, useCreateModel, useUpdateModel, useDeleteModel, useProject } from '../../hooks/useConfigQueries';
+import { configApi } from '../../api/configApi';
+import type { ModelRegistryEntry, FileEntry } from '../../types/config';
 import type { ProviderType, DownloadStatus } from '../../types/enums';
 
 const { Title } = Typography;
@@ -26,13 +29,6 @@ const providerTypeOptions: { label: string; value: ProviderType }[] = [
   { label: 'Local', value: 'local' },
   { label: 'HuggingFace', value: 'huggingface' },
   { label: 'User', value: 'user' },
-];
-
-const downloadStatusOptions: { label: string; value: DownloadStatus }[] = [
-  { label: 'Pending', value: 'pending' },
-  { label: 'Downloading', value: 'downloading' },
-  { label: 'Ready', value: 'ready' },
-  { label: 'Error', value: 'error' },
 ];
 
 const providerTagColor: Record<ProviderType, string> = {
@@ -56,12 +52,12 @@ interface ModelFormValues {
   context_length: number;
   api_base_url?: string;
   file_path?: string;
-  download_status?: DownloadStatus;
 }
 
 export default function ModelRegistryTab() {
   const { message } = App.useApp();
   const { data: models, isLoading } = useModels();
+  const { data: project } = useProject();
   const createModel = useCreateModel();
   const updateModel = useUpdateModel();
   const deleteModel = useDeleteModel();
@@ -70,10 +66,59 @@ export default function ModelRegistryTab() {
   const [editingModel, setEditingModel] = useState<ModelRegistryEntry | null>(null);
   const [form] = Form.useForm<ModelFormValues>();
 
+  // File browser state
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseEntries, setBrowseEntries] = useState<FileEntry[]>([]);
+  const [browsePath, setBrowsePath] = useState('');
+  const [browseLoading, setBrowseLoading] = useState(false);
+
+  const loadBrowseDir = async (path: string) => {
+    setBrowseLoading(true);
+    try {
+      const entries = await configApi.browseFiles(path);
+      setBrowseEntries(entries);
+      setBrowsePath(path);
+    } catch {
+      message.error('Failed to browse directory');
+    } finally {
+      setBrowseLoading(false);
+    }
+  };
+
+  const openFileBrowser = () => {
+    setBrowseOpen(true);
+    loadBrowseDir('');
+  };
+
+  const selectFile = (entry: FileEntry) => {
+    if (entry.is_dir) {
+      loadBrowseDir(entry.path);
+    } else {
+      const projectDir = project?.directory ?? '';
+      const fullPath = projectDir ? `${projectDir}/${entry.path}`.replace(/\\/g, '/') : entry.path;
+      form.setFieldsValue({ file_path: fullPath });
+      setBrowseOpen(false);
+    }
+  };
+
+  // Auto-default file_path for HuggingFace models when model_identifier changes
+  const handleProviderOrIdChange = () => {
+    const providerType = form.getFieldValue('provider_type');
+    const modelId = form.getFieldValue('model_identifier');
+    if (providerType === 'huggingface' && modelId) {
+      const projectDir = project?.directory ?? '';
+      const safeName = modelId.replace(/\//g, '-');
+      const defaultPath = projectDir
+        ? `${projectDir}/models/${safeName}`.replace(/\\/g, '/')
+        : `models/${safeName}`;
+      form.setFieldsValue({ file_path: defaultPath });
+    }
+  };
+
   const openAddModal = () => {
     setEditingModel(null);
     form.resetFields();
-    form.setFieldsValue({ context_length: 4096 });
+    form.setFieldsValue({ context_length: 0 });
     setModalOpen(true);
   };
 
@@ -86,7 +131,6 @@ export default function ModelRegistryTab() {
       context_length: record.context_length,
       api_base_url: record.api_base_url ?? undefined,
       file_path: record.file_path ?? undefined,
-      download_status: (record.download_status as DownloadStatus) ?? undefined,
     });
     setModalOpen(true);
   };
@@ -107,7 +151,6 @@ export default function ModelRegistryTab() {
         ...values,
         api_base_url: values.api_base_url || null,
         file_path: values.file_path || null,
-        download_status: values.download_status || null,
       };
 
       if (editingModel) {
@@ -223,7 +266,7 @@ export default function ModelRegistryTab() {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ context_length: 4096 }}
+          initialValues={{ context_length: 0 }}
         >
           <Form.Item
             name="name"
@@ -238,7 +281,11 @@ export default function ModelRegistryTab() {
             label="Provider Type"
             rules={[{ required: true, message: 'Please select a provider type' }]}
           >
-            <Select options={providerTypeOptions} placeholder="Select provider type" />
+            <Select
+              options={providerTypeOptions}
+              placeholder="Select provider type"
+              onChange={handleProviderOrIdChange}
+            />
           </Form.Item>
 
           <Form.Item
@@ -246,20 +293,22 @@ export default function ModelRegistryTab() {
             label="Model Identifier"
             rules={[{ required: true, message: 'Please enter a model identifier' }]}
           >
-            <Input placeholder="e.g. gpt-4o, meta-llama/Llama-3.1-8B" />
+            <Input
+              placeholder="e.g. gpt-4o, meta-llama/Llama-3.1-8B"
+              onBlur={handleProviderOrIdChange}
+            />
           </Form.Item>
 
           <Form.Item
             name="context_length"
             label="Context Length"
-            rules={[{ required: true, message: 'Please enter the context length' }]}
           >
             <InputNumber
               min={0}
               max={2_000_000}
               step={1024}
               style={{ width: '100%' }}
-              placeholder="e.g. 4096"
+              placeholder="0"
             />
           </Form.Item>
 
@@ -274,23 +323,76 @@ export default function ModelRegistryTab() {
           <Form.Item
             name="file_path"
             label="File Path"
-            tooltip="Required for local providers. Path to the model file on disk."
+            tooltip="Path to the model file on disk. For HuggingFace models, auto-populated from model ID."
           >
-            <Input placeholder="e.g. /models/llama-3.1-8b.gguf" />
-          </Form.Item>
-
-          <Form.Item
-            name="download_status"
-            label="Download Status"
-            tooltip="Current download status for models that need to be fetched."
-          >
-            <Select
-              options={downloadStatusOptions}
-              placeholder="Select status (optional)"
-              allowClear
+            <Input
+              placeholder="e.g. /models/llama-3.1-8b.gguf"
+              addonAfter={
+                <FolderOpenOutlined
+                  onClick={openFileBrowser}
+                  style={{ cursor: 'pointer' }}
+                  title="Browse files"
+                />
+              }
             />
           </Form.Item>
+
+          {editingModel?.download_status && (
+            <Form.Item label="Download Status">
+              <Tag color={statusTagColor[editingModel.download_status as DownloadStatus] ?? 'default'}>
+                {editingModel.download_status}
+              </Tag>
+            </Form.Item>
+          )}
         </Form>
+      </Modal>
+
+      {/* File Browser Modal */}
+      <Modal
+        title="Browse Files"
+        open={browseOpen}
+        onCancel={() => setBrowseOpen(false)}
+        footer={null}
+        width={560}
+      >
+        <Breadcrumb
+          style={{ marginBottom: 12 }}
+          items={[
+            {
+              title: <a onClick={() => loadBrowseDir('')}>Project Root</a>,
+            },
+            ...browsePath.split('/').filter(Boolean).map((seg, i, arr) => ({
+              title: (
+                <a onClick={() => loadBrowseDir(arr.slice(0, i + 1).join('/'))}>
+                  {seg}
+                </a>
+              ),
+            })),
+          ]}
+        />
+        <List
+          loading={browseLoading}
+          dataSource={browseEntries}
+          size="small"
+          style={{ maxHeight: 400, overflow: 'auto' }}
+          locale={{ emptyText: 'Empty directory' }}
+          renderItem={(entry) => (
+            <List.Item
+              onClick={() => selectFile(entry)}
+              style={{ cursor: 'pointer', padding: '6px 12px' }}
+            >
+              <Space>
+                {entry.is_dir ? <FolderOutlined style={{ color: '#faad14' }} /> : <FileOutlined />}
+                <span>{entry.name}</span>
+              </Space>
+              {!entry.is_dir && (
+                <span style={{ color: '#999', fontSize: 12 }}>
+                  {(entry.size / 1024).toFixed(1)} KB
+                </span>
+              )}
+            </List.Item>
+          )}
+        />
       </Modal>
     </div>
   );

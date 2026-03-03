@@ -1,62 +1,80 @@
-import { useRef, useEffect } from 'react';
-import { Empty } from 'antd';
+import { useEffect, useRef } from 'react';
+import { Spin, Tag } from 'antd';
+import ReactMarkdown from 'react-markdown';
 import MessageBubble from './MessageBubble';
 import type { ChatMessage } from '../../types/chat';
 
-interface MessageListProps {
+interface Props {
   sessionId: string;
   messages: ChatMessage[];
-  streamContent?: string;
-  onToggleInclude: (messageId: string, included: boolean) => void;
-  onEdit?: (messageId: string) => void;
-  onDelete: (messageId: string) => void;
+  streamingContent: string;
+  isStreaming: boolean;
+  onUpdateMessage?: (
+    id: string,
+    updates: { role?: string; content?: string; included?: boolean },
+  ) => void;
+  onDeleteMessage?: (id: string) => void;
+  onReplay?: (msg: ChatMessage) => void;
+  onTruncateAndReplay?: (msg: ChatMessage) => void;
+  onCopyToArtifact?: (content: string) => void;
 }
 
-export default function MessageList({ messages, sessionId, streamContent, onToggleInclude, onEdit, onDelete }: MessageListProps) {
+export default function MessageList({
+  sessionId,
+  messages,
+  streamingContent,
+  isStreaming,
+  onUpdateMessage,
+  onDeleteMessage,
+  onReplay,
+  onTruncateAndReplay,
+  onCopyToArtifact,
+}: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, streamContent]);
-
-  if (messages.length === 0 && !streamContent) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Empty description="No messages yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
-  }
+  }, [messages.length, streamingContent]);
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '8px 4px' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 0' }}>
       {messages.map((msg, idx) => (
         <MessageBubble
           key={msg.id}
           message={msg}
           messageIndex={idx}
           sessionId={sessionId}
-          onToggleInclude={onToggleInclude}
-          onEdit={onEdit}
-          onDelete={onDelete}
+          onUpdate={onUpdateMessage}
+          onDelete={onDeleteMessage}
+          onReplay={onReplay}
+          onTruncateAndReplay={onTruncateAndReplay}
+          onCopyToArtifact={onCopyToArtifact}
+          isStreaming={isStreaming}
         />
       ))}
 
-      {streamContent && (
+      {/* Streaming indicator: temporary assistant bubble */}
+      {isStreaming && (
         <div
           style={{
-            maxWidth: '80%',
-            padding: '8px 12px',
-            borderRadius: 8,
-            backgroundColor: '#f6ffed',
-            border: '1px solid #b7eb8f',
-            fontSize: 13,
-            opacity: 0.8,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            marginBottom: 12,
           }}
         >
-          {streamContent}
-          <span className="streaming-cursor" style={{ animation: 'blink 1s infinite' }}>
-            |
-          </span>
+          <Tag color="green" style={{ marginBottom: 2 }}>
+            assistant
+          </Tag>
+          <div
+            style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
+          >
+            {streamingContent ? (
+              <ReactMarkdown>{streamingContent}</ReactMarkdown>
+            ) : (
+              <Spin size="small" />
+            )}
+          </div>
         </div>
       )}
 

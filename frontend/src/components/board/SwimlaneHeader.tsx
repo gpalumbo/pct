@@ -1,6 +1,6 @@
+import { memo, useCallback } from 'react';
 import { Typography, Badge, Select, App } from 'antd';
-import { boardApi } from '../../api/boardApi';
-import { useQueryClient } from '@tanstack/react-query';
+import { useUpdateFeature } from '../../hooks/useBoardQueries';
 import type { Feature } from '../../types/board';
 import type { FeatureStage } from '../../types/enums';
 
@@ -18,19 +18,20 @@ interface SwimlaneHeaderProps {
   feature: Feature;
 }
 
-export default function SwimlaneHeader({ feature }: SwimlaneHeaderProps) {
+function SwimlaneHeaderInner({ feature }: SwimlaneHeaderProps) {
   const taskCount = feature.tasks.length;
   const { message } = App.useApp();
-  const qc = useQueryClient();
+  const updateFeature = useUpdateFeature();
 
-  const handleStageChange = async (stage: FeatureStage) => {
-    try {
-      await boardApi.updateFeature(feature.id, { stage });
-      qc.invalidateQueries({ queryKey: ['board'] });
-    } catch {
-      message.error('Failed to update feature stage');
-    }
-  };
+  const handleStageChange = useCallback(
+    (stage: FeatureStage) => {
+      updateFeature.mutate(
+        { featureId: feature.id, data: { stage } },
+        { onError: () => message.error('Failed to update feature stage') },
+      );
+    },
+    [updateFeature, feature.id, message],
+  );
 
   return (
     <div
@@ -73,3 +74,6 @@ export default function SwimlaneHeader({ feature }: SwimlaneHeaderProps) {
     </div>
   );
 }
+
+const SwimlaneHeader = memo(SwimlaneHeaderInner);
+export default SwimlaneHeader;

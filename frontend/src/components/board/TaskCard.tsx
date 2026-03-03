@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { Card, Typography, Tag } from 'antd';
 import { Draggable } from '@hello-pangea/dnd';
 import { useBoardStore } from '../../stores/boardStore';
@@ -21,11 +22,16 @@ interface TaskCardProps {
   agentType?: AgentType;
 }
 
-export default function TaskCard({ task, index, featureId, agentType }: TaskCardProps) {
+function TaskCardInner({ task, index, featureId, agentType }: TaskCardProps) {
   const selectTask = useBoardStore((s) => s.selectTask);
   const setTaskPanelOpen = useUIStore((s) => s.setTaskPanelOpen);
   const isBlocked = task.blocked_by.length > 0;
   const borderColor = agentType ? agentBorderColors[agentType] : '#d9d9d9';
+
+  const handleClick = useCallback(() => {
+    selectTask(featureId, task.id);
+    setTaskPanelOpen(true);
+  }, [selectTask, setTaskPanelOpen, featureId, task.id]);
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -47,10 +53,7 @@ export default function TaskCard({ task, index, featureId, agentType }: TaskCard
               cursor: 'pointer',
               boxShadow: snapshot.isDragging ? '0 4px 12px rgba(0,0,0,0.15)' : undefined,
             }}
-            onClick={() => {
-              selectTask(featureId, task.id);
-              setTaskPanelOpen(true);
-            }}
+            onClick={handleClick}
           >
             <Text strong ellipsis style={{ fontSize: 12 }}>
               {task.title}
@@ -87,3 +90,6 @@ export default function TaskCard({ task, index, featureId, agentType }: TaskCard
     </Draggable>
   );
 }
+
+const TaskCard = memo(TaskCardInner);
+export default TaskCard;

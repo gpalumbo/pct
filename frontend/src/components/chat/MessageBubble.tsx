@@ -1,12 +1,25 @@
-import { useState } from 'react';
-import { Typography, Button, Space, Tooltip, Popover, Form, Select, Input, message as antdMessage } from 'antd';
+import { memo, useState } from 'react';
 import {
-  CheckCircleOutlined,
-  MinusCircleOutlined,
+  Checkbox,
+  Input,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  Popover,
+  Form,
+  Button,
+  message as antdMessage,
+} from 'antd';
+import {
   EditOutlined,
+  CheckOutlined,
+  CloseOutlined,
   DeleteOutlined,
-  UserOutlined,
-  RobotOutlined,
+  RedoOutlined,
+  ScissorOutlined,
+  CopyOutlined,
   LikeOutlined,
   DislikeOutlined,
 } from '@ant-design/icons';
@@ -17,30 +30,61 @@ import type { FlagCreate } from '../../types/training';
 import type { AnnotationCategory, FlagType } from '../../types/enums';
 
 const { Text } = Typography;
-const { TextArea } = Input;
+
+const ROLE_COLORS: Record<string, string> = {
+  user: 'blue',
+  assistant: 'green',
+  system: 'orange',
+};
 
 const ANNOTATION_CATEGORIES: AnnotationCategory[] = [
   'style', 'accuracy', 'completeness', 'format', 'instruction_following', 'other',
 ];
 
-interface MessageBubbleProps {
+interface Props {
   message: ChatMessage;
   messageIndex: number;
   sessionId: string;
-  onToggleInclude: (messageId: string, included: boolean) => void;
-  onEdit?: (messageId: string) => void;
-  onDelete: (messageId: string) => void;
+  onUpdate?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
+  onDelete?: (id: string) => void;
+  onReplay?: (msg: ChatMessage) => void;
+  onTruncateAndReplay?: (msg: ChatMessage) => void;
+  onCopyToArtifact?: (content: string) => void;
+  isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message, messageIndex, sessionId, onToggleInclude, onEdit, onDelete }: MessageBubbleProps) {
-  const isUser = message.role === 'user';
-  const isSystem = message.role === 'system';
-  const isAssistant = message.role === 'assistant';
+function MessageBubbleInner({
+  message,
+  messageIndex,
+  sessionId,
+  onUpdate,
+  onDelete,
+  onReplay,
+  onTruncateAndReplay,
+  onCopyToArtifact,
+  isStreaming,
+}: Props) {
+  const [editing, setEditing] = useState(false);
+  const [editRole, setEditRole] = useState(message.role);
+  const [editContent, setEditContent] = useState(message.content);
+
+  // Training feedback state
   const [flagPopoverOpen, setFlagPopoverOpen] = useState(false);
   const [flagType, setFlagType] = useState<FlagType>('positive');
   const [flagCategory, setFlagCategory] = useState<AnnotationCategory | undefined>(undefined);
   const [flagNote, setFlagNote] = useState('');
   const createFlag = useCreateFlagMutation();
+
+  const handleSave = () => {
+    onUpdate?.(message.id, { role: editRole, content: editContent });
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditRole(message.role);
+    setEditContent(message.content);
+    setEditing(false);
+  };
 
   const handleFlag = (type: FlagType) => {
     setFlagType(type);
@@ -66,6 +110,9 @@ export default function MessageBubble({ message, messageIndex, sessionId, onTogg
     }
   };
 
+  const isUser = message.role === 'user';
+  const isAssistant = message.role === 'assistant';
+
   const flagContent = (
     <div style={{ width: 260 }}>
       <Form layout="vertical" size="small">
@@ -79,7 +126,7 @@ export default function MessageBubble({ message, messageIndex, sessionId, onTogg
           />
         </Form.Item>
         <Form.Item label="Note" style={{ marginBottom: 8 }}>
-          <TextArea
+          <Input.TextArea
             rows={2}
             value={flagNote}
             onChange={(e) => setFlagNote(e.target.value)}
@@ -99,76 +146,154 @@ export default function MessageBubble({ message, messageIndex, sessionId, onTogg
         display: 'flex',
         flexDirection: 'column',
         alignItems: isUser ? 'flex-end' : 'flex-start',
-        marginBottom: 8,
-        opacity: message.included ? 1 : 0.5,
+        marginBottom: 12,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-        {isUser ? <UserOutlined style={{ fontSize: 11 }} /> : <RobotOutlined style={{ fontSize: 11 }} />}
-        <Text type="secondary" style={{ fontSize: 11 }}>
+      {/* Header: role badge + metadata */}
+      <Space size={4} style={{ marginBottom: 2 }}>
+        <Tag color={ROLE_COLORS[message.role] || 'default'} style={{ margin: 0 }}>
           {message.role}
-        </Text>
-      </div>
+        </Tag>
+        {message.agent_id && (
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {message.agent_id}
+          </Text>
+        )}
+        {message.tokens != null && (
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {message.tokens} tokens
+          </Text>
+        )}
+      </Space>
 
+      {/* Content bubble */}
       <div
         style={{
-          maxWidth: '80%',
-          padding: '8px 12px',
+          background: isUser ? '#e6f4ff' : '#f6ffed',
           borderRadius: 8,
-          backgroundColor: isSystem ? '#fff7e6' : isUser ? '#e6f7ff' : '#f6ffed',
-          border: `1px solid ${isSystem ? '#ffd591' : isUser ? '#91d5ff' : '#b7eb8f'}`,
-          fontSize: 13,
+          padding: '8px 12px',
+          maxWidth: '80%',
+          wordBreak: 'break-word',
+          opacity: message.included ? 1 : 0.5,
         }}
       >
-        <ReactMarkdown>{message.content}</ReactMarkdown>
+        {editing ? (
+          <div>
+            <Select
+              value={editRole}
+              onChange={setEditRole}
+              size="small"
+              style={{ width: 120, marginBottom: 4 }}
+              options={[
+                { label: 'User', value: 'user' },
+                { label: 'Assistant', value: 'assistant' },
+                { label: 'System', value: 'system' },
+              ]}
+            />
+            <Input.TextArea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              autoSize={{ minRows: 2 }}
+              style={{ marginBottom: 4 }}
+            />
+            <Space size={4}>
+              <CheckOutlined onClick={handleSave} style={{ cursor: 'pointer', color: '#52c41a' }} />
+              <CloseOutlined
+                onClick={handleCancel}
+                style={{ cursor: 'pointer', color: '#ff4d4f' }}
+              />
+            </Space>
+          </div>
+        ) : isAssistant ? (
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        ) : (
+          <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
+        )}
       </div>
 
-      <Space size={2} style={{ marginTop: 2 }}>
-        <Tooltip title={message.included ? 'Exclude from context' : 'Include in context'}>
-          <Button
-            type="text"
-            size="small"
-            icon={message.included ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : <MinusCircleOutlined />}
-            onClick={() => onToggleInclude(message.id, !message.included)}
+      {/* Curation controls */}
+      {onUpdate && !editing && (
+        <Space size={8} style={{ marginTop: 2 }}>
+          <Checkbox
+            checked={message.included}
+            onChange={(e) => onUpdate(message.id, { included: e.target.checked })}
+          >
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Include
+            </Text>
+          </Checkbox>
+          <EditOutlined
+            onClick={() => setEditing(true)}
+            style={{ cursor: 'pointer', fontSize: 12, color: '#8c8c8c' }}
           />
-        </Tooltip>
-        {isAssistant && (
-          <>
-            <Popover
-              content={flagContent}
-              title={flagType === 'positive' ? 'Positive Feedback' : 'Negative Feedback'}
-              trigger="click"
-              open={flagPopoverOpen}
-              onOpenChange={setFlagPopoverOpen}
-            >
-              <Tooltip title="Good response">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LikeOutlined style={{ color: '#52c41a' }} />}
-                  onClick={() => handleFlag('positive')}
-                />
-              </Tooltip>
-            </Popover>
-            <Tooltip title="Poor response">
-              <Button
-                type="text"
-                size="small"
-                icon={<DislikeOutlined style={{ color: '#ff4d4f' }} />}
-                onClick={() => handleFlag('negative')}
+          {onDelete && (
+            <DeleteOutlined
+              onClick={() => onDelete(message.id)}
+              style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
+            />
+          )}
+          {isAssistant && onCopyToArtifact && (
+            <Tooltip title="Copy to artifact">
+              <CopyOutlined
+                onClick={() => onCopyToArtifact(message.content)}
+                style={{ cursor: 'pointer', fontSize: 12, color: '#722ed1' }}
               />
             </Tooltip>
-          </>
-        )}
-        {onEdit && (
-          <Tooltip title="Edit">
-            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(message.id)} />
-          </Tooltip>
-        )}
-        <Tooltip title="Delete">
-          <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => onDelete(message.id)} />
-        </Tooltip>
-      </Space>
+          )}
+          {isUser && onReplay && (
+            <Tooltip title="Replay">
+              <RedoOutlined
+                onClick={() => !isStreaming && onReplay(message)}
+                style={{
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  color: isStreaming ? '#d9d9d9' : '#1677ff',
+                }}
+              />
+            </Tooltip>
+          )}
+          {isUser && onTruncateAndReplay && (
+            <Tooltip title="Truncate & replay">
+              <ScissorOutlined
+                onClick={() => !isStreaming && onTruncateAndReplay(message)}
+                style={{
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  color: isStreaming ? '#d9d9d9' : '#fa8c16',
+                }}
+              />
+            </Tooltip>
+          )}
+          {/* Training feedback (assistant only) */}
+          {isAssistant && (
+            <>
+              <Popover
+                content={flagContent}
+                title={flagType === 'positive' ? 'Positive Feedback' : 'Negative Feedback'}
+                trigger="click"
+                open={flagPopoverOpen}
+                onOpenChange={setFlagPopoverOpen}
+              >
+                <Tooltip title="Good response">
+                  <LikeOutlined
+                    onClick={() => handleFlag('positive')}
+                    style={{ cursor: 'pointer', fontSize: 12, color: '#52c41a' }}
+                  />
+                </Tooltip>
+              </Popover>
+              <Tooltip title="Poor response">
+                <DislikeOutlined
+                  onClick={() => handleFlag('negative')}
+                  style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
+                />
+              </Tooltip>
+            </>
+          )}
+        </Space>
+      )}
     </div>
   );
 }
+
+const MessageBubble = memo(MessageBubbleInner);
+export default MessageBubble;

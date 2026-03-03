@@ -111,34 +111,43 @@ def _scan_gguf(directory: Path) -> list[ModelRegistryEntry]:
     return entries
 
 
-def _scan_safetensors(directory: Path) -> list[ModelRegistryEntry]:
+def _scan_safetensors(
+    directory: Path,
+    imagegen_ids: set[str],
+) -> list[ModelRegistryEntry]:
     """Scan for safetensor model directories.
 
     Detects two layouts:
-      - Diffusers pipelines: directory containing model_index.json
-      - Sharded LLMs: directory containing model.safetensors.index.json
+      - Diffusers pipelines: directory containing model_index.json  -> image_gen
+      - Sharded LLMs: directory containing model.safetensors.index.json -> llm
 
     In both cases the directory itself is registered as file_path (the entry
-    point for from_pretrained()).
+    point for from_pretrained()).  Diffusers pipeline model IDs are added to
+    *imagegen_ids* so callers can assign the correct agent type.
     """
     if not directory.is_dir():
         return []
     entries = []
-    markers = ("model_index.json", "model.safetensors.index.json")
-    for marker in markers:
+    # Order matters: check diffusers first so we tag them correctly
+    marker_is_imagegen = {
+        "model_index.json": True,
+        "model.safetensors.index.json": False,
+    }
+    for marker, is_imagegen in marker_is_imagegen.items():
         for marker_file in sorted(directory.glob(f"**/{marker}")):
             model_dir = marker_file.parent
             model_id = model_dir.name.lower().replace(" ", "-")
             if any(e.id == model_id for e in entries):
                 continue  # already found via another marker in same dir
-            provider = ProviderType.huggingface
             entries.append(ModelRegistryEntry(
                 id=model_id,
                 name=model_dir.name,
-                provider_type=provider,
+                provider_type=ProviderType.huggingface,
                 model_identifier=model_id,
                 file_path=str(model_dir),
             ))
+            if is_imagegen:
+                imagegen_ids.add(model_id)
     return entries
 
 
@@ -146,7 +155,7 @@ def discover_models(
     project_root: Path,
     pct_root: Path,
     global_config_dir: Path,
-) -> list[ModelRegistryEntry]:
+) -> tuple[list[ModelRegistryEntry], set[str]]:
     """Discover models from the search path and existing registry.
 
     Search order (later entries do NOT overwrite earlier ones):
@@ -157,11 +166,15 @@ def discover_models(
     Scans for:
       - .gguf files (single and split-shard, for llama.cpp)
       - Safetensor directories (diffusers pipelines and sharded LLMs)
+
+    Returns (models, imagegen_model_ids) so callers know which models
+    are image-generation (diffusers) pipelines.
     """
     from pct.storage.registry_io import load_model_registry
 
     seen_ids: set[str] = set()
     models: list[ModelRegistryEntry] = []
+    imagegen_ids: set[str] = set()
 
     def _add(entry: ModelRegistryEntry) -> None:
         if entry.id not in seen_ids:
@@ -171,17 +184,25 @@ def discover_models(
     for scan_dir in [project_root / "models", pct_root / "models"]:
         for entry in _scan_gguf(scan_dir):
             _add(entry)
-        for entry in _scan_safetensors(scan_dir):
+        for entry in _scan_safetensors(scan_dir, imagegen_ids):
             _add(entry)
 
     for entry in load_model_registry(global_config_dir):
         _add(entry)
 
-    return models
+    return models, imagegen_ids
 
 
-def _create_default_agents(models: list[ModelRegistryEntry]) -> list[Agent]:
-    """Create a USER agent plus one LLM agent per discovered model."""
+def _create_default_agents(
+    models: list[ModelRegistryEntry],
+    imagegen_ids: set[str] | None = None,
+) -> list[Agent]:
+    """Create a USER agent plus one agent per discovered model.
+
+    Models whose ID appears in *imagegen_ids* get ``AgentType.image_gen``;
+    all others get ``AgentType.llm``.
+    """
+    _imagegen = imagegen_ids or set()
     agents: list[Agent] = [
         Agent(
             id="user",
@@ -192,10 +213,11 @@ def _create_default_agents(models: list[ModelRegistryEntry]) -> list[Agent]:
     ]
     for model in models:
         agent_id = f"agent-{model.id}"
+        atype = AgentType.image_gen if model.id in _imagegen else AgentType.llm
         agents.append(Agent(
             id=agent_id,
             name=model.name,
-            agent_type=AgentType.llm,
+            agent_type=atype,
             model_id=model.id,
         ))
     return agents
@@ -288,6 +310,7 @@ def create_project_from_template(
     template: str,
     directory: str = "",
     models: list[ModelRegistryEntry] | None = None,
+    imagegen_ids: set[str] | None = None,
 ) -> Project:
     """Create a Project with template-appropriate stages, artifact types, and agents."""
     if template == "writing":
@@ -297,7 +320,7 @@ def create_project_from_template(
         stages = CODING_STAGES
         artifact_types = CODING_ARTIFACT_TYPES
 
-    agents = _create_default_agents(models or [])
+    agents = _create_default_agents(models or [], imagegen_ids)
 
     # Pick first LLM agent as default, fall back to user
     llm_agents = [a for a in agents if a.agent_type == AgentType.llm]

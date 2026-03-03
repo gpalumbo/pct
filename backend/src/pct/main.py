@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
         level=settings.log_level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    logger.info("PCT_ROOT = %s", settings.root.resolve())
     logger.info("PCT_PROJECT_ROOT = %s", settings.project_root.resolve())
     logger.info("PCT_GLOBAL_CONFIG_DIR = %s", settings.global_config_dir.resolve())
     init_user_store(settings.global_config_dir)

@@ -31,14 +31,16 @@ export default function BoardPage() {
         onStageFilterChange={setStageFilter}
         stageOptions={stageOptions}
       />
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <KanbanBoard />
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <KanbanBoard />
+        </div>
+        <TaskDetailPanel
+          task={selectedTask}
+          featureId={selectedFeatureId}
+          stages={workflowStages}
+        />
       </div>
-      <TaskDetailPanel
-        task={selectedTask}
-        featureId={selectedFeatureId}
-        stages={workflowStages}
-      />
     </div>
   );
 }
