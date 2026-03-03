@@ -79,7 +79,7 @@ class SearchTool:
 
     async def _web_search(self, query: str, max_results: int) -> str:
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
 
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))

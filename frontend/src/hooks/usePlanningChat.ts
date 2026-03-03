@@ -14,6 +14,7 @@ export function usePlanningChat({ sessionId, initialMessages = [] }: UsePlanning
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refreshMessages = useCallback(async () => {
     const msgs = await chatApi.getMessages(sessionId);
@@ -24,6 +25,17 @@ export function usePlanningChat({ sessionId, initialMessages = [] }: UsePlanning
     async (content: string) => {
       setIsStreaming(true);
       setStreamContent('');
+      setError(null);
+
+      // Optimistic: show user message immediately
+      const userMsg: ChatMessage = {
+        id: 'pending-' + Date.now(),
+        role: 'user' as ChatMessage['role'],
+        content,
+        included: true,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
 
       try {
         await chatApi.sendMessage(sessionId, content, selectedAgentId, (event: SSEEvent) => {
@@ -34,10 +46,12 @@ export function usePlanningChat({ sessionId, initialMessages = [] }: UsePlanning
             refreshMessages();
           } else if (event.type === 'error') {
             setIsStreaming(false);
+            setError(event.content || 'An unknown error occurred');
           }
         });
-      } catch {
+      } catch (e) {
         setIsStreaming(false);
+        setError(e instanceof Error ? e.message : 'Failed to send message');
       }
     },
     [sessionId, selectedAgentId, refreshMessages],
@@ -63,6 +77,7 @@ export function usePlanningChat({ sessionId, initialMessages = [] }: UsePlanning
     messages,
     isStreaming,
     streamContent,
+    error,
     selectedAgentId,
     setSelectedAgentId,
     sendMessage,

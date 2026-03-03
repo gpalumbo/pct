@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Typography, Divider } from 'antd';
+import { Typography, Divider, Alert } from 'antd';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import { usePlanningChat } from '../../hooks/usePlanningChat';
@@ -15,6 +15,7 @@ export default function PlanningChat({ sessionId }: PlanningChatProps) {
     messages,
     isStreaming,
     streamContent,
+    error,
     selectedAgentId,
     setSelectedAgentId,
     sendMessage,
@@ -40,6 +41,15 @@ export default function PlanningChat({ sessionId }: PlanningChatProps) {
         onToggleInclude={toggleIncluded}
         onDelete={deleteMessage}
       />
+
+      {error && (
+        <Alert
+          type="error"
+          message={error}
+          closable
+          style={{ margin: '4px 0' }}
+        />
+      )}
 
       <Divider style={{ margin: '4px 0' }} />
 

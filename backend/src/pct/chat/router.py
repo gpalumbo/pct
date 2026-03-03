@@ -233,8 +233,11 @@ async def send_message(
                     "message": json.loads(assistant_msg.model_dump_json()),
                 }
             )
-        except Exception as e:
+        except ValueError as e:
             yield _sse({"error": str(e)})
+        except Exception as e:
+            logger.exception("Unexpected error in chat stream")
+            yield _sse({"error": f"An unexpected error occurred: {e}"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

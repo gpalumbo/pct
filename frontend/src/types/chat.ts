@@ -18,5 +18,14 @@ export interface SendMessage {
 export interface SSEEvent {
   type: 'token' | 'done' | 'error';
   content?: string;
-  message_id?: string;
+  message?: ChatMessage;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  agent_id?: string | null;
+  created: string;
+  updated: string;
+  message_count: number;
 }

@@ -37,7 +37,10 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
             break
 
     if agent_data is None:
-        raise ValueError(f"Agent not found: {agent_id}")
+        raise ValueError(
+            f"Agent '{agent_id}' not found in project config. "
+            "Check your agents list in Project Settings."
+        )
 
     # Map project Agent model to AgentConfig
     from pct.models.enums import AgentType
@@ -46,9 +49,9 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
         id=agent_data.id,
         agent_type=getattr(agent_data, "agent_type", AgentType.llm),
         provider_type=getattr(agent_data, "provider_type", ProviderType.local),
-        model=getattr(agent_data, "model", ""),
+        model=getattr(agent_data, "model_id", ""),
         prompt_template=getattr(agent_data, "prompt_template", None),
-        context_length=getattr(agent_data, "context_length", None),
+        context_length=getattr(agent_data, "context_length_override", None),
         temperature=getattr(agent_data, "temperature", None),
     )
 
@@ -57,8 +60,9 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
         model_path = _resolve_model_path(agent_cfg.model)
         if model_path is None:
             raise ValueError(
-                f"Model '{agent_cfg.model}' not found in registry "
-                f"(referenced by agent '{agent_id}')"
+                f"Model '{agent_cfg.model}' not found in registry. "
+                f"Agent '{agent_id}' references this model — "
+                "add it via Settings > Models or download it first."
             )
         return LocalLLMProvider(
             model_path=model_path,
@@ -73,16 +77,15 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
 
 
 def _resolve_model_path(model_id: str) -> str | None:
-    """Look up model_path from global registries or project config."""
-    try:
-        from pct.storage.registry_io import load_global_models
+    """Look up file_path from the global model registry (~/.pct/registries/models.yaml)."""
+    from pct.storage.registry_io import load_model_registry
 
-        models = load_global_models()
-        for m in models:
-            if getattr(m, "id", None) == model_id:
-                return getattr(m, "model_path", None)
-    except (ImportError, Exception):
-        pass
+    from pct import config
+
+    models = load_model_registry(config.settings.global_config_dir)
+    for m in models:
+        if m.id == model_id:
+            return m.file_path
     return None
 
 

@@ -7,10 +7,15 @@ from pydantic import BaseModel, Field
 
 
 class PlanningMessage(BaseModel):
+    model_config = {"populate_by_name": True}
+
     id: str = Field(default_factory=lambda: uuid4().hex[:12])
     role: str  # "user", "assistant", "system", "tool"
     content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        validation_alias="timestamp",
+    )
     tokens: int | None = None
     included: bool = True
     agent_id: str | None = None

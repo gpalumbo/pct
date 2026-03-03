@@ -1,13 +1,12 @@
 /** Chat API wrapper with SSE streaming support. */
 
 import client from './client';
-import type { ChatMessage, SSEEvent } from '../types/chat';
+import type { ChatMessage, ChatSession, SSEEvent } from '../types/chat';
 
 export const chatApi = {
-  listSessions: () => client.get<string[]>('/api/chat/sessions').then((r) => r.data),
+  listSessions: () => client.get<ChatSession[]>('/api/chat/sessions').then((r) => r.data),
 
-  getDefaultSession: () =>
-    client.get<{ session_id: string; messages: ChatMessage[] }>('/api/chat/sessions/default').then((r) => r.data),
+  getDefaultSession: () => client.get<ChatSession>('/api/chat/sessions/default').then((r) => r.data),
 
   getMessages: (sessionId: string) =>
     client.get<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`).then((r) => r.data),
@@ -49,7 +48,18 @@ export const chatApi = {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           try {
-            const event: SSEEvent = JSON.parse(line.slice(6));
+            const raw = JSON.parse(line.slice(6));
+            // Normalize raw backend format to SSEEvent
+            let event: SSEEvent;
+            if ('token' in raw) {
+              event = { type: 'token', content: raw.token };
+            } else if ('done' in raw) {
+              event = { type: 'done', message: raw.message };
+            } else if ('error' in raw) {
+              event = { type: 'error', content: raw.error };
+            } else {
+              continue;
+            }
             onEvent?.(event);
           } catch {
             // Skip malformed events

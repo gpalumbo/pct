@@ -1,5 +1,6 @@
 """Application configuration — pydantic-settings, .env, PCT_ prefix."""
 
+import secrets
 from pathlib import Path
 
 from pydantic import Field
@@ -16,7 +17,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Auth
-    secret_key: str = "change-me-in-production"
+    secret_key: str = Field(default_factory=lambda: secrets.token_hex(32))
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440  # 24 hours
 

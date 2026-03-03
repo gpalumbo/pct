@@ -1,40 +1,40 @@
 import { useState, useEffect } from 'react';
 import { Typography, Select, Empty, Spin, Divider } from 'antd';
 import PlanningChat from '../components/chat/PlanningChat';
-import ArtifactPane from '../components/board/ArtifactPane';
 import { chatApi } from '../api/chatApi';
+import type { ChatSession } from '../types/chat';
 
 const { Title } = Typography;
 
-/** Parse a session ID like "featureId--taskId" into its parts. */
-function parseSessionId(sessionId: string): { featureId: string; taskId: string } | null {
-  const parts = sessionId.split('--');
-  if (parts.length === 2 && parts[0] && parts[1]) {
-    return { featureId: parts[0], taskId: parts[1] };
-  }
-  return null;
-}
-
 export default function PlanningPage() {
-  const [sessions, setSessions] = useState<string[]>([]);
+  const [defaultSessionId, setDefaultSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    chatApi
-      .listSessions()
-      .then((list) => {
-        setSessions(list);
-        if (list.length > 0 && !selectedSession) {
-          setSelectedSession(list[0]);
+    // Load the dedicated planning session first, then all sessions for the selector
+    Promise.all([chatApi.getDefaultSession(), chatApi.listSessions()])
+      .then(([defaultSession, allSessions]) => {
+        setDefaultSessionId(defaultSession.id);
+        setSessions(allSessions);
+        if (!selectedSession) {
+          setSelectedSession(defaultSession.id);
         }
+      })
+      .catch(() => {
+        // Fallback: try just listing sessions
+        chatApi.listSessions().then((list) => {
+          setSessions(list);
+          if (list.length > 0 && !selectedSession) {
+            setSelectedSession(list[0].id);
+          }
+        });
       })
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <Spin size="large" style={{ display: 'flex', justifyContent: 'center', marginTop: '20vh' }} />;
-
-  const parsed = selectedSession ? parseSessionId(selectedSession) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', padding: 16, gap: 12 }}>
@@ -49,11 +49,12 @@ export default function PlanningPage() {
           placeholder="Select a session"
           style={{ minWidth: 300 }}
           showSearch
+          optionFilterProp="children"
           allowClear={false}
         >
           {sessions.map((s) => (
-            <Select.Option key={s} value={s}>
-              {s}
+            <Select.Option key={s.id} value={s.id}>
+              {s.id === defaultSessionId ? `${s.title || s.id} (default)` : s.title || s.id}
             </Select.Option>
           ))}
         </Select>
@@ -89,17 +90,13 @@ export default function PlanningPage() {
               overflow: 'auto',
             }}
           >
-            {parsed ? (
-              <ArtifactPane featureId={parsed.featureId} taskId={parsed.taskId} />
-            ) : (
-              <div>
-                <Title level={5} style={{ margin: '0 0 8px 0' }}>
-                  Artifact
-                </Title>
-                <Divider style={{ margin: '8px 0' }} />
-                <Empty description="Select a task session to view artifacts" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              </div>
-            )}
+            <div>
+              <Title level={5} style={{ margin: '0 0 8px 0' }}>
+                Artifacts
+              </Title>
+              <Divider style={{ margin: '8px 0' }} />
+              <Empty description="Project planning artifacts (work/INDEX.md)" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            </div>
           </div>
         </div>
       )}
