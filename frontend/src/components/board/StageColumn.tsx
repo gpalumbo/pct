@@ -1,9 +1,6 @@
-import { Typography } from 'antd';
 import { Droppable } from '@hello-pangea/dnd';
 import TaskCard from './TaskCard';
 import type { Task, WorkflowStage } from '../../types/board';
-
-const { Text } = Typography;
 
 interface StageColumnProps {
   stage: WorkflowStage;
@@ -24,17 +21,6 @@ export default function StageColumn({ stage, tasks, featureId }: StageColumnProp
         flexDirection: 'column',
       }}
     >
-      <Text
-        type="secondary"
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          marginBottom: 4,
-          fontWeight: 600,
-        }}
-      >
-        {stage.label}
-      </Text>
       <Droppable droppableId={droppableId}>
         {(provided, snapshot) => (
           <div

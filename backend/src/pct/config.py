@@ -23,9 +23,22 @@ class Settings(BaseSettings):
     # Project root — where pct.yaml lives
     project_root: Path = Field(default_factory=lambda: Path.cwd())
 
-    # Global registry dir
+    # PCT deployment directory ($PCT_ROOT) — where the PCT application is installed
+    root: Path = Field(default_factory=lambda: Path(__file__).resolve().parent.parent.parent)
+
+    # Global registry dir (~/.pct)
     global_config_dir: Path = Field(default_factory=lambda: Path.home() / ".pct")
 
     # Debug
     debug: bool = False
     log_level: str = "INFO"
+
+
+# Module-level singleton — lazily instantiated
+settings = Settings()
+
+
+def set_settings(new_settings: Settings) -> None:
+    """Replace the global settings instance (used by tests)."""
+    global settings
+    settings = new_settings

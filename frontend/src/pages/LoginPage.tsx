@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
-import { Button, Card, Form, Input, message, Typography } from 'antd';
+import { Button, Card, Form, Input, App, Typography } from 'antd';
 import { useAuthStore } from '../stores/authStore';
 import { configApi } from '../api/configApi';
 
 const { Title } = Typography;
 
 export default function LoginPage() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const login = useAuthStore((s) => s.login);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);

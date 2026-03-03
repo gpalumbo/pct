@@ -1,11 +1,15 @@
 """Project templates — coding and writing presets."""
 
+import re
 from pathlib import Path
 
 from pct.models.agents import Agent, ModelRegistryEntry
 from pct.models.core import Project
 from pct.models.enums import AgentType, ProviderType
 from pct.models.workflow import ArtifactType, WorkflowStage
+
+# Matches GGUF split shard pattern: -NNNNN-of-NNNNN.gguf
+_GGUF_SHARD_RE = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$", re.IGNORECASE)
 
 CODING_STAGES = [
     WorkflowStage(id="refine-spec", label="Refine Spec", sort_order=0),
@@ -75,16 +79,31 @@ WRITING_ARTIFACT_TYPES = [
 ]
 
 
-def _scan_gguf_dir(directory: Path) -> list[ModelRegistryEntry]:
-    """Scan a directory for .gguf files and return ModelRegistryEntry objects."""
+def _scan_gguf(directory: Path) -> list[ModelRegistryEntry]:
+    """Recursively scan for .gguf files.
+
+    For split models (e.g. model-00001-of-00002.gguf), only register the first
+    shard — llama.cpp auto-discovers the rest.  The model ID is derived from the
+    base name (without the shard suffix).
+    """
     if not directory.is_dir():
         return []
     entries = []
-    for gguf_file in sorted(directory.glob("*.gguf")):
-        model_id = gguf_file.stem.lower().replace(" ", "-")
+    for gguf_file in sorted(directory.glob("**/*.gguf")):
+        shard_match = _GGUF_SHARD_RE.search(gguf_file.name)
+        if shard_match:
+            shard_num = int(shard_match.group(1))
+            if shard_num != 1:
+                continue  # skip non-first shards
+            # Use base name without shard suffix as the model name
+            base_name = gguf_file.name[:shard_match.start()]
+        else:
+            base_name = gguf_file.stem
+
+        model_id = base_name.lower().replace(" ", "-")
         entries.append(ModelRegistryEntry(
             id=model_id,
-            name=gguf_file.stem,
+            name=base_name,
             provider_type=ProviderType.local,
             model_identifier=model_id,
             file_path=str(gguf_file),
@@ -92,34 +111,71 @@ def _scan_gguf_dir(directory: Path) -> list[ModelRegistryEntry]:
     return entries
 
 
+def _scan_safetensors(directory: Path) -> list[ModelRegistryEntry]:
+    """Scan for safetensor model directories.
+
+    Detects two layouts:
+      - Diffusers pipelines: directory containing model_index.json
+      - Sharded LLMs: directory containing model.safetensors.index.json
+
+    In both cases the directory itself is registered as file_path (the entry
+    point for from_pretrained()).
+    """
+    if not directory.is_dir():
+        return []
+    entries = []
+    markers = ("model_index.json", "model.safetensors.index.json")
+    for marker in markers:
+        for marker_file in sorted(directory.glob(f"**/{marker}")):
+            model_dir = marker_file.parent
+            model_id = model_dir.name.lower().replace(" ", "-")
+            if any(e.id == model_id for e in entries):
+                continue  # already found via another marker in same dir
+            provider = ProviderType.huggingface
+            entries.append(ModelRegistryEntry(
+                id=model_id,
+                name=model_dir.name,
+                provider_type=provider,
+                model_identifier=model_id,
+                file_path=str(model_dir),
+            ))
+    return entries
+
+
 def discover_models(
     project_root: Path,
+    pct_root: Path,
     global_config_dir: Path,
 ) -> list[ModelRegistryEntry]:
     """Discover models from the search path and existing registry.
 
     Search order (later entries do NOT overwrite earlier ones):
-      1. $PCT_PROJECT_ROOT/models/  (scan .gguf)
-      2. $PCT_ROOT/models/          (scan .gguf)  — global_config_dir/models/
+      1. $PCT_PROJECT_ROOT/models/  — project-local models
+      2. $PCT_ROOT/models/          — PCT deployment directory
       3. ~/.pct/registries/models.yaml  (existing registry entries)
+
+    Scans for:
+      - .gguf files (single and split-shard, for llama.cpp)
+      - Safetensor directories (diffusers pipelines and sharded LLMs)
     """
     from pct.storage.registry_io import load_model_registry
 
     seen_ids: set[str] = set()
     models: list[ModelRegistryEntry] = []
 
-    # Scan directories for .gguf files
-    for scan_dir in [project_root / "models", global_config_dir / "models"]:
-        for entry in _scan_gguf_dir(scan_dir):
-            if entry.id not in seen_ids:
-                seen_ids.add(entry.id)
-                models.append(entry)
-
-    # Load existing registry entries
-    for entry in load_model_registry(global_config_dir):
+    def _add(entry: ModelRegistryEntry) -> None:
         if entry.id not in seen_ids:
             seen_ids.add(entry.id)
             models.append(entry)
+
+    for scan_dir in [project_root / "models", pct_root / "models"]:
+        for entry in _scan_gguf(scan_dir):
+            _add(entry)
+        for entry in _scan_safetensors(scan_dir):
+            _add(entry)
+
+    for entry in load_model_registry(global_config_dir):
+        _add(entry)
 
     return models
 
@@ -143,6 +199,87 @@ def _create_default_agents(models: list[ModelRegistryEntry]) -> list[Agent]:
             model_id=model.id,
         ))
     return agents
+
+
+# ---------------------------------------------------------------------------
+# Initial feature/task definitions per template
+# ---------------------------------------------------------------------------
+
+CODING_INITIAL_FEATURES: list[dict] = [
+    {
+        "id": "f1-project-setup",
+        "title": "Project Setup",
+        "tasks": [
+            {"id": "setup-structure", "title": "Set up project structure and dependencies"},
+            {"id": "setup-lint", "title": "Configure linting and formatting"},
+            {"id": "setup-ci", "title": "Add CI/CD pipeline"},
+            {"id": "setup-readme", "title": "Write initial README"},
+        ],
+    },
+]
+
+WRITING_INITIAL_FEATURES: list[dict] = [
+    {
+        "id": "f0-timeline",
+        "title": "Timeline & History",
+        "tasks": [
+            {"id": "chronology", "title": "Establish world chronology", "artifact_type_id": "timeline"},
+        ],
+    },
+    {
+        "id": "f1-locations",
+        "title": "Locations",
+        "tasks": [
+            {"id": "regions", "title": "Define major regions and geography", "artifact_type_id": "location"},
+            {"id": "cities", "title": "Detail key cities and landmarks", "artifact_type_id": "location"},
+        ],
+    },
+    {
+        "id": "f2-characters",
+        "title": "Characters",
+        "tasks": [
+            {"id": "protagonist", "title": "Create protagonist profile", "artifact_type_id": "character"},
+            {"id": "antagonist", "title": "Create antagonist profile", "artifact_type_id": "character"},
+        ],
+    },
+    {
+        "id": "f3-factions",
+        "title": "Factions & Organizations",
+        "tasks": [
+            {"id": "factions-overview", "title": "Outline major factions and power structures", "artifact_type_id": "faction"},
+            {"id": "faction-relations", "title": "Define faction relationships and conflicts", "artifact_type_id": "faction"},
+        ],
+    },
+    {
+        "id": "f4-magic-religion",
+        "title": "Magic & Religion",
+        "tasks": [
+            {"id": "magic-rules", "title": "Define magic system rules and limitations", "artifact_type_id": "magic-system"},
+            {"id": "religion", "title": "Outline religious traditions and beliefs", "artifact_type_id": "magic-system"},
+        ],
+    },
+    {
+        "id": "f5-technology",
+        "title": "Technology",
+        "tasks": [
+            {"id": "tech-level", "title": "Define technology level and key inventions", "artifact_type_id": "technology"},
+        ],
+    },
+    {
+        "id": "f6-items",
+        "title": "Items & Artifacts",
+        "tasks": [
+            {"id": "items-catalog", "title": "Catalog significant items and their origins", "artifact_type_id": "item"},
+        ],
+    },
+]
+
+
+def get_initial_features(template: str) -> list[dict]:
+    """Return the initial feature/task definitions for a project template."""
+    if template == "writing":
+        return WRITING_INITIAL_FEATURES
+    return CODING_INITIAL_FEATURES
 
 
 def create_project_from_template(

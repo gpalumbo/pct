@@ -10,7 +10,7 @@ import {
   Input,
   Popconfirm,
   ColorPicker,
-  message,
+  App,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useProject, useUpdateProject } from '../../hooks/useConfigQueries';
@@ -25,6 +25,7 @@ interface FormValues {
 }
 
 export default function ArtifactTypesTab() {
+  const { message } = App.useApp();
   const { data: project } = useProject();
   const updateProject = useUpdateProject();
   const types: ArtifactType[] = project?.artifact_types ?? [];

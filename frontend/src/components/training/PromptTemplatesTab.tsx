@@ -9,7 +9,7 @@ import {
   List,
   Tag,
   Empty,
-  message,
+  App,
 } from 'antd';
 import {
   PlusOutlined,
@@ -28,6 +28,7 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export default function PromptTemplatesTab() {
+  const { message } = App.useApp();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editContent, setEditContent] = useState('');

@@ -1,53 +1,71 @@
-"""ReadTool — read files or fetch URLs."""
+"""Read tool: read content from a file path or URL."""
 
+from __future__ import annotations
+
+import json
 from pathlib import Path
 from typing import Any
 
+from pct.agent.tools.file_tools import _resolve_safe
+
 
 class ReadTool:
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
+    """Read content from a file path or URL. Auto-detects source type."""
+
+    def __init__(self, root_dir: Path) -> None:
+        self._root = Path(root_dir)
 
     @property
     def name(self) -> str:
         return "read"
 
     @property
-    def description(self) -> str:
-        return "Read a file from the project or fetch a URL."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
+    def definition(self) -> dict[str, Any]:
         return {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "File path or URL to read"},
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": (
+                    "Read content from a file path or URL."
+                    " Provide a file path relative to the project root,"
+                    " or a URL starting with http:// or https://."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source": {
+                            "type": "string",
+                            "description": "File path relative to project root, or a URL.",
+                        },
+                    },
+                    "required": ["source"],
+                },
             },
-            "required": ["path"],
         }
 
-    async def execute(self, path: str = "", **kwargs: Any) -> str:
-        if path.startswith("http://") or path.startswith("https://"):
-            return await self._fetch_url(path)
-        return self._read_file(path)
+    async def execute(self, arguments: str) -> str:
+        try:
+            parsed = json.loads(arguments)
+            source = parsed["source"]
+
+            if source.startswith("http://") or source.startswith("https://"):
+                return await self._fetch_url(source)
+            else:
+                return self._read_file(source)
+        except Exception as e:
+            return f"[error] {e}"
 
     def _read_file(self, path: str) -> str:
-        file_path = Path(path)
-        if not file_path.is_absolute():
-            file_path = self.project_root / path
-        if not file_path.exists():
-            return f"Error: File not found: {path}"
-        try:
-            return file_path.read_text(encoding="utf-8")
-        except Exception as e:
-            return f"Error reading file: {e}"
+        target = _resolve_safe(self._root, path)
+        return target.read_text(encoding="utf-8")
 
     async def _fetch_url(self, url: str) -> str:
-        try:
-            import httpx
+        import httpx
 
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(url)
-                return resp.text[:10000]  # Limit response size
-        except Exception as e:
-            return f"Error fetching URL: {e}"
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            text = resp.text
+            if len(text) > 10000:
+                text = text[:10000]
+            return text

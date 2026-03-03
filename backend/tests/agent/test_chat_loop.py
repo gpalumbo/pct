@@ -1,16 +1,20 @@
 """Tests for chat loop."""
 
+import json
 
-from pct.agent.chat_loop import execute_chat_turn
-from pct.agent.models import AgentResult, TaskOutcome, ToolCall
+from pct.agent.chat_loop import build_messages, execute_chat_turn
+from pct.agent.models import AgentResult, AssembledContext, ToolCall
 from pct.agent.tools._base import ToolRegistry
+from pct.models.enums import TaskOutcome
 
 
 class MockProvider:
     """Mock provider for testing."""
 
     def __init__(self, responses=None):
-        self.responses = responses or [AgentResult(outcome=TaskOutcome.success, output="Done")]
+        self.responses = responses or [
+            AgentResult(outcome=TaskOutcome.approved, output="Done")
+        ]
         self._call_count = 0
 
     async def execute(self, messages, on_token=None, tools=None):
@@ -31,49 +35,74 @@ class MockTool:
         return "mock_tool"
 
     @property
-    def description(self):
-        return "A mock tool"
+    def definition(self):
+        return {
+            "type": "function",
+            "function": {
+                "name": "mock_tool",
+                "description": "A mock tool",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
 
-    @property
-    def parameters(self):
-        return {"type": "object", "properties": {}}
-
-    async def execute(self, **kwargs):
+    async def execute(self, arguments: str) -> str:
         return self._result
+
+
+class TestBuildMessages:
+    def test_with_system_prompt(self):
+        ctx = AssembledContext(base="Hello world")
+        msgs = build_messages(ctx, system_prompt="You are helpful.")
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert msgs[0]["content"] == "You are helpful."
+        assert msgs[1]["role"] == "user"
+        assert msgs[1]["content"] == "Hello world"
+
+    def test_without_system_prompt(self):
+        ctx = AssembledContext(base="Hello world")
+        msgs = build_messages(ctx)
+        assert len(msgs) == 1
+        assert msgs[0]["role"] == "user"
 
 
 class TestChatLoop:
     async def test_no_tools(self):
         provider = MockProvider()
-        result = await execute_chat_turn(provider, [{"role": "user", "content": "Hi"}])
-        assert result.outcome == TaskOutcome.success
+        ctx = AssembledContext(base="Hi")
+        result = await execute_chat_turn(provider, ctx)
+        assert result.outcome == TaskOutcome.approved
         assert result.output == "Done"
 
     async def test_with_tools_no_calls(self):
         provider = MockProvider()
         registry = ToolRegistry()
         registry.register(MockTool())
-        result = await execute_chat_turn(
-            provider, [{"role": "user", "content": "Hi"}], tool_registry=registry
-        )
-        assert result.outcome == TaskOutcome.success
+        ctx = AssembledContext(base="Hi")
+        result = await execute_chat_turn(provider, ctx, tool_registry=registry)
+        assert result.outcome == TaskOutcome.approved
 
     async def test_tool_execution(self):
         # First call returns tool calls, second call returns final result
         provider = MockProvider([
             AgentResult(
                 outcome=TaskOutcome.in_progress,
-                tool_calls=[ToolCall(tool_name="mock_tool", arguments={})],
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function_name="mock_tool",
+                        arguments="{}",
+                    )
+                ],
             ),
-            AgentResult(outcome=TaskOutcome.success, output="Final"),
+            AgentResult(outcome=TaskOutcome.approved, output="Final"),
         ])
         registry = ToolRegistry()
         registry.register(MockTool("tool output"))
 
-        result = await execute_chat_turn(
-            provider, [{"role": "user", "content": "Do something"}], tool_registry=registry
-        )
-        assert result.outcome == TaskOutcome.success
+        ctx = AssembledContext(base="Do something")
+        result = await execute_chat_turn(provider, ctx, tool_registry=registry)
+        assert result.outcome == TaskOutcome.approved
         assert len(result.tool_calls) >= 1
 
     async def test_error_handling(self):
@@ -84,8 +113,9 @@ class TestChatLoop:
             async def interrupt(self):
                 pass
 
-        result = await execute_chat_turn(ErrorProvider(), [{"role": "user", "content": "Hi"}])
-        assert result.outcome == TaskOutcome.failure
+        ctx = AssembledContext(base="Hi")
+        result = await execute_chat_turn(ErrorProvider(), ctx)
+        assert result.outcome == TaskOutcome.error
         assert "Provider error" in result.error
 
     async def test_token_callback(self):
@@ -95,6 +125,16 @@ class TestChatLoop:
             tokens.append(t)
 
         provider = MockProvider()
-        await execute_chat_turn(provider, [{"role": "user", "content": "Hi"}], on_token=on_token)
+        ctx = AssembledContext(base="Hi")
+        await execute_chat_turn(provider, ctx, on_token=on_token)
         # Provider mock doesn't call on_token, so tokens stays empty
         # This just tests that on_token is passed through without error
+
+    async def test_messages_recorded(self):
+        provider = MockProvider()
+        ctx = AssembledContext(base="Hello")
+        result = await execute_chat_turn(
+            provider, ctx, system_prompt="Be helpful."
+        )
+        # Should have system + user messages plus the assistant response
+        assert len(result.messages) >= 2

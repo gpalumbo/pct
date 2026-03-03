@@ -12,8 +12,10 @@ import {
   Select,
   Popconfirm,
   Alert,
+  App,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useModels, useCreateModel, useUpdateModel, useDeleteModel } from '../../hooks/useConfigQueries';
 import type { ModelRegistryEntry } from '../../types/config';
 import type { ProviderType, DownloadStatus } from '../../types/enums';
 
@@ -58,7 +60,12 @@ interface ModelFormValues {
 }
 
 export default function ModelRegistryTab() {
-  const [models, setModels] = useState<ModelRegistryEntry[]>([]);
+  const { message } = App.useApp();
+  const { data: models, isLoading } = useModels();
+  const createModel = useCreateModel();
+  const updateModel = useUpdateModel();
+  const deleteModel = useDeleteModel();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelRegistryEntry | null>(null);
   const [form] = Form.useForm<ModelFormValues>();
@@ -84,41 +91,31 @@ export default function ModelRegistryTab() {
     setModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    setModels((prev) => prev.filter((m) => m.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteModel.mutateAsync(id);
+      message.success('Model deleted');
+    } catch {
+      message.error('Failed to delete model');
+    }
   };
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const payload = {
+        ...values,
+        api_base_url: values.api_base_url || null,
+        file_path: values.file_path || null,
+        download_status: values.download_status || null,
+      };
+
       if (editingModel) {
-        // Update existing
-        setModels((prev) =>
-          prev.map((m) =>
-            m.id === editingModel.id
-              ? {
-                  ...m,
-                  ...values,
-                  api_base_url: values.api_base_url || null,
-                  file_path: values.file_path || null,
-                  download_status: values.download_status || null,
-                }
-              : m,
-          ),
-        );
+        await updateModel.mutateAsync({ id: editingModel.id, data: payload });
+        message.success('Model updated');
       } else {
-        // Create new
-        const newEntry: ModelRegistryEntry = {
-          id: crypto.randomUUID(),
-          name: values.name,
-          provider_type: values.provider_type,
-          model_identifier: values.model_identifier,
-          context_length: values.context_length,
-          api_base_url: values.api_base_url || null,
-          file_path: values.file_path || null,
-          download_status: values.download_status || null,
-        };
-        setModels((prev) => [...prev, newEntry]);
+        await createModel.mutateAsync(payload);
+        message.success('Model added');
       }
       setModalOpen(false);
       form.resetFields();
@@ -195,12 +192,6 @@ export default function ModelRegistryTab() {
         message="Model registry entries are auto-discovered from your models directory. You can also manually add entries here."
         style={{ marginBottom: 16 }}
       />
-      <Alert
-        type="warning"
-        showIcon
-        message="Note: Model registry persistence coming soon. Entries added here are stored in browser memory only."
-        style={{ marginBottom: 16 }}
-      />
 
       <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Title level={5} style={{ margin: 0 }}>
@@ -212,9 +203,10 @@ export default function ModelRegistryTab() {
       </Space>
 
       <Table
-        dataSource={models}
+        dataSource={models ?? []}
         columns={columns}
         rowKey="id"
+        loading={isLoading}
         locale={{ emptyText: 'No models registered yet. Click "Add Model" to get started.' }}
         size="small"
       />
@@ -225,6 +217,7 @@ export default function ModelRegistryTab() {
         onOk={handleSubmit}
         onCancel={handleCancel}
         okText={editingModel ? 'Save' : 'Add'}
+        confirmLoading={createModel.isPending || updateModel.isPending}
         width={560}
       >
         <Form

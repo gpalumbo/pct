@@ -10,7 +10,7 @@ import {
   Form,
   Input,
   Popconfirm,
-  message,
+  App,
 } from 'antd';
 import {
   LikeOutlined,
@@ -50,6 +50,7 @@ const curationStatusColors: Record<CurationStatus, string> = {
 };
 
 export default function TrainingDataTab() {
+  const { message } = App.useApp();
   const [filterFlagType, setFilterFlagType] = useState<string | undefined>(undefined);
   const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
   const [editingFlag, setEditingFlag] = useState<TrainingFlag | null>(null);

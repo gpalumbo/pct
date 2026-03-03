@@ -1,27 +1,24 @@
-"""ClaudeCodeProvider — stub for Claude Code CLI integration."""
+"""ClaudeCodeProvider — subprocess-based remote Claude Code CLI provider (stub)."""
+
+from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
-from pct.agent.models import AgentResult, TaskOutcome
+from pct.agent.models import AgentResult
 
 
 class ClaudeCodeProvider:
-    """Stub provider for Claude Code CLI."""
+    """Agent provider that delegates to Claude Code CLI via subprocess.
 
-    def __init__(self, cli_command: str = "claude"):
-        self.cli_command = cli_command
+    Not yet implemented — raises NotImplementedError on all operations.
+    """
 
     async def execute(
         self,
         messages: list[dict[str, str]],
         on_token: Callable[[str], Awaitable[None]] | None = None,
-        tools: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
-        return AgentResult(
-            outcome=TaskOutcome.failure,
-            error="ClaudeCodeProvider not yet implemented",
-        )
+        raise NotImplementedError("ClaudeCodeProvider is not yet implemented")
 
     async def interrupt(self) -> None:
-        pass
+        raise NotImplementedError("ClaudeCodeProvider is not yet implemented")

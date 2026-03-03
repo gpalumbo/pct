@@ -1,12 +1,6 @@
 """Tests for context builder."""
 
-from pathlib import Path
-
-from pct.board.models import FeatureCreate, TaskCreate
-from pct.board.service import BoardService
 from pct.chat.context_builder import expand_template, resolve_task_context
-from pct.models.core import Project
-from pct.storage.project_io import init_project
 
 
 class TestExpandTemplate:
@@ -28,46 +22,21 @@ class TestExpandTemplate:
 
 
 class TestResolveTaskContext:
-    def test_basic_context(self, tmp_project_root: Path):
-        project = Project(
-            id="test",
-            name="Test",
-            workflow_stages=[
-                {"id": "refine-spec", "label": "Refine Spec", "enabled": True, "sort_order": 0, "auto_run": False},
-                {"id": "done", "label": "Done", "enabled": True, "sort_order": 1, "auto_run": False},
-            ],
-        )
-        init_project(tmp_project_root, project)
+    def test_non_task_session_returns_empty(self):
+        """Non-task session IDs should return empty context."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("planning")
+        assert cross_ref == ""
+        assert artifact_prompt is None
+        assert stage_prompt is None
 
-        svc = BoardService(tmp_project_root)
-        svc.create_feature(FeatureCreate(id="f1", title="Feature 1"))
-        svc.create_task("f1", TaskCreate(id="t1", title="Task 1"))
+    def test_invalid_session_id_format(self):
+        """Invalid task session format returns empty."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("task-onlyfeature")
+        assert cross_ref == ""
 
-        ctx = resolve_task_context(tmp_project_root, "f1", "t1")
-        assert ctx["task_title"] == "Task 1"
-        assert "f1/t1/" in ctx["artifact_work_dir"]
-
-    def test_nonexistent_task(self, tmp_project_root: Path):
-        ctx = resolve_task_context(tmp_project_root, "f1", "nope")
-        assert ctx == {}
-
-    def test_custom_variables(self, tmp_project_root: Path):
-        project = Project(
-            id="test",
-            name="Test",
-            workflow_stages=[
-                {"id": "refine-spec", "label": "RS", "enabled": True, "sort_order": 0, "auto_run": False},
-                {"id": "done", "label": "Done", "enabled": True, "sort_order": 1, "auto_run": False},
-            ],
-        )
-        init_project(tmp_project_root, project)
-        svc = BoardService(tmp_project_root)
-        svc.create_feature(FeatureCreate(id="f1", title="F1"))
-        svc.create_task("f1", TaskCreate(id="t1", title="T1"))
-
-        ctx = resolve_task_context(
-            tmp_project_root, "f1", "t1", custom_variables={"genre": "Fantasy"}
-        )
-        assert ctx["genre"] == "Fantasy"
-        # Built-in should not be overridden by custom
-        assert ctx["task_title"] == "T1"
+    def test_task_prefix_required(self):
+        """Session IDs not starting with 'task-' return empty."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("some-other")
+        assert cross_ref == ""
+        assert artifact_prompt is None
+        assert stage_prompt is None

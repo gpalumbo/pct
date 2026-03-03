@@ -1,56 +1,101 @@
-"""SearchTool — combined web search + RAG semantic search."""
+"""Search tool: combined web search and RAG semantic search."""
 
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class SearchTool:
-    def __init__(self, project_root=None):
-        self.project_root = project_root
+    """Search the web and project knowledge base."""
+
+    def __init__(self, project_id: str = "") -> None:
+        self._project_id = project_id
 
     @property
     def name(self) -> str:
         return "search"
 
     @property
-    def description(self) -> str:
-        return "Search the web or project knowledge base."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
+    def definition(self) -> dict[str, Any]:
         return {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "source": {"type": "string", "enum": ["web", "rag", "both"], "default": "both"},
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": (
+                    "Search the web and project knowledge base."
+                    " Returns combined results from both sources."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query.",
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum results per source (default 5).",
+                        },
+                    },
+                    "required": ["query"],
+                },
             },
-            "required": ["query"],
         }
 
-    async def execute(self, query: str = "", source: str = "both", **kwargs: Any) -> str:
-        results = []
+    async def execute(self, arguments: str) -> str:
+        try:
+            parsed = json.loads(arguments)
+            query = parsed["query"]
+            max_results = parsed.get("max_results", 5)
 
-        if source in ("web", "both"):
-            web_results = await self._web_search(query)
-            if web_results:
-                results.append("## Web Results\n" + web_results)
+            web_coro = self._web_search(query, max_results)
+            rag_coro = self._rag_search(query, max_results)
 
-        if source in ("rag", "both"):
-            rag_results = self._rag_search(query)
-            if rag_results:
-                results.append("## RAG Results\n" + rag_results)
+            web_result, rag_result = await asyncio.gather(
+                web_coro, rag_coro, return_exceptions=True
+            )
 
-        return "\n\n".join(results) if results else "No results found."
+            sections = []
 
-    async def _web_search(self, query: str) -> str:
+            if isinstance(web_result, Exception):
+                sections.append(f"## Web Results\n\n[error] {web_result}")
+            else:
+                sections.append(f"## Web Results\n\n{web_result}")
+
+            if isinstance(rag_result, Exception):
+                logger.debug("RAG search failed: %s", rag_result)
+                sections.append("## Project Results\n\nNo project index available.")
+            else:
+                sections.append(f"## Project Results\n\n{rag_result}")
+
+            return "\n\n".join(sections)
+        except Exception as e:
+            return f"[error] {e}"
+
+    async def _web_search(self, query: str, max_results: int) -> str:
         try:
             from duckduckgo_search import DDGS
 
             with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=3))
-                return "\n".join(f"- {r['title']}: {r['body']}" for r in results)
+                results = list(ddgs.text(query, max_results=max_results))
+
+            if not results:
+                return "No results found."
+
+            lines = []
+            for r in results:
+                lines.append(f"**{r.get('title', '')}**")
+                lines.append(r.get("href", ""))
+                lines.append(r.get("body", ""))
+                lines.append("")
+            return "\n".join(lines).strip()
         except Exception as e:
             return f"Web search error: {e}"
 
-    def _rag_search(self, query: str) -> str:
-        # Stub — will be implemented in Phase 6
-        return ""
+    async def _rag_search(self, query: str, max_results: int) -> str:
+        return "No documents indexed yet."

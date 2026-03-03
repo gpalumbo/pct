@@ -11,7 +11,7 @@ import {
   Popconfirm,
   Descriptions,
   List,
-  message,
+  App,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -27,6 +27,7 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export default function DatasetsTab() {
+  const { message } = App.useApp();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingDataset, setEditingDataset] = useState<Dataset | null>(null);
   const [viewingDataset, setViewingDataset] = useState<Dataset | null>(null);

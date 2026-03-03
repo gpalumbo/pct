@@ -1,5 +1,8 @@
 """Tests for tool registry."""
 
+import json
+
+import pytest
 
 from pct.agent.tools._base import ToolRegistry
 
@@ -10,14 +13,17 @@ class MockTool:
         return "test"
 
     @property
-    def description(self):
-        return "Test tool"
+    def definition(self):
+        return {
+            "type": "function",
+            "function": {
+                "name": "test",
+                "description": "Test tool",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
 
-    @property
-    def parameters(self):
-        return {"type": "object", "properties": {}}
-
-    async def execute(self, **kwargs):
+    async def execute(self, arguments: str) -> str:
         return "test result"
 
 
@@ -27,14 +33,17 @@ class ErrorTool:
         return "error"
 
     @property
-    def description(self):
-        return "Error tool"
+    def definition(self):
+        return {
+            "type": "function",
+            "function": {
+                "name": "error",
+                "description": "Error tool",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
 
-    @property
-    def parameters(self):
-        return {"type": "object", "properties": {}}
-
-    async def execute(self, **kwargs):
+    async def execute(self, arguments: str) -> str:
         raise ValueError("Tool error")
 
 
@@ -56,19 +65,19 @@ class TestToolRegistry:
     async def test_execute(self):
         registry = ToolRegistry()
         registry.register(MockTool())
-        result = await registry.execute("test")
+        result = await registry.execute("test", "{}")
         assert result == "test result"
 
     async def test_execute_unknown(self):
         registry = ToolRegistry()
-        result = await registry.execute("nonexistent")
-        assert "Unknown tool" in result
+        with pytest.raises(KeyError, match="Unknown tool"):
+            await registry.execute("nonexistent", "{}")
 
-    async def test_execute_error_handling(self):
+    async def test_execute_error_propagates(self):
         registry = ToolRegistry()
         registry.register(ErrorTool())
-        result = await registry.execute("error")
-        assert "Error executing error" in result
+        with pytest.raises(ValueError, match="Tool error"):
+            await registry.execute("error", "{}")
 
     def test_tool_names(self):
         registry = ToolRegistry()

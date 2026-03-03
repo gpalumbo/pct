@@ -1,6 +1,7 @@
 import { Card, Typography, Tag } from 'antd';
 import { Draggable } from '@hello-pangea/dnd';
 import { useBoardStore } from '../../stores/boardStore';
+import { useUIStore } from '../../stores/uiStore';
 import type { Task } from '../../types/board';
 import type { AgentType } from '../../types/enums';
 
@@ -22,6 +23,7 @@ interface TaskCardProps {
 
 export default function TaskCard({ task, index, featureId, agentType }: TaskCardProps) {
   const selectTask = useBoardStore((s) => s.selectTask);
+  const setTaskPanelOpen = useUIStore((s) => s.setTaskPanelOpen);
   const isBlocked = task.blocked_by.length > 0;
   const borderColor = agentType ? agentBorderColors[agentType] : '#d9d9d9';
 
@@ -45,7 +47,10 @@ export default function TaskCard({ task, index, featureId, agentType }: TaskCard
               cursor: 'pointer',
               boxShadow: snapshot.isDragging ? '0 4px 12px rgba(0,0,0,0.15)' : undefined,
             }}
-            onClick={() => selectTask(featureId, task.id)}
+            onClick={() => {
+              selectTask(featureId, task.id);
+              setTaskPanelOpen(true);
+            }}
           >
             <Text strong ellipsis style={{ fontSize: 12 }}>
               {task.title}

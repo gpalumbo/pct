@@ -1,7 +1,7 @@
 /** Config API wrapper. */
 
 import client from './client';
-import type { FileEntry, Project, ProjectStatus } from '../types/config';
+import type { FileEntry, ModelRegistryEntry, Project, ProjectStatus } from '../types/config';
 
 export const configApi = {
   getProjectStatus: () =>
@@ -30,4 +30,15 @@ export const configApi = {
     client.post<{ access_token: string }>('/api/auth/login', { email, password }).then((r) => r.data),
 
   getMe: () => client.get<{ email: string }>('/api/auth/me').then((r) => r.data),
+
+  // Model registry
+  getModels: () => client.get<ModelRegistryEntry[]>('/api/config/models').then((r) => r.data),
+
+  createModel: (data: Omit<ModelRegistryEntry, 'id'>) =>
+    client.post<ModelRegistryEntry>('/api/config/models', data).then((r) => r.data),
+
+  updateModel: (id: string, data: Partial<Omit<ModelRegistryEntry, 'id'>>) =>
+    client.put<ModelRegistryEntry>(`/api/config/models/${id}`, data).then((r) => r.data),
+
+  deleteModel: (id: string) => client.delete(`/api/config/models/${id}`),
 };

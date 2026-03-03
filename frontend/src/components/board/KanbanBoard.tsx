@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { Spin, Empty, Typography } from 'antd';
 import Swimlane from './Swimlane';
@@ -12,9 +12,11 @@ export default function KanbanBoard() {
   const setBoard = useBoardStore((s) => s.setBoard);
 
   // Keep store in sync with query data
-  if (board) {
-    setBoard(board.features, board.workflow_stages);
-  }
+  useEffect(() => {
+    if (board) {
+      setBoard(board.features, board.workflow_stages);
+    }
+  }, [board, setBoard]);
 
   const features = board?.features ?? [];
   const stages = board?.workflow_stages ?? [];
@@ -57,8 +59,19 @@ export default function KanbanBoard() {
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      {/* Stage column headers */}
-      <div style={{ display: 'flex', gap: 8, paddingLeft: 168, marginBottom: 4 }}>
+      {/* Stage column headers — sticky so they stay visible while scrolling */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          paddingLeft: 168,
+          marginBottom: 4,
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          background: '#fff',
+        }}
+      >
         {enabledStages.map((stage) => (
           <div
             key={stage.id}
@@ -81,11 +94,9 @@ export default function KanbanBoard() {
       </div>
 
       {/* Swimlanes */}
-      {features
-        .filter((f) => f.stage !== 'planning')
-        .map((feature) => (
-          <Swimlane key={feature.id} feature={feature} stages={stages} />
-        ))}
+      {features.map((feature) => (
+        <Swimlane key={feature.id} feature={feature} stages={stages} />
+      ))}
     </DragDropContext>
   );
 }

@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pct.agent.models import AgentResult, TaskOutcome
+from pct.agent.models import AgentResult
 from pct.board.models import FeatureCreate, TaskCreate
 from pct.board.service import BoardService
 from pct.engine.execution import dequeue_next, execute_task
 from pct.models.core import Project
-from pct.models.enums import ExecutionStatus
+from pct.models.enums import ExecutionStatus, TaskOutcome
 from pct.storage.project_io import init_project
 from pct.storage.task_io import load_task, save_task
 
@@ -62,13 +62,13 @@ class TestExecuteTask:
     async def test_execute_task_no_provider_succeeds(
         self, project_root: Path, board_svc: BoardService
     ):
-        """When no provider is configured, execute_task returns stub success."""
+        """When no provider is configured, execute_task returns stub approved."""
         board_svc.create_feature(FeatureCreate(id="f1", title="F1"))
         board_svc.create_task("f1", TaskCreate(id="t1", title="Task 1"))
 
         result = await execute_task(project_root, "f1", "t1")
 
-        assert result.outcome == TaskOutcome.success
+        assert result.outcome == TaskOutcome.approved
         # Task should be advanced to next stage
         task = load_task(project_root, "f1", "t1")
         assert task is not None
@@ -77,21 +77,21 @@ class TestExecuteTask:
 
     @pytest.mark.asyncio
     async def test_execute_task_not_found(self, project_root: Path):
-        """execute_task returns failure for non-existent task."""
+        """execute_task returns error for non-existent task."""
         result = await execute_task(project_root, "f1", "nonexistent")
-        assert result.outcome == TaskOutcome.failure
+        assert result.outcome == TaskOutcome.error
         assert "not found" in (result.error or "").lower()
 
     @pytest.mark.asyncio
     async def test_execute_task_with_mock_provider(
         self, project_root: Path, board_svc: BoardService
     ):
-        """execute_task with a mock provider that returns success."""
+        """execute_task with a mock provider that returns approved."""
         board_svc.create_feature(FeatureCreate(id="f1", title="F1"))
         board_svc.create_task("f1", TaskCreate(id="t1", title="Task 1"))
 
         mock_result = AgentResult(
-            outcome=TaskOutcome.success,
+            outcome=TaskOutcome.approved,
             output="Mock output",
             tokens_input=100,
             tokens_output=50,
@@ -110,7 +110,7 @@ class TestExecuteTask:
 
             result = await execute_task(project_root, "f1", "t1")
 
-        assert result.outcome == TaskOutcome.success
+        assert result.outcome == TaskOutcome.approved
         assert result.output == "Mock output"
 
         task = load_task(project_root, "f1", "t1")
@@ -121,12 +121,12 @@ class TestExecuteTask:
     async def test_execute_task_failure_sets_error_status(
         self, project_root: Path, board_svc: BoardService
     ):
-        """On failure, task gets execution_status=error and error_details."""
+        """On error, task gets execution_status=error and error_details."""
         board_svc.create_feature(FeatureCreate(id="f1", title="F1"))
         board_svc.create_task("f1", TaskCreate(id="t1", title="Task 1"))
 
         mock_result = AgentResult(
-            outcome=TaskOutcome.failure,
+            outcome=TaskOutcome.error,
             error="Something went wrong",
             duration_seconds=0.5,
         )
@@ -143,7 +143,7 @@ class TestExecuteTask:
 
             result = await execute_task(project_root, "f1", "t1")
 
-        assert result.outcome == TaskOutcome.failure
+        assert result.outcome == TaskOutcome.error
 
         task = load_task(project_root, "f1", "t1")
         assert task is not None

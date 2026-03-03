@@ -1,4 +1,4 @@
-import { Modal, Form, Input, message } from 'antd';
+import { Modal, Form, Input, App } from 'antd';
 import { useCreateFeature } from '../../hooks/useBoardQueries';
 import type { FeatureCreate } from '../../types/board';
 
@@ -8,6 +8,7 @@ interface CreateFeatureModalProps {
 }
 
 export default function CreateFeatureModal({ open, onClose }: CreateFeatureModalProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const createFeature = useCreateFeature();
 

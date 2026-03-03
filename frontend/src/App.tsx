@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ConfigProvider, theme, Layout, Menu, Button, Space, Spin, Typography } from "antd";
+import { ConfigProvider, theme, Layout, Menu, Button, Space, Spin, Typography, App as AntApp } from "antd";
 import { LogoutOutlined } from "@ant-design/icons";
 import { useAuthStore } from "./stores/authStore";
 import { useProjectStatus } from "./hooks/useConfigQueries";
@@ -10,6 +10,7 @@ import BoardPage from "./pages/BoardPage";
 import SettingsPage from "./pages/SettingsPage";
 import TrainingPage from "./pages/TrainingPage";
 import PertPage from "./pages/PertPage";
+import PlanningPage from "./pages/PlanningPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,7 +39,8 @@ function AppHeader() {
         mode="horizontal"
         selectedKeys={[location.pathname]}
         items={[
-          { key: "/", label: "Home" },
+          // { key: "/", label: "Home" },
+          { key: "/planning", label: "Planning" },
           { key: "/board", label: "Board" },
           { key: "/pert", label: "PERT" },
           { key: "/training", label: "Training" },
@@ -114,6 +116,16 @@ function AppShell() {
             }
           />
           <Route
+            path="/planning"
+            element={
+              <ProtectedRoute>
+                <ProjectGuard>
+                  <PlanningPage />
+                </ProjectGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/pert"
             element={
               <ProtectedRoute>
@@ -144,9 +156,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ConfigProvider theme={{ algorithm: theme.compactAlgorithm }}>
-        <BrowserRouter>
-          <AppShell />
-        </BrowserRouter>
+        <AntApp>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </AntApp>
       </ConfigProvider>
     </QueryClientProvider>
   );

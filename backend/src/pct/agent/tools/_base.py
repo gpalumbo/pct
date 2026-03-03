@@ -1,26 +1,31 @@
-"""Base tool protocol and registry."""
+"""Tool protocol and registry for the agent execution engine."""
+
+from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class Tool(Protocol):
+    """Interface that all agent tools must implement."""
+
     @property
     def name(self) -> str: ...
 
     @property
-    def description(self) -> str: ...
+    def definition(self) -> dict[str, Any]:
+        """OpenAI function-calling schema dict."""
+        ...
 
-    @property
-    def parameters(self) -> dict[str, Any]: ...
-
-    async def execute(self, **kwargs: Any) -> str: ...
+    async def execute(self, arguments: str) -> str:
+        """Run the tool with the given JSON arguments string. Returns output text."""
+        ...
 
 
 class ToolRegistry:
-    """Registry of available tools."""
+    """Holds tools by name, provides definitions for the LLM, and dispatches execution."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
@@ -30,27 +35,12 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def get_definitions(self) -> list[dict[str, Any]]:
-        """Get tool definitions in the format expected by LLMs."""
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                },
-            }
-            for tool in self._tools.values()
-        ]
+        return [t.definition for t in self._tools.values()]
 
-    async def execute(self, name: str, **kwargs: Any) -> str:
-        tool = self._tools.get(name)
-        if tool is None:
-            return f"Error: Unknown tool '{name}'"
-        try:
-            return await tool.execute(**kwargs)
-        except Exception as e:
-            return f"Error executing {name}: {e}"
+    async def execute(self, name: str, arguments: str) -> str:
+        if name not in self._tools:
+            raise KeyError(f"Unknown tool: {name}")
+        return await self._tools[name].execute(arguments)
 
     @property
     def tool_names(self) -> list[str]:

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Modal, Input, message } from 'antd';
+import { useState, useEffect, useCallback } from 'react';
+import { Modal, App } from 'antd';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
 import { boardApi } from '../../api/boardApi';
-
-const { TextArea } = Input;
 
 interface ArtifactEditorModalProps {
   open: boolean;
@@ -13,19 +14,34 @@ interface ArtifactEditorModalProps {
 }
 
 export default function ArtifactEditorModal({ open, content, featureId, taskId, onClose }: ArtifactEditorModalProps) {
-  const [editContent, setEditContent] = useState(content);
+  const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setEditContent(content);
-    }
-  }, [open, content]);
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Markdown,
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        style: 'min-height: 400px; padding: 12px; outline: none; font-size: 14px;',
+      },
+    },
+  });
 
-  const handleSave = async () => {
+  useEffect(() => {
+    if (open && editor) {
+      editor.commands.setContent(content || '');
+    }
+  }, [open, content, editor]);
+
+  const handleSave = useCallback(async () => {
+    if (!editor) return;
     setSaving(true);
     try {
-      await boardApi.putArtifact(featureId, taskId, editContent);
+      const md = editor.storage.markdown.getMarkdown() as string;
+      await boardApi.putArtifact(featureId, taskId, md);
       message.success('Artifact saved');
       onClose();
     } catch {
@@ -33,7 +49,7 @@ export default function ArtifactEditorModal({ open, content, featureId, taskId, 
     } finally {
       setSaving(false);
     }
-  };
+  }, [editor, featureId, taskId, message, onClose]);
 
   return (
     <Modal
@@ -43,14 +59,18 @@ export default function ArtifactEditorModal({ open, content, featureId, taskId, 
       onCancel={onClose}
       confirmLoading={saving}
       okText="Save"
-      width={720}
+      width={800}
     >
-      <TextArea
-        value={editContent}
-        onChange={(e) => setEditContent(e.target.value)}
-        rows={20}
-        style={{ fontFamily: 'monospace', fontSize: 13 }}
-      />
+      <div
+        style={{
+          border: '1px solid #d9d9d9',
+          borderRadius: 6,
+          maxHeight: '60vh',
+          overflow: 'auto',
+        }}
+      >
+        <EditorContent editor={editor} />
+      </div>
     </Modal>
   );
 }

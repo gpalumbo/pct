@@ -1,33 +1,48 @@
 """Tests for agent pool."""
 
-import asyncio
-
-from pct.agent.models import TaskOutcome
+from pct.agent.models import AgentJob, AgentResult, AssembledContext
 from pct.agent.pool import AgentPool
-from pct.agent.providers.user import UserProvider
+from pct.models.enums import ProviderType, TaskOutcome
+
+
+class FakeProvider:
+    """Fake provider that returns a canned result."""
+
+    def __init__(self, outcome=TaskOutcome.approved):
+        self._outcome = outcome
+
+    async def execute(self, messages, on_token=None, tools=None):
+        return AgentResult(outcome=self._outcome, output="fake")
+
+    async def interrupt(self):
+        pass
 
 
 class TestAgentPool:
-    async def test_execute_user_provider(self):
-        pool = AgentPool(remote_limit=2, local_limit=1)
-        provider = UserProvider()
-        result = await pool.execute(provider, [{"role": "user", "content": "Hi"}])
-        assert result.outcome == TaskOutcome.in_progress
-
-    async def test_concurrent_execution(self):
-        pool = AgentPool(remote_limit=2, local_limit=1)
-        provider = UserProvider()
-
-        # Run 3 concurrent tasks — should all succeed
-        results = await asyncio.gather(
-            pool.execute(provider, [{"role": "user", "content": "1"}]),
-            pool.execute(provider, [{"role": "user", "content": "2"}]),
-            pool.execute(provider, [{"role": "user", "content": "3"}]),
+    async def test_submit_and_await(self):
+        provider = FakeProvider()
+        pool = AgentPool(
+            providers={ProviderType.remote_api: provider},
+            remote_limit=2,
+            local_limit=1,
         )
-        assert len(results) == 3
-        assert all(r.outcome == TaskOutcome.in_progress for r in results)
+        job = AgentJob(
+            task_id="t1",
+            feature_id="f1",
+            context=AssembledContext(base="Hello"),
+            agent_type=ProviderType.remote_api,
+            stage="refine-spec",
+        )
+        future = pool.submit(job)
+        result = await future
+        assert result.outcome == TaskOutcome.approved
 
-    async def test_semaphore_keys(self):
-        pool = AgentPool(remote_limit=5, local_limit=2)
-        assert "remote" in pool.semaphores
-        assert "local" in pool.semaphores
+    async def test_shutdown(self):
+        provider = FakeProvider()
+        pool = AgentPool(
+            providers={ProviderType.remote_api: provider},
+            remote_limit=2,
+            local_limit=1,
+        )
+        await pool.shutdown()
+        assert pool._tasks == []

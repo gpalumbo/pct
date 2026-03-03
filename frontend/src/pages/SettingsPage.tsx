@@ -75,14 +75,7 @@ export default function SettingsPage() {
       </Title>
       <Tabs
         tabPosition="left"
-        items={tabItems.map((item) => ({
-          ...item,
-          label: (
-            <span>
-              {item.icon} {item.label}
-            </span>
-          ),
-        }))}
+        items={tabItems}
         style={{ minHeight: 'calc(100vh - 120px)' }}
       />
     </div>

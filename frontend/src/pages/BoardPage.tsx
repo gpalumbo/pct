@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import BoardHeader from '../components/board/BoardHeader';
 import BoardToolbar from '../components/board/BoardToolbar';
-import BacklogSection from '../components/board/BacklogSection';
 import KanbanBoard from '../components/board/KanbanBoard';
 import TaskDetailPanel from '../components/board/TaskDetailPanel';
 import { useBoardStore } from '../stores/boardStore';
@@ -23,7 +22,7 @@ export default function BoardPage() {
     .map((s) => ({ value: s.id, label: s.label }));
 
   return (
-    <div style={{ padding: 16, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: 16, height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
       <BoardHeader />
       <BoardToolbar
         searchText={searchText}
@@ -32,7 +31,6 @@ export default function BoardPage() {
         onStageFilterChange={setStageFilter}
         stageOptions={stageOptions}
       />
-      <BacklogSection features={features} />
       <div style={{ flex: 1, overflow: 'auto' }}>
         <KanbanBoard />
       </div>

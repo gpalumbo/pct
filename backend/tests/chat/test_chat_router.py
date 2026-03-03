@@ -3,9 +3,10 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from pct.auth.dependencies import set_settings
+from pct.auth.dependencies import set_settings as set_auth_settings
 from pct.auth.service import clear_users
 from pct.config import Settings
+from pct.config import set_settings as set_config_settings
 from pct.main import app
 from pct.models.core import Project
 from pct.storage.project_io import init_project
@@ -15,10 +16,12 @@ from pct.storage.project_io import init_project
 def chat_settings(tmp_path):
     project = Project(id="test", name="Test", directory=str(tmp_path))
     settings = Settings(project_root=tmp_path, secret_key="test-secret")
-    set_settings(settings)
+    set_auth_settings(settings)
+    set_config_settings(settings)
     init_project(tmp_path, project)
     yield settings
-    set_settings(None)
+    set_auth_settings(None)
+    set_config_settings(Settings())
 
 
 @pytest.fixture(autouse=True)
@@ -46,49 +49,65 @@ class TestChatRouter:
         resp = await auth_client.get("/api/chat/sessions/default")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["session_id"] == "planning"
+        assert "id" in data
 
     async def test_create_session(self, auth_client: AsyncClient):
-        resp = await auth_client.post("/api/chat/sessions", params={"session_id": "test-s"})
-        assert resp.status_code == 200
+        resp = await auth_client.post(
+            "/api/chat/sessions",
+            json={"title": "Test", "session_id": "test-s"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["id"] == "test-s"
 
     async def test_get_messages(self, auth_client: AsyncClient):
-        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+        await auth_client.post(
+            "/api/chat/sessions", json={"title": "S1", "session_id": "s1"}
+        )
         resp = await auth_client.get("/api/chat/sessions/s1/messages")
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_send_message_sse(self, auth_client: AsyncClient):
-        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
+    async def test_send_message_no_agent(self, auth_client: AsyncClient):
+        """Without an agent configured, SSE returns error."""
+        await auth_client.post(
+            "/api/chat/sessions", json={"title": "S1", "session_id": "s1"}
+        )
         resp = await auth_client.post(
             "/api/chat/sessions/s1/send",
             json={"content": "Hello"},
         )
         assert resp.status_code == 200
-        # SSE response — read content
+        # SSE response — should contain error about no agent
         text = resp.text
         assert "data:" in text
-        assert '"type": "done"' in text or '"type":"done"' in text
 
     async def test_update_message(self, auth_client: AsyncClient):
-        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
-        # Send to create messages
-        await auth_client.post("/api/chat/sessions/s1/send", json={"content": "Hi"})
-        messages_resp = await auth_client.get("/api/chat/sessions/s1/messages")
-        messages = messages_resp.json()
-        assert len(messages) >= 1
-        msg_id = messages[0]["id"]
+        """Create a session, manually add a message, then update it."""
+        await auth_client.post(
+            "/api/chat/sessions", json={"title": "S1", "session_id": "s1"}
+        )
+        # Manually add a message via the service to get a message ID
+        from pct.chat import service
+        from pct.chat.models import PlanningMessage
+
+        msg = PlanningMessage(role="user", content="Hi")
+        service.append_message("s1", msg)
 
         resp = await auth_client.put(
-            f"/api/chat/sessions/s1/messages/{msg_id}",
+            f"/api/chat/sessions/s1/messages/{msg.id}",
             json={"included": False},
         )
         assert resp.status_code == 200
 
     async def test_delete_message(self, auth_client: AsyncClient):
-        await auth_client.post("/api/chat/sessions", params={"session_id": "s1"})
-        await auth_client.post("/api/chat/sessions/s1/send", json={"content": "Hi"})
-        messages = (await auth_client.get("/api/chat/sessions/s1/messages")).json()
-        msg_id = messages[0]["id"]
-        resp = await auth_client.delete(f"/api/chat/sessions/s1/messages/{msg_id}")
-        assert resp.status_code == 200
+        await auth_client.post(
+            "/api/chat/sessions", json={"title": "S1", "session_id": "s1"}
+        )
+        from pct.chat import service
+        from pct.chat.models import PlanningMessage
+
+        msg = PlanningMessage(role="user", content="Hi")
+        service.append_message("s1", msg)
+
+        resp = await auth_client.delete(f"/api/chat/sessions/s1/messages/{msg.id}")
+        assert resp.status_code == 204

@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { configApi } from '../api/configApi';
-import type { Project } from '../types/config';
+import type { ModelRegistryEntry, Project } from '../types/config';
 
 export function useProjectStatus() {
   return useQuery({
@@ -45,5 +45,40 @@ export function useBrowseFiles(path?: string) {
     queryKey: ['files', path],
     queryFn: () => configApi.browseFiles(path),
     enabled: path !== undefined,
+  });
+}
+
+// ── Model registry hooks ────────────────────────────────────────
+
+export function useModels() {
+  return useQuery({
+    queryKey: ['models'],
+    queryFn: configApi.getModels,
+    staleTime: 5000,
+  });
+}
+
+export function useCreateModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<ModelRegistryEntry, 'id'>) => configApi.createModel(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+  });
+}
+
+export function useUpdateModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<ModelRegistryEntry, 'id'>> }) =>
+      configApi.updateModel(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+  });
+}
+
+export function useDeleteModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => configApi.deleteModel(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
   });
 }

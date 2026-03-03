@@ -106,7 +106,7 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
           <Divider style={{ margin: '8px 0' }} />
 
           <div style={{ flex: 1, minHeight: 200, overflow: 'auto' }}>
-            <PlanningChat sessionId={`${featureId}::${task.id}`} />
+            <PlanningChat sessionId={`${featureId}--${task.id}`} />
           </div>
         </div>
       )}

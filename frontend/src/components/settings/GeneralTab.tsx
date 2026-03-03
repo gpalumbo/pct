@@ -6,7 +6,7 @@ import {
   InputNumber,
   Button,
   Spin,
-  message,
+  App,
   Select,
   Radio,
   Card,
@@ -21,6 +21,7 @@ const { Text } = Typography;
 const { TextArea } = Input;
 
 function InitForm() {
+  const { message } = App.useApp();
   const [name, setName] = useState('');
   const [projectType, setProjectType] = useState('coding');
   const initProject = useInitializeProject();
@@ -65,6 +66,7 @@ function InitForm() {
 }
 
 function EditForm({ project }: { project: Project }) {
+  const { message } = App.useApp();
   const updateProject = useUpdateProject();
   const [form] = Form.useForm();
 
