@@ -60,7 +60,7 @@ def _build_context(
             f"Cross-references:\n{variables.get('cross_refs', 'None')}"
         )
 
-    return AssembledContext(base=prompt)
+    return AssembledContext(stage_prompt=prompt)
 
 
 def _resolve_task_variables(
@@ -181,11 +181,8 @@ async def execute_task(
         context = _build_context(
             project_root, feature_id, task_id, stage_prompt
         )
-        result = await execute_chat_turn(
-            provider,
-            context,
-            system_prompt="You are an agent executing a project task.",
-        )
+        context.agent_prompt = "You are an agent executing a project task."
+        result = await execute_chat_turn(provider, context)
 
     # Store attempt
     attempt_meta = {

@@ -69,10 +69,12 @@ export default function PlanningChat({
         streamingContent={chat.streamingContent}
         isStreaming={chat.isStreaming}
         statusMessage={chat.statusMessage}
+        systemPrompt={chat.systemPrompt}
+        toolActivity={chat.toolActivity}
         onUpdateMessage={chat.handleUpdateMessage}
         onDeleteMessage={chat.handleDeleteMessage}
         onReplay={chat.handleReplay}
-        onTruncateAndReplay={chat.handleTruncateAndReplay}
+        onTruncate={chat.handleTruncate}
         onCopyToArtifact={chat.handleCopyToArtifact}
       />
       <ChatInput
@@ -82,6 +84,8 @@ export default function PlanningChat({
         selectedAgent={chat.selectedAgent}
         onAgentChange={chat.handleAgentChange}
         taskStage={taskStage}
+        stagedInput={chat.stagedInput}
+        onStagedInputConsumed={chat.clearStagedInput}
       />
     </div>
   );

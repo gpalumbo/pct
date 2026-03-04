@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from pct.models.enums import AgentType, ProviderType, TaskOutcome
+from pct.models.enums import AgentType, InclusionFlag, ProviderType, ResourceKind, TaskOutcome
 
 
 class ToolCall(BaseModel):
@@ -40,6 +40,9 @@ class LLMMessage(BaseModel):
     content: str
     timestamp: datetime | None = None
     tokens: int | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tool_calls: list[ToolCall] | None = None
 
 
 class ContextMetadata(BaseModel):
@@ -55,20 +58,149 @@ class ContextMetadata(BaseModel):
     budget: int = 0
 
 
-class AssembledContext(BaseModel):
-    """Final context passed to an agent after context manager compression."""
+class ContextResource(BaseModel):
+    """A non-message resource attached to the assembled context."""
 
     model_config = {"extra": "forbid"}
 
-    base: str = ""
-    retries: str = ""
-    rag: str = ""
+    kind: ResourceKind
+    label: str = ""
+    content: str = ""
+    inclusion: InclusionFlag = InclusionFlag.included
+
+
+class ContextMessage(BaseModel):
+    """A single conversation message stored on the context.
+
+    Only user, assistant, and tool_result roles are stored.
+    System prompts are reconstructed from prompt fields.
+    tool_call messages are synthesized from tool_result metadata.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    role: Literal["user", "assistant", "tool_result"]
+    content: str = ""
+    inclusion: InclusionFlag = InclusionFlag.included
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+
+
+class AssembledContext(BaseModel):
+    """Single source of truth for chat context.
+
+    Carries both non-message context (prompts, resources) and the conversation
+    message history.  ``build_llm_messages()`` constructs the API-ready message
+    list on demand — no separate history list needed.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    project_prompt: str = ""
+    agent_prompt: str = ""
+    stage_prompt: str = ""
+    resources: list[ContextResource] = Field(default_factory=list)
+    messages: list[ContextMessage] = Field(default_factory=list)
     metadata: ContextMetadata = Field(default_factory=ContextMetadata)
 
-    @property
-    def full_text(self) -> str:
-        parts = [p for p in (self.base, self.retries, self.rag) if p]
+    def build_system_prompt(self) -> str:
+        """Join non-empty prompts and included resources into a system prompt."""
+        parts: list[str] = []
+        for p in (self.stage_prompt, self.agent_prompt, self.project_prompt):
+            if p:
+                parts.append(p)
+        for r in self.resources:
+            if r.inclusion != InclusionFlag.excluded and r.content:
+                header = f"[{r.kind.value}] {r.label}".strip() if r.label else f"[{r.kind.value}]"
+                parts.append(f"{header}\n{r.content}")
         return "\n\n".join(parts)
+
+    def build_llm_messages(self) -> list[dict]:
+        """Construct the LLM-ready message list.
+
+        - System prompt (if non-empty) as the first message.
+        - For tool_result messages, synthesizes the required assistant
+          tool_call wrapper with ``arguments: "{}"``.
+        - Excluded messages are skipped.
+        """
+        out: list[dict] = []
+        sys_prompt = self.build_system_prompt()
+        if sys_prompt:
+            out.append({"role": "system", "content": sys_prompt})
+
+        pending_tool_results: list[ContextMessage] = []
+
+        for msg in self.messages:
+            if msg.inclusion == InclusionFlag.excluded:
+                continue
+
+            if msg.role == "tool_result":
+                pending_tool_results.append(msg)
+                continue
+
+            # Flush any pending tool_results before the next non-tool message
+            if pending_tool_results:
+                out.extend(self._flush_tool_results(pending_tool_results))
+                pending_tool_results = []
+
+            out.append({"role": msg.role, "content": msg.content})
+
+        # Flush remaining tool_results at the end
+        if pending_tool_results:
+            out.extend(self._flush_tool_results(pending_tool_results))
+
+        return out
+
+    @staticmethod
+    def _flush_tool_results(results: list[ContextMessage]) -> list[dict]:
+        """Synthesize assistant tool_call wrapper + tool result messages."""
+        msgs: list[dict] = []
+        # Synthesize the assistant message with tool_calls
+        tool_calls = []
+        for r in results:
+            tool_calls.append({
+                "id": r.tool_call_id or "unknown",
+                "type": "function",
+                "function": {
+                    "name": r.tool_name or "unknown",
+                    "arguments": "{}",
+                },
+            })
+        msgs.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": tool_calls,
+        })
+        # Append individual tool result messages
+        for r in results:
+            msgs.append({
+                "role": "tool",
+                "tool_call_id": r.tool_call_id or "unknown",
+                "name": r.tool_name or "unknown",
+                "content": r.content,
+            })
+        return msgs
+
+    def append_user(self, content: str) -> None:
+        """Append a user message."""
+        self.messages.append(ContextMessage(role="user", content=content))
+
+    def append_assistant(self, content: str) -> None:
+        """Append an assistant message."""
+        self.messages.append(ContextMessage(role="assistant", content=content))
+
+    def append_tool_result(
+        self, tool_call_id: str, tool_name: str, content: str
+    ) -> None:
+        """Append a tool result message."""
+        self.messages.append(
+            ContextMessage(
+                role="tool_result",
+                content=content,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+            )
+        )
 
 
 class AgentConfig(BaseModel):

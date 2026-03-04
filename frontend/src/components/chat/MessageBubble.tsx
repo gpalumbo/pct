@@ -35,6 +35,8 @@ const ROLE_COLORS: Record<string, string> = {
   user: 'blue',
   assistant: 'green',
   system: 'orange',
+  tool_call: 'purple',
+  tool_result: 'cyan',
 };
 
 const ANNOTATION_CATEGORIES: AnnotationCategory[] = [
@@ -48,7 +50,7 @@ interface Props {
   onUpdate?: (id: string, updates: { role?: string; content?: string; included?: boolean }) => void;
   onDelete?: (id: string) => void;
   onReplay?: (msg: ChatMessage) => void;
-  onTruncateAndReplay?: (msg: ChatMessage) => void;
+  onTruncate?: (msg: ChatMessage) => void;
   onCopyToArtifact?: (content: string) => void;
   isStreaming?: boolean;
 }
@@ -60,7 +62,7 @@ function MessageBubbleInner({
   onUpdate,
   onDelete,
   onReplay,
-  onTruncateAndReplay,
+  onTruncate,
   onCopyToArtifact,
   isStreaming,
 }: Props) {
@@ -112,6 +114,9 @@ function MessageBubbleInner({
 
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
+  const isToolCall = message.role === 'tool_call';
+  const isToolResult = message.role === 'tool_result';
+  const isToolMessage = isToolCall || isToolResult;
 
   const flagContent = (
     <div style={{ width: 260 }}>
@@ -169,7 +174,13 @@ function MessageBubbleInner({
       {/* Content bubble */}
       <div
         style={{
-          background: isUser ? '#e6f4ff' : '#f6ffed',
+          background: isUser
+            ? '#e6f4ff'
+            : isToolCall
+              ? '#f9f0ff'
+              : isToolResult
+                ? '#e6fffb'
+                : '#f6ffed',
           borderRadius: 8,
           padding: '8px 12px',
           maxWidth: '80%',
@@ -204,6 +215,28 @@ function MessageBubbleInner({
               />
             </Space>
           </div>
+        ) : isToolCall ? (
+          <div>
+            <Tag color="purple">{message.tool_name || 'tool'}</Tag>
+            <pre style={{ fontSize: 11, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+              {message.content}
+            </pre>
+          </div>
+        ) : isToolResult ? (
+          <div>
+            <Tag color="cyan">{message.tool_name || 'result'}</Tag>
+            <pre
+              style={{
+                fontSize: 11,
+                margin: '4px 0 0',
+                whiteSpace: 'pre-wrap',
+                maxHeight: 200,
+                overflow: 'auto',
+              }}
+            >
+              {message.content}
+            </pre>
+          </div>
         ) : isAssistant ? (
           <ReactMarkdown>{message.content}</ReactMarkdown>
         ) : (
@@ -222,10 +255,12 @@ function MessageBubbleInner({
               Include
             </Text>
           </Checkbox>
-          <EditOutlined
-            onClick={() => setEditing(true)}
-            style={{ cursor: 'pointer', fontSize: 12, color: '#8c8c8c' }}
-          />
+          {!isToolMessage && (
+            <EditOutlined
+              onClick={() => setEditing(true)}
+              style={{ cursor: 'pointer', fontSize: 12, color: '#8c8c8c' }}
+            />
+          )}
           {onDelete && (
             <DeleteOutlined
               onClick={() => onDelete(message.id)}
@@ -252,10 +287,10 @@ function MessageBubbleInner({
               />
             </Tooltip>
           )}
-          {isUser && onTruncateAndReplay && (
-            <Tooltip title="Truncate & replay">
+          {isUser && onTruncate && (
+            <Tooltip title="Truncate & edit">
               <ScissorOutlined
-                onClick={() => !isStreaming && onTruncateAndReplay(message)}
+                onClick={() => !isStreaming && onTruncate(message)}
                 style={{
                   cursor: isStreaming ? 'not-allowed' : 'pointer',
                   fontSize: 12,

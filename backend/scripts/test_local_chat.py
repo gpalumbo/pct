@@ -54,7 +54,10 @@ async def run(model_path: str, prompt: str, use_tools: bool) -> None:
     print(f"Prompt: {prompt}")
     print("-" * 60)
 
-    context = AssembledContext(base=prompt)
+    context = AssembledContext(
+        agent_prompt="You are a helpful assistant. When asked to run commands, use the bash tool.",
+    )
+    context.append_user(prompt)
 
     async def on_token(token: str) -> None:
         print(token, end="", flush=True)
@@ -65,7 +68,6 @@ async def run(model_path: str, prompt: str, use_tools: bool) -> None:
     result = await execute_chat_turn(
         provider,
         context,
-        system_prompt="You are a helpful assistant. When asked to run commands, use the bash tool.",
         on_token=callback,
         tool_registry=registry,
         timeout_seconds=120,

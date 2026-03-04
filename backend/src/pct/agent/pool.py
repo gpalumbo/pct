@@ -42,7 +42,7 @@ class AgentPool:
         """Execute a single job, respecting the per-provider semaphore."""
         provider = self._providers[job.agent_type]
         semaphore = self._semaphores.get(job.agent_type, self._semaphores[ProviderType.remote_api])
-        messages = [{"role": "user", "content": job.context.full_text}]
+        messages = job.context.build_llm_messages()
         async with semaphore:
             return await provider.execute(messages)
 

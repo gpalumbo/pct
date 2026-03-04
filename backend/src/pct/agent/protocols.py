@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, Protocol, runtime_checkable
 
-from pct.agent.models import AgentResult
+from pct.agent.models import AgentConfig, AgentResult
 
 
 @runtime_checkable
@@ -27,6 +27,11 @@ class CompletionBackend(Protocol):
 @runtime_checkable
 class AgentProvider(Protocol):
     """Common interface for all agent execution backends."""
+
+    agent_config: AgentConfig | None
+
+    @property
+    def name(self) -> str: ...
 
     async def execute(
         self,

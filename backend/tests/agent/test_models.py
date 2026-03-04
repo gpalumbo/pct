@@ -3,12 +3,14 @@
 from pct.agent.models import (
     AgentResult,
     AssembledContext,
+    ContextMessage,
     ContextMetadata,
+    ContextResource,
     LLMMessage,
     ToolCall,
     ToolResult,
 )
-from pct.models.enums import TaskOutcome
+from pct.models.enums import InclusionFlag, ResourceKind, TaskOutcome
 
 
 class TestAgentResult:
@@ -54,14 +56,128 @@ class TestLLMMessage:
         assert msg.tokens is None
 
 
-class TestAssembledContext:
-    def test_full_text_all_parts(self):
-        ctx = AssembledContext(base="base", retries="retries", rag="rag")
-        assert ctx.full_text == "base\n\nretries\n\nrag"
+class TestContextResource:
+    def test_basic(self):
+        r = ContextResource(kind=ResourceKind.rag, label="docs", content="some text")
+        assert r.kind == ResourceKind.rag
+        assert r.inclusion == InclusionFlag.included
 
-    def test_full_text_empty_parts(self):
-        ctx = AssembledContext(base="only base")
-        assert ctx.full_text == "only base"
+    def test_excluded(self):
+        r = ContextResource(
+            kind=ResourceKind.cross_ref, content="x", inclusion=InclusionFlag.excluded
+        )
+        assert r.inclusion == InclusionFlag.excluded
+
+
+class TestContextMessage:
+    def test_user(self):
+        m = ContextMessage(role="user", content="Hello")
+        assert m.role == "user"
+        assert m.inclusion == InclusionFlag.included
+
+    def test_tool_result(self):
+        m = ContextMessage(
+            role="tool_result",
+            content="output",
+            tool_call_id="tc1",
+            tool_name="read_file",
+        )
+        assert m.tool_call_id == "tc1"
+
+
+class TestAssembledContext:
+    def test_build_system_prompt_empty(self):
+        ctx = AssembledContext()
+        assert ctx.build_system_prompt() == ""
+
+    def test_build_system_prompt_prompts_only(self):
+        ctx = AssembledContext(
+            stage_prompt="Stage instructions",
+            agent_prompt="Agent instructions",
+        )
+        prompt = ctx.build_system_prompt()
+        assert "Stage instructions" in prompt
+        assert "Agent instructions" in prompt
+        # Stage comes before agent
+        assert prompt.index("Stage") < prompt.index("Agent")
+
+    def test_build_system_prompt_with_resources(self):
+        ctx = AssembledContext(
+            agent_prompt="Be helpful",
+            resources=[
+                ContextResource(kind=ResourceKind.rag, label="docs", content="RAG text"),
+                ContextResource(
+                    kind=ResourceKind.cross_ref, content="excluded", inclusion=InclusionFlag.excluded
+                ),
+            ],
+        )
+        prompt = ctx.build_system_prompt()
+        assert "Be helpful" in prompt
+        assert "RAG text" in prompt
+        assert "excluded" not in prompt
+
+    def test_build_llm_messages_empty(self):
+        ctx = AssembledContext()
+        msgs = ctx.build_llm_messages()
+        assert msgs == []
+
+    def test_build_llm_messages_with_system_and_user(self):
+        ctx = AssembledContext(agent_prompt="You are helpful")
+        ctx.append_user("Hello")
+        msgs = ctx.build_llm_messages()
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert msgs[1] == {"role": "user", "content": "Hello"}
+
+    def test_build_llm_messages_tool_result_synthesizes_wrapper(self):
+        ctx = AssembledContext()
+        ctx.append_user("Do something")
+        ctx.append_tool_result("tc1", "read_file", "file content")
+        msgs = ctx.build_llm_messages()
+        # user, then synthesized assistant tool_call, then tool result
+        assert len(msgs) == 3
+        assert msgs[0] == {"role": "user", "content": "Do something"}
+        assert msgs[1]["role"] == "assistant"
+        assert len(msgs[1]["tool_calls"]) == 1
+        assert msgs[1]["tool_calls"][0]["id"] == "tc1"
+        assert msgs[2]["role"] == "tool"
+        assert msgs[2]["content"] == "file content"
+
+    def test_build_llm_messages_excludes_excluded(self):
+        ctx = AssembledContext()
+        ctx.messages.append(ContextMessage(role="user", content="visible"))
+        ctx.messages.append(
+            ContextMessage(role="user", content="hidden", inclusion=InclusionFlag.excluded)
+        )
+        ctx.messages.append(ContextMessage(role="assistant", content="reply"))
+        msgs = ctx.build_llm_messages()
+        assert len(msgs) == 2
+        assert msgs[0]["content"] == "visible"
+        assert msgs[1]["content"] == "reply"
+
+    def test_build_llm_messages_consecutive_tool_results(self):
+        """Multiple consecutive tool_results should be grouped under one assistant wrapper."""
+        ctx = AssembledContext()
+        ctx.append_user("Do two things")
+        ctx.append_tool_result("tc1", "tool_a", "out1")
+        ctx.append_tool_result("tc2", "tool_b", "out2")
+        msgs = ctx.build_llm_messages()
+        # user, assistant (with 2 tool_calls), tool1, tool2
+        assert len(msgs) == 4
+        assert msgs[1]["role"] == "assistant"
+        assert len(msgs[1]["tool_calls"]) == 2
+        assert msgs[2]["tool_call_id"] == "tc1"
+        assert msgs[3]["tool_call_id"] == "tc2"
+
+    def test_append_helpers(self):
+        ctx = AssembledContext()
+        ctx.append_user("hi")
+        ctx.append_assistant("hello")
+        ctx.append_tool_result("t1", "fn", "out")
+        assert len(ctx.messages) == 3
+        assert ctx.messages[0].role == "user"
+        assert ctx.messages[1].role == "assistant"
+        assert ctx.messages[2].role == "tool_result"
 
     def test_metadata_defaults(self):
         ctx = AssembledContext()

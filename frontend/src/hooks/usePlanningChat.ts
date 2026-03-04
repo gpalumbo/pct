@@ -33,6 +33,13 @@ export interface UsePlanningChatOptions {
   onImageGenerate?: (prompt: string) => void;
 }
 
+export interface ToolActivity {
+  callId: string;
+  name: string;
+  args: string;
+  output?: string;
+}
+
 export interface UsePlanningChatReturn {
   activeSessionId: string | null;
   sessionLoading: boolean;
@@ -41,12 +48,16 @@ export interface UsePlanningChatReturn {
   isStreaming: boolean;
   streamingContent: string;
   statusMessage: string | null;
+  systemPrompt: string | null;
+  toolActivity: ToolActivity[];
   selectedAgent: string | null;
   handleAgentChange: (agentId: string | null) => void;
   handleSend: (content: string, agentId: string | null) => void;
   handleStop: () => void;
   handleReplay: (msg: ChatMessage) => void;
-  handleTruncateAndReplay: (msg: ChatMessage) => Promise<void>;
+  handleTruncate: (msg: ChatMessage) => Promise<void>;
+  stagedInput: string | null;
+  clearStagedInput: () => void;
   handleUpdateMessage: (
     id: string,
     updates: { role?: string; content?: string; included?: boolean },
@@ -109,6 +120,9 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
+  const [stagedInput, setStagedInput] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const selectedAgentRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -223,6 +237,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
       isStreamingRef.current = true;
       setStreamingContent('');
       setStatusMessage(null);
+      setToolActivity([]);
 
       const onDone = (message: ChatMessage) => {
         setMessages((prev) => [...prev, message]);
@@ -230,8 +245,29 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
         isStreamingRef.current = false;
         setStreamingContent('');
         setStatusMessage(null);
+        setToolActivity([]);
         abortRef.current = null;
         queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
+      };
+
+      const onFlushBubble = (bubbleContent: string) => {
+        // Commit current streaming content as a finalized assistant bubble
+        if (bubbleContent) {
+          const flushedMsg: ChatMessage = {
+            id: crypto.randomUUID().slice(0, 12),
+            role: 'assistant',
+            content: bubbleContent,
+            created_at: new Date().toISOString(),
+            tokens: null,
+            included: true,
+            agent_id: agentId,
+            model_id: null,
+          };
+          setMessages((prev) => [...prev, flushedMsg]);
+        }
+        // Reset streaming state for the next iteration
+        setStreamingContent('');
+        setToolActivity([]);
       };
 
       const controller = sendMessageStream(
@@ -255,10 +291,25 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
         },
         artifactPath,
         (status) => setStatusMessage(status),
+        (call) =>
+          setToolActivity((prev) => [
+            ...prev,
+            { callId: call.id, name: call.name, args: call.arguments },
+          ]),
+        (result) =>
+          setToolActivity((prev) =>
+            prev.map((t) =>
+              t.callId === result.id ? { ...t, output: result.output } : t,
+            ),
+          ),
+        (prompt) => setSystemPrompt(prompt),
+        featureId,
+        taskId,
+        onFlushBubble,
       );
       abortRef.current = controller;
     },
-    [activeSessionId, artifactPath, queryClient, agents, onImageGenerate],
+    [activeSessionId, artifactPath, featureId, taskId, queryClient, agents, onImageGenerate],
   );
 
   const handleStop = useCallback(() => {
@@ -277,7 +328,7 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
     [handleSend],
   );
 
-  const handleTruncateAndReplay = useCallback(
+  const handleTruncate = useCallback(
     async (msg: ChatMessage) => {
       if (!activeSessionId) return;
       const content = msg.content;
@@ -286,10 +337,14 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
         return idx === -1 ? prev : prev.slice(0, idx);
       });
       await truncateMutation.mutateAsync(msg.id);
-      handleSend(content, selectedAgentRef.current);
+      setStagedInput(content);
     },
-    [activeSessionId, truncateMutation, handleSend],
+    [activeSessionId, truncateMutation],
   );
+
+  const clearStagedInput = useCallback(() => {
+    setStagedInput(null);
+  }, []);
 
   /* ------------------------------------------------------------------ */
   /*  Copy to artifact (append)                                          */
@@ -318,12 +373,16 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
     isStreaming,
     streamingContent,
     statusMessage,
+    systemPrompt,
+    toolActivity,
     selectedAgent,
     handleAgentChange,
     handleSend,
     handleStop,
     handleReplay,
-    handleTruncateAndReplay,
+    handleTruncate,
+    stagedInput,
+    clearStagedInput,
     handleUpdateMessage,
     handleDeleteMessage,
     handleCopyToArtifact: featureId && taskId ? handleCopyToArtifact : undefined,

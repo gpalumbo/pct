@@ -35,6 +35,23 @@ export const truncateFromMessage = (sessionId: string, messageId: string) =>
   client.delete(`/api/chat/sessions/${sessionId}/messages/${messageId}/truncate`);
 
 // SSE streaming (uses native fetch — Axios doesn't support ReadableStream)
+export interface SendMessageStreamOptions {
+  sessionId: string;
+  content: string;
+  agentId?: string | null;
+  artifactPath?: string;
+  featureId?: string | null;
+  taskId?: string | null;
+  onToken: (token: string) => void;
+  onDone: (message: ChatMessage) => void;
+  onError: (error: string) => void;
+  onStatus?: (status: string) => void;
+  onToolCall?: (call: { id: string; name: string; arguments: string }) => void;
+  onToolResult?: (result: { id: string; name: string; output: string }) => void;
+  onSystemPrompt?: (prompt: string) => void;
+  onFlushBubble?: (content: string) => void;
+}
+
 export function sendMessageStream(
   sessionId: string,
   content: string,
@@ -44,6 +61,12 @@ export function sendMessageStream(
   onError: (error: string) => void,
   artifactPath?: string,
   onStatus?: (status: string) => void,
+  onToolCall?: (call: { id: string; name: string; arguments: string }) => void,
+  onToolResult?: (result: { id: string; name: string; output: string }) => void,
+  onSystemPrompt?: (prompt: string) => void,
+  featureId?: string | null,
+  taskId?: string | null,
+  onFlushBubble?: (content: string) => void,
 ): AbortController {
   const controller = new AbortController();
   const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -52,6 +75,8 @@ export function sendMessageStream(
   const body: Record<string, unknown> = { content };
   if (agentId) body.agent_id = agentId;
   if (artifactPath) body.artifact_path = artifactPath;
+  if (featureId) body.feature_id = featureId;
+  if (taskId) body.task_id = taskId;
 
   fetch(`${baseURL}/api/chat/sessions/${sessionId}/send`, {
     method: 'POST',
@@ -97,6 +122,14 @@ export function sendMessageStream(
               onError(event.error);
             } else if ('status' in event) {
               onStatus?.(event.status);
+            } else if ('tool_call' in event) {
+              onToolCall?.(event.tool_call);
+            } else if ('tool_result' in event) {
+              onToolResult?.(event.tool_result);
+            } else if ('system_prompt' in event) {
+              onSystemPrompt?.(event.system_prompt);
+            } else if ('flush_bubble' in event) {
+              onFlushBubble?.(event.flush_bubble);
             }
           } catch {
             // skip malformed lines
@@ -167,6 +200,14 @@ export const chatApi = {
               event = { type: 'error', content: raw.error };
             } else if ('status' in raw) {
               event = { type: 'status', content: raw.status };
+            } else if ('tool_call' in raw) {
+              event = { type: 'tool_call', toolCall: raw.tool_call };
+            } else if ('tool_result' in raw) {
+              event = { type: 'tool_result', toolResult: raw.tool_result };
+            } else if ('system_prompt' in raw) {
+              event = { type: 'system_prompt', content: raw.system_prompt };
+            } else if ('flush_bubble' in raw) {
+              event = { type: 'flush_bubble', content: raw.flush_bubble };
             } else {
               continue;
             }

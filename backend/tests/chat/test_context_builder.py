@@ -22,21 +22,30 @@ class TestExpandTemplate:
 
 
 class TestResolveTaskContext:
-    def test_non_task_session_returns_empty(self):
-        """Non-task session IDs should return empty context."""
-        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("planning")
+    def test_none_feature_id_returns_empty(self):
+        """None feature_id should return empty context."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context(None, "task1")
         assert cross_ref == ""
         assert artifact_prompt is None
         assert stage_prompt is None
 
-    def test_invalid_session_id_format(self):
-        """Invalid task session format returns empty."""
-        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("task-onlyfeature")
+    def test_none_task_id_returns_empty(self):
+        """None task_id should return empty context."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("feature1", None)
         assert cross_ref == ""
+        assert artifact_prompt is None
+        assert stage_prompt is None
 
-    def test_task_prefix_required(self):
-        """Session IDs not starting with 'task-' return empty."""
-        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("some-other")
+    def test_both_none_returns_empty(self):
+        """Both None should return empty context."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context(None, None)
+        assert cross_ref == ""
+        assert artifact_prompt is None
+        assert stage_prompt is None
+
+    def test_empty_strings_return_empty(self):
+        """Empty strings should return empty context."""
+        cross_ref, artifact_prompt, stage_prompt = resolve_task_context("", "")
         assert cross_ref == ""
         assert artifact_prompt is None
         assert stage_prompt is None

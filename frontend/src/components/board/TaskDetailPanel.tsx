@@ -28,7 +28,9 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
   const { taskPanelOpen, setTaskPanelOpen, taskPanelWidth, setTaskPanelWidth } = useUIStore();
   const selectTask = useBoardStore((s) => s.selectTask);
   const moveTask = useMoveTask(featureId ?? '', task?.id ?? '');
-  const sessionId = task && featureId ? `task-${featureId}-${task.id}` : undefined;
+  const sessionId = task && featureId
+    ? `${featureId}--${task.id}--${task.current_stage_id}`
+    : undefined;
 
   /* ------------------------------------------------------------------ */
   /*  Resizable sidebar                                                  */
@@ -219,10 +221,12 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
             streamingContent={chat.streamingContent}
             isStreaming={chat.isStreaming}
             statusMessage={chat.statusMessage}
+            systemPrompt={chat.systemPrompt}
+            toolActivity={chat.toolActivity}
             onUpdateMessage={chat.handleUpdateMessage}
             onDeleteMessage={chat.handleDeleteMessage}
             onReplay={chat.handleReplay}
-            onTruncateAndReplay={chat.handleTruncateAndReplay}
+            onTruncate={chat.handleTruncate}
             onCopyToArtifact={chat.handleCopyToArtifact}
           />
         )}
@@ -240,6 +244,8 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
         taskStage={task.current_stage_id}
         refineTarget={refineTarget}
         onCancelRefine={handleCancelRefine}
+        stagedInput={chat.stagedInput}
+        onStagedInputConsumed={chat.clearStagedInput}
       />
 
       {/* ============================================================ */}

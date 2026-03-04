@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Select, Space, Tag, Typography } from 'antd';
 import { CloseOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
 import { useProject } from '../../hooks/useConfigQueries';
@@ -22,6 +22,10 @@ interface Props {
   refineTarget?: RefineTarget | null;
   /** Called when user cancels a refine operation. */
   onCancelRefine?: () => void;
+  /** When set, seeds the input field with this text (e.g. from truncate). */
+  stagedInput?: string | null;
+  /** Called after stagedInput is consumed. */
+  onStagedInputConsumed?: () => void;
 }
 
 export default function ChatInput({
@@ -33,8 +37,17 @@ export default function ChatInput({
   taskStage,
   refineTarget,
   onCancelRefine,
+  stagedInput,
+  onStagedInputConsumed,
 }: Props) {
   const [content, setContent] = useState('');
+
+  useEffect(() => {
+    if (stagedInput != null) {
+      setContent(stagedInput);
+      onStagedInputConsumed?.();
+    }
+  }, [stagedInput, onStagedInputConsumed]);
   const { data: project } = useProject();
   const agents = useMemo(() => project?.agents ?? [], [project?.agents]);
   const stages = useMemo(() => project?.workflow_stages ?? [], [project?.workflow_stages]);

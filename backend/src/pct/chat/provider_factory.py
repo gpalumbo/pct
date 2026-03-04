@@ -66,10 +66,11 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
             model_path=model_path,
             context_length=agent_cfg.context_length,
             temperature=agent_cfg.temperature,
+            agent_config=agent_cfg,
         ), agent_cfg
 
     if agent_cfg.provider_type == ProviderType.remote_api:
-        return ClaudeCodeProvider(), agent_cfg
+        return ClaudeCodeProvider(agent_config=agent_cfg), agent_cfg
 
     raise ValueError(f"Unsupported provider type: {agent_cfg.provider_type}")
 

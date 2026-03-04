@@ -1,8 +1,12 @@
-import { useEffect, useRef } from 'react';
-import { Spin, Tag } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { Collapse, Spin, Switch, Tag, Typography } from 'antd';
+import { LoadingOutlined, ToolOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import MessageBubble from './MessageBubble';
 import type { ChatMessage } from '../../types/chat';
+import type { ToolActivity } from '../../hooks/usePlanningChat';
+
+const { Text } = Typography;
 
 interface Props {
   sessionId: string;
@@ -10,13 +14,15 @@ interface Props {
   streamingContent: string;
   isStreaming: boolean;
   statusMessage?: string | null;
+  systemPrompt?: string | null;
+  toolActivity?: ToolActivity[];
   onUpdateMessage?: (
     id: string,
     updates: { role?: string; content?: string; included?: boolean },
   ) => void;
   onDeleteMessage?: (id: string) => void;
   onReplay?: (msg: ChatMessage) => void;
-  onTruncateAndReplay?: (msg: ChatMessage) => void;
+  onTruncate?: (msg: ChatMessage) => void;
   onCopyToArtifact?: (content: string) => void;
 }
 
@@ -26,21 +32,74 @@ export default function MessageList({
   streamingContent,
   isStreaming,
   statusMessage,
+  systemPrompt,
+  toolActivity = [],
   onUpdateMessage,
   onDeleteMessage,
   onReplay,
-  onTruncateAndReplay,
+  onTruncate,
   onCopyToArtifact,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [showToolCalls, setShowToolCalls] = useState(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, streamingContent]);
+  }, [messages.length, streamingContent, toolActivity.length]);
+
+  // Always filter system and tool_call roles — system prompt shown in collapse,
+  // tool_calls are transient (synthesized from tool_results for the LLM).
+  const filteredMessages = messages
+    .filter((m) => m.role !== 'system' && m.role !== 'tool_call')
+    .filter((m) => showToolCalls || m.role !== 'tool_result');
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 0' }}>
-      {messages.map((msg, idx) => (
+      {/* Controls bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <Switch
+          size="small"
+          checked={showToolCalls}
+          onChange={setShowToolCalls}
+          checkedChildren={<ToolOutlined />}
+        />
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Show tool calls
+        </Text>
+      </div>
+
+      {/* System prompt collapse */}
+      {systemPrompt && (
+        <Collapse
+          size="small"
+          style={{ marginBottom: 12 }}
+          items={[
+            {
+              key: 'system',
+              label: (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  System prompt
+                </Text>
+              ),
+              children: (
+                <pre
+                  style={{
+                    fontSize: 11,
+                    maxHeight: 200,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    margin: 0,
+                  }}
+                >
+                  {systemPrompt}
+                </pre>
+              ),
+            },
+          ]}
+        />
+      )}
+
+      {filteredMessages.map((msg, idx) => (
         <MessageBubble
           key={msg.id}
           message={msg}
@@ -49,7 +108,7 @@ export default function MessageList({
           onUpdate={onUpdateMessage}
           onDelete={onDeleteMessage}
           onReplay={onReplay}
-          onTruncateAndReplay={onTruncateAndReplay}
+          onTruncate={onTruncate}
           onCopyToArtifact={onCopyToArtifact}
           isStreaming={isStreaming}
         />
@@ -73,6 +132,36 @@ export default function MessageList({
               {statusMessage}
             </Tag>
           )}
+
+          {/* Live tool activity */}
+          {toolActivity.length > 0 && (
+            <div style={{ marginBottom: 8, width: '80%' }}>
+              {toolActivity.map((ta) => (
+                <div
+                  key={ta.callId}
+                  style={{
+                    background: '#f9f0ff',
+                    borderRadius: 6,
+                    padding: '4px 8px',
+                    marginBottom: 4,
+                    fontSize: 12,
+                  }}
+                >
+                  <Tag color="purple" style={{ marginRight: 4 }}>
+                    {ta.name}
+                  </Tag>
+                  {ta.output === undefined ? (
+                    <LoadingOutlined style={{ fontSize: 11 }} />
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      done
+                    </Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div
             style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
           >

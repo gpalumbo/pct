@@ -3,8 +3,22 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from loguru import logger
+
+from pct import config
+from pct.board.service import BoardService
+from pct.board.wikilinks import extract_wikilinks, resolve_wikilink
+from pct.settings.service import get_project_config
+
+
+def _project_root() -> Path:
+    return (
+        Path(config.settings.project_root)
+        if config.settings.project_root
+        else Path.cwd()
+    )
 
 
 def expand_template(template: str, variables: dict[str, str]) -> str:
@@ -17,33 +31,24 @@ def expand_template(template: str, variables: dict[str, str]) -> str:
     return re.sub(r"\{\{(\s*\w+\s*)\}\}", replacer, template)
 
 
-def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
+def resolve_task_context(
+    feature_id: str | None, task_id: str | None
+) -> tuple[str, str | None, str | None]:
     """Resolve cross-reference context for a task chat session.
 
-    Parses the session ID (``task-{featureId}-{taskId}``), loads the task,
+    Accepts explicit ``feature_id`` and ``task_id``, loads the task,
     collects referenced artifacts from explicit ``cross_refs`` entries
     and ``[[wikilinks]]`` found in the task body and artifact content.
 
     Returns ``(cross_ref_context_text, artifact_type_prompt, stage_prompt)``
     """
-    try:
-        from pct.board import service as board_service
-        from pct.board.wikilinks import extract_wikilinks, resolve_wikilinks
-    except ImportError:
+    if not feature_id or not task_id:
         return ("", None, None)
 
-    # Parse session ID: "{featureId}--{taskId}"
-    if "--" not in session_id:
-        return ("", None, None)
-
-    parts = session_id.split("--", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
-        return ("", None, None)
-
-    feature_id, task_id = parts
+    board = BoardService(_project_root())
 
     try:
-        task = board_service.get_task(feature_id, task_id)
+        task = board.get_task(feature_id, task_id)
     except Exception:
         return ("", None, None)
     if task is None:
@@ -81,7 +86,7 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
 
     artifact_content = ""
     try:
-        artifact_data = board_service.read_artifact(feature_id, task_id)
+        artifact_data = board.read_artifact(feature_id, task_id)
         if artifact_data.get("exists") and artifact_data.get("content"):
             artifact_content = artifact_data["content"]
             texts_to_scan.append(artifact_content)
@@ -93,11 +98,10 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
         for text in texts_to_scan:
             all_links.extend(extract_wikilinks(text))
 
-        if all_links:
+        for link in all_links:
             try:
-                features = board_service.list_features()
-                resolved = resolve_wikilinks(all_links, features)
-                for fid, tid in resolved:
+                fid, tid = resolve_wikilink(link)
+                if fid and tid:
                     _add_ref(fid, tid)
             except Exception:
                 pass
@@ -106,10 +110,10 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
     sections: list[str] = []
     for fid, tid in ref_pairs:
         try:
-            ref_task = board_service.get_task(fid, tid)
+            ref_task = board.get_task(fid, tid)
             if ref_task is None:
                 continue
-            ref_artifact = board_service.read_artifact(fid, tid)
+            ref_artifact = board.read_artifact(fid, tid)
             content = ref_artifact.get("content", "")
             if not content:
                 continue
@@ -129,6 +133,7 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
 
     # Expand stage prompt template
     stage_prompt = _expand_stage_prompt(
+        board=board,
         task=task,
         feature_id=feature_id,
         artifact_content=artifact_content,
@@ -140,36 +145,44 @@ def resolve_task_context(session_id: str) -> tuple[str, str | None, str | None]:
 
 def _expand_stage_prompt(
     *,
+    board: BoardService,
     task,
     feature_id: str,
     artifact_content: str,
     cross_ref_text: str,
 ) -> str | None:
     """Look up the stage prompt_template for the task's status and expand variables."""
-    try:
-        from pct.settings import service as settings_service
-
-        stages = settings_service.get_workflow_stages()
-    except (ImportError, AttributeError):
+    project = get_project_config(_project_root())
+    if project is None:
+        logger.debug("_expand_stage_prompt: no project config found")
         return None
 
-    stage_cfg = None
+    stages = project.workflow_stages
     current_stage = getattr(task, "current_stage_id", getattr(task, "status", None))
+    logger.debug(
+        "_expand_stage_prompt: current_stage={}, available stages={}",
+        current_stage,
+        [s.id for s in stages],
+    )
+
+    stage_cfg = None
     for s in stages:
-        stage_id = getattr(s, "stage", getattr(s, "id", None))
-        if stage_id == current_stage:
+        if s.id == current_stage:
             stage_cfg = s
             break
 
-    if stage_cfg is None or not getattr(stage_cfg, "prompt_template", None):
+    if stage_cfg is None or not stage_cfg.prompt_template:
+        logger.debug(
+            "_expand_stage_prompt: stage_cfg found={}, has_prompt={}",
+            stage_cfg is not None,
+            bool(stage_cfg.prompt_template) if stage_cfg else False,
+        )
         return None
 
     # Resolve feature title
     feature_title = ""
     try:
-        from pct.board import service as board_service
-
-        feature = board_service.get_feature(feature_id)
+        feature = board.get_feature(feature_id)
         if feature:
             feature_title = feature.title
     except Exception:
@@ -182,11 +195,8 @@ def _expand_stage_prompt(
     template = template.replace("{{cross_refs}}", cross_ref_text or "(no cross-references)")
 
     # Expand user-defined template variables
-    try:
-        for tv in settings_service.get_template_variables():
-            template = template.replace("{{" + tv.key + "}}", tv.value)
-    except (ImportError, AttributeError):
-        pass
+    for tv in project.template_variables:
+        template = template.replace("{{" + tv.key + "}}", tv.value)
 
     return template
 

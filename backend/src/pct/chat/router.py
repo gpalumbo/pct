@@ -9,7 +9,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from pct.agent.chat_loop import execute_chat_turn
-from pct.agent.models import AssembledContext
+from pct.agent.models import AssembledContext, ContextMessage, ContextResource
+from pct.models.enums import ResourceKind
 from pct.agent.tools import ToolRegistry, create_global_registry
 from pct.auth.dependencies import get_current_user
 from pct.chat import service
@@ -84,7 +85,11 @@ async def get_session(session_id: str, _user: dict = Depends(get_current_user)):
 
 @router.get("/sessions/{session_id}/messages", response_model=list[PlanningMessage])
 async def get_messages(session_id: str, _user: dict = Depends(get_current_user)):
-    service.get_or_create_session(session_id)
+    session = service.get_or_create_session(session_id)
+    if session.feature_id and session.task_id and session.stage_id:
+        return service.load_task_stage_messages(
+            session.feature_id, session.task_id, session.stage_id
+        )
     return service.load_messages(session_id)
 
 
@@ -98,7 +103,13 @@ async def update_message(
     session = service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    msg = service.update_message(session_id, message_id, updates)
+    if session.feature_id and session.task_id and session.stage_id:
+        msg = service.update_task_stage_message(
+            session.feature_id, session.task_id, session.stage_id,
+            message_id, updates,
+        )
+    else:
+        msg = service.update_message(session_id, message_id, updates)
     if msg is None:
         raise HTTPException(status_code=404, detail="Message not found")
     return msg
@@ -116,7 +127,13 @@ async def delete_message(
     session = service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    if not service.delete_message(session_id, message_id):
+    if session.feature_id and session.task_id and session.stage_id:
+        ok = service.delete_task_stage_message(
+            session.feature_id, session.task_id, session.stage_id, message_id,
+        )
+    else:
+        ok = service.delete_message(session_id, message_id)
+    if not ok:
         raise HTTPException(status_code=404, detail="Message not found")
 
 
@@ -132,7 +149,13 @@ async def truncate_from_message(
     session = service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    if not service.truncate_from_message(session_id, message_id):
+    if session.feature_id and session.task_id and session.stage_id:
+        ok = service.truncate_task_stage_from_message(
+            session.feature_id, session.task_id, session.stage_id, message_id,
+        )
+    else:
+        ok = service.truncate_from_message(session_id, message_id)
+    if not ok:
         raise HTTPException(status_code=404, detail="Message not found")
 
 
@@ -147,11 +170,44 @@ async def send_message(
     req: SendMessageRequest,
     _user: dict = Depends(get_current_user),
 ):
+    # Resolve task context fields from the request body
+    feature_id = req.feature_id
+    task_id = req.task_id
+    stage_id: str | None = None
+    is_task_chat = bool(feature_id and task_id)
+    logger.debug(
+        "send_message: session_id={}, feature_id={}, task_id={}, is_task_chat={}",
+        session_id, feature_id, task_id, is_task_chat,
+    )
+
+    # Look up current stage from the task
+    if is_task_chat:
+        try:
+            from pct.board import service as board_service
+
+            task_obj = board_service.get_task(feature_id, task_id)
+            if task_obj:
+                stage_id = getattr(task_obj, "current_stage_id", None) or getattr(
+                    task_obj, "status", None
+                )
+        except Exception:
+            pass
+
+    # Ensure session exists — store feature/task/stage metadata on it
     session = service.get_or_create_session(session_id)
+    if is_task_chat and (
+        session.feature_id != feature_id
+        or session.task_id != task_id
+        or session.stage_id != stage_id
+    ):
+        service.update_session_context(session_id, feature_id, task_id, stage_id)
 
     # 1. Persist user message
     user_msg = PlanningMessage(role="user", content=req.content)
-    service.append_message(session_id, user_msg)
+    if is_task_chat and stage_id:
+        service.append_task_stage_message(feature_id, task_id, stage_id, user_msg)
+    else:
+        service.append_message(session_id, user_msg)
 
     # 2. Resolve agent
     agent_id = req.agent_id or session.agent_id or get_default_planning_agent_id()
@@ -161,23 +217,54 @@ async def send_message(
 
         return StreamingResponse(no_agent_stream(), media_type="text/event-stream")
 
-    # 3. Build context from included messages
-    included = service.get_included_messages(session_id)
-    conversation_text = "\n\n".join(f"[{m.role}]: {m.content}" for m in included)
+    # 3. Load history into AssembledContext as ContextMessage objects
+    if is_task_chat and stage_id:
+        included = service.get_included_task_stage_messages(
+            feature_id, task_id, stage_id
+        )
+    else:
+        included = service.get_included_messages(session_id)
+
+    context = AssembledContext()
+    for m in included:
+        # Skip system and tool_call roles (backwards compat with old JSONL)
+        if m.role in ("system", "tool_call"):
+            continue
+        if m.role in ("user", "assistant"):
+            context.messages.append(
+                ContextMessage(role=m.role, content=m.content)
+            )
+        elif m.role == "tool_result":
+            context.messages.append(
+                ContextMessage(
+                    role="tool_result",
+                    content=m.content,
+                    tool_call_id=m.tool_call_id,
+                    tool_name=m.tool_name,
+                )
+            )
 
     # 3a. Resolve cross-reference and RAG context for task sessions
-    cross_ref_text, artifact_type_prompt, stage_prompt = resolve_task_context(session_id)
+    cross_ref_text, artifact_type_prompt, stage_prompt = resolve_task_context(
+        feature_id, task_id
+    )
+    logger.debug(
+        "resolve_task_context result: cross_ref={!r}, artifact_type={!r}, stage={!r}",
+        bool(cross_ref_text), artifact_type_prompt, stage_prompt,
+    )
     rag_text = rag_search_context("", req.content)
 
-    # Prepend world context to conversation
-    context_parts = []
+    # Attach resources to context
     if cross_ref_text:
-        context_parts.append(cross_ref_text)
+        context.resources.append(
+            ContextResource(kind=ResourceKind.cross_ref, content=cross_ref_text)
+        )
     if rag_text:
-        context_parts.append(rag_text)
-    context_parts.append(conversation_text)
+        context.resources.append(
+            ContextResource(kind=ResourceKind.rag, content=rag_text)
+        )
 
-    context = AssembledContext(base="\n\n".join(context_parts))
+    pre_turn_count = len(context.messages)
 
     # 4. Stream response
     async def event_stream():
@@ -191,6 +278,26 @@ async def send_message(
         async def on_status(msg: str) -> None:
             await event_queue.put({"status": msg})
 
+        async def on_tool_call(call_id: str, name: str, arguments: str) -> None:
+            await event_queue.put({
+                "tool_call": {"id": call_id, "name": name, "arguments": arguments},
+            })
+
+        async def on_tool_result(call_id: str, name: str, output: str) -> None:
+            await event_queue.put({
+                "tool_result": {
+                    "id": call_id,
+                    "name": name,
+                    "output": output[:2000],
+                },
+            })
+
+        async def on_flush_bubble() -> None:
+            """Commit current streaming content as a finalized bubble."""
+            content = "".join(collected_tokens)
+            if content:
+                await event_queue.put({"flush_bubble": content})
+
         async def run_chat():
             try:
                 # Auto-download HuggingFace models if needed
@@ -199,26 +306,48 @@ async def send_message(
                     await ensure_model_ready(model_entry, on_status)
 
                 provider, agent_cfg = resolve_provider(agent_id)
-                system_prompt = agent_cfg.prompt_template or ""
+
+                # Set prompts on context
+                context.agent_prompt = agent_cfg.prompt_template or ""
                 if stage_prompt:
-                    system_prompt = stage_prompt + "\n\n" + system_prompt
+                    context.stage_prompt = stage_prompt
                 if artifact_type_prompt:
-                    system_prompt = artifact_type_prompt + "\n\n" + system_prompt
+                    context.project_prompt = artifact_type_prompt
+
+                # Emit system prompt so frontend can display it
+                sys_prompt = context.build_system_prompt()
+                if sys_prompt:
+                    await event_queue.put({"system_prompt": sys_prompt})
+
                 result = await execute_chat_turn(
                     provider=provider,
                     context=context,
-                    system_prompt=system_prompt,
                     on_token=on_token,
                     tool_registry=_get_tool_registry(),
+                    on_tool_call=on_tool_call,
+                    on_tool_result=on_tool_result,
+                    on_flush_bubble=on_flush_bubble,
                 )
+
+                # Append final assistant response to context
                 full_content = "".join(collected_tokens) or result.output
+                context.append_assistant(full_content)
+
+                # Persist new messages from the turn
+                if is_task_chat and stage_id:
+                    _append = lambda msg: service.append_task_stage_message(
+                        feature_id, task_id, stage_id, msg
+                    )
+                else:
+                    _append = lambda msg: service.append_message(session_id, msg)
+                _persist_turn_messages(_append, context, pre_turn_count, agent_id, result)
+
                 assistant_msg = PlanningMessage(
                     role="assistant",
                     content=full_content,
                     tokens=result.tokens_output or None,
                     agent_id=agent_id,
                 )
-                service.append_message(session_id, assistant_msg)
                 return assistant_msg
             except Exception:
                 logger.exception("Chat turn failed")
@@ -250,6 +379,42 @@ async def send_message(
             yield _sse({"error": f"An unexpected error occurred: {e}"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _persist_turn_messages(
+    append_fn,
+    context: AssembledContext,
+    pre_turn_count: int,
+    agent_id: str,
+    result,
+) -> None:
+    """Persist tool_result and assistant messages added during the turn.
+
+    Iterates ``context.messages[pre_turn_count:]``, skipping ``user`` (already
+    persisted before the turn).  No system prompt or tool_call persistence.
+    """
+    for msg in context.messages[pre_turn_count:]:
+        if msg.role == "user":
+            continue
+        if msg.role == "tool_result":
+            append_fn(
+                PlanningMessage(
+                    role="tool_result",
+                    content=msg.content[:10000],
+                    included=True,
+                    tool_call_id=msg.tool_call_id,
+                    tool_name=msg.tool_name,
+                ),
+            )
+        elif msg.role == "assistant":
+            append_fn(
+                PlanningMessage(
+                    role="assistant",
+                    content=msg.content,
+                    tokens=result.tokens_output or None,
+                    agent_id=agent_id,
+                ),
+            )
 
 
 def _sse(data: dict) -> str:

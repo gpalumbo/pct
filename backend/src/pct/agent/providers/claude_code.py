@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from pct.agent.models import AgentResult
+from pct.agent.models import AgentConfig, AgentResult
 
 
 class ClaudeCodeProvider:
@@ -12,6 +12,15 @@ class ClaudeCodeProvider:
 
     Not yet implemented — raises NotImplementedError on all operations.
     """
+
+    def __init__(self, agent_config: AgentConfig | None = None) -> None:
+        self.agent_config = agent_config
+
+    @property
+    def name(self) -> str:
+        if self.agent_config is not None:
+            return f"ClaudeCode({self.agent_config.id})"
+        return "ClaudeCode"
 
     async def execute(
         self,

@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pct.agent.models import AgentResult, ToolCall
+from pct.agent.models import AgentConfig, AgentResult, ToolCall
 from pct.agent.protocols import CompletionBackend
 from pct.models.enums import TaskOutcome
 from loguru import logger
@@ -82,6 +82,77 @@ def _parse_tool_calls_from_content(content: str) -> list[ToolCall]:
     return tool_calls
 
 
+def _strip_tool_call_tags(text: str) -> str:
+    """Remove ``<tool_call>...</tool_call>`` blocks from text."""
+    return re.sub(r"\s*<tool_call>.*?</tool_call>\s*", "", text, flags=re.DOTALL).strip()
+
+
+class _ToolCallStreamFilter:
+    """Buffers streaming tokens to suppress ``<tool_call>...</tool_call>`` blocks.
+
+    Raw tokens are accumulated and only forwarded to ``on_token`` when they are
+    confirmed *not* to be part of a tool-call tag.  The provider's own
+    ``collected`` list still records every token so tool-call parsing works on
+    the full text.
+    """
+
+    _OPEN = "<tool_call>"
+    _CLOSE = "</tool_call>"
+
+    def __init__(self, on_token: Callable[[str], Awaitable[None]]) -> None:
+        self._on_token = on_token
+        self._buffer = ""
+        self._suppressing = False
+
+    async def feed(self, token: str) -> None:
+        self._buffer += token
+        await self._process()
+
+    async def _process(self) -> None:
+        while self._buffer:
+            if self._suppressing:
+                idx = self._buffer.find(self._CLOSE)
+                if idx != -1:
+                    # End of tag found — discard everything up to & including it
+                    self._buffer = self._buffer[idx + len(self._CLOSE) :]
+                    self._suppressing = False
+                    continue
+                # Could be a partial close tag at the tail — keep buffering
+                for i in range(1, len(self._CLOSE)):
+                    if self._buffer.endswith(self._CLOSE[:i]):
+                        return
+                # No partial match — discard buffer (still inside tag)
+                self._buffer = ""
+                return
+            else:
+                idx = self._buffer.find(self._OPEN)
+                if idx != -1:
+                    before = self._buffer[:idx]
+                    if before:
+                        await self._on_token(before)
+                    self._buffer = self._buffer[idx + len(self._OPEN) :]
+                    self._suppressing = True
+                    continue
+                # Could be a partial open tag at the tail — hold it back
+                for i in range(1, len(self._OPEN)):
+                    if self._buffer.endswith(self._OPEN[:i]):
+                        safe = self._buffer[: -i]
+                        if safe:
+                            await self._on_token(safe)
+                        self._buffer = self._buffer[-i:]
+                        return
+                # Nothing suspicious — flush entire buffer
+                await self._on_token(self._buffer)
+                self._buffer = ""
+                return
+
+    async def finish(self) -> None:
+        """Flush any remaining non-suppressed text."""
+        if self._buffer and not self._suppressing:
+            await self._on_token(self._buffer)
+        self._buffer = ""
+
+
 class LocalLLMProvider:
     """Agent provider backed by a local LLM via CompletionBackend protocol.
 
@@ -95,7 +166,9 @@ class LocalLLMProvider:
         model_path: str | None = None,
         context_length: int | None = None,
         temperature: float | None = None,
+        agent_config: AgentConfig | None = None,
     ) -> None:
+        self.agent_config = agent_config
         if backend is not None:
             self._backend = backend
         elif model_path is not None:
@@ -115,6 +188,12 @@ class LocalLLMProvider:
         self._temperature = temperature
         self._interrupted = False
 
+    @property
+    def name(self) -> str:
+        if self.agent_config is not None:
+            return f"LocalLLM({self.agent_config.id})"
+        return "LocalLLM"
+
     async def execute(
         self,
         messages: list[dict[str, str]],
@@ -124,11 +203,11 @@ class LocalLLMProvider:
         """Execute a chat completion against the backend."""
         self._interrupted = False
         loop = asyncio.get_running_loop()
-        stream = on_token is not None and not tools
+        stream = on_token is not None
 
         try:
             if stream:
-                return await self._execute_streaming(messages, on_token, loop)
+                return await self._execute_streaming(messages, on_token, loop, tools=tools)
             else:
                 return await self._execute_non_streaming(messages, loop, tools=tools)
         except Exception as exc:
@@ -187,6 +266,7 @@ class LocalLLMProvider:
         messages: list[dict[str, str]],
         on_token: Callable[[str], Awaitable[None]],
         loop: asyncio.AbstractEventLoop,
+        tools: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
         queue: asyncio.Queue[str | None | Exception] = asyncio.Queue()
 
@@ -195,6 +275,8 @@ class LocalLLMProvider:
                 stream_kwargs: dict[str, Any] = {}
                 if self._temperature is not None:
                     stream_kwargs["temperature"] = self._temperature
+                if tools:
+                    stream_kwargs["tools"] = tools
                 chunks = self._backend.create_chat_completion(
                     messages, stream=True, **stream_kwargs
                 )
@@ -212,28 +294,48 @@ class LocalLLMProvider:
 
         loop.run_in_executor(None, _run_stream)
 
+        # Filter suppresses <tool_call>…</tool_call> from the UI stream
+        # while `collected` keeps the raw text for tool-call parsing.
+        stream_filter = _ToolCallStreamFilter(on_token)
         collected: list[str] = []
         while True:
             item = await queue.get()
             if item is None:
                 break
             if isinstance(item, Exception):
+                await stream_filter.finish()
                 return AgentResult(
                     outcome=TaskOutcome.error,
                     output="".join(collected),
                     error=str(item),
                 )
             collected.append(item)
-            await on_token(item)
+            await stream_filter.feed(item)
+
+        await stream_filter.finish()
 
         if self._interrupted:
             return AgentResult(
                 outcome=TaskOutcome.interrupted,
-                output="".join(collected),
+                output=_strip_tool_call_tags("".join(collected)),
             )
+
+        full_text = "".join(collected)
+
+        # Check if streamed text contains tool calls
+        parsed_tool_calls = _parse_tool_calls_from_content(full_text)
+        if parsed_tool_calls:
+            # Return any text before the tool call as output
+            clean_text = _strip_tool_call_tags(full_text)
+            return AgentResult(
+                outcome=TaskOutcome.approved,
+                output=clean_text,
+                tool_calls=parsed_tool_calls,
+            )
+
         return AgentResult(
             outcome=TaskOutcome.approved,
-            output="".join(collected),
+            output=full_text,
         )
 
     async def interrupt(self) -> None:

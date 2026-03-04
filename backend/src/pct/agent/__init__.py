@@ -1,12 +1,14 @@
 """PCT Agent Execution Engine — core chat loop and provider abstractions."""
 
-from pct.agent.chat_loop import build_messages, execute_chat_turn
+from pct.agent.chat_loop import execute_chat_turn
 from pct.agent.models import (
     AgentConfig,
     AgentJob,
     AgentResult,
     AssembledContext,
+    ContextMessage,
     ContextMetadata,
+    ContextResource,
     LLMMessage,
     ToolCall,
     ToolResult,
@@ -25,6 +27,8 @@ __all__ = [
     "LLMMessage",
     "ContextMetadata",
     "AssembledContext",
+    "ContextMessage",
+    "ContextResource",
     "AgentConfig",
     "AgentResult",
     "AgentJob",
@@ -35,7 +39,6 @@ __all__ = [
     "CompletionBackend",
     "Tool",
     # Chat loop
-    "build_messages",
     "execute_chat_turn",
     # Tools
     "BashTool",

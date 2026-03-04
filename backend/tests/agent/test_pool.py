@@ -8,6 +8,9 @@ from pct.models.enums import ProviderType, TaskOutcome
 class FakeProvider:
     """Fake provider that returns a canned result."""
 
+    agent_config = None
+    name = "FakeProvider"
+
     def __init__(self, outcome=TaskOutcome.approved):
         self._outcome = outcome
 
@@ -29,7 +32,7 @@ class TestAgentPool:
         job = AgentJob(
             task_id="t1",
             feature_id="f1",
-            context=AssembledContext(base="Hello"),
+            context=AssembledContext(stage_prompt="Hello"),
             agent_type=ProviderType.remote_api,
             stage="refine-spec",
         )
