@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
+from pct.board.models import FeatureCreate, TaskCreate
+from pct.board.service import BoardService
 from pct.models.core import Project
+from pct.settings.templates import get_initial_features
 from pct.storage.project_io import init_project, load_project_config, save_project_config
 from loguru import logger
 
@@ -34,10 +37,6 @@ def initialize_project(project_root: Path, project: Project) -> Project:
 
 def _apply_initial_features(project_root: Path, project_type: str) -> None:
     """Create the initial features and tasks from the project template."""
-    from pct.board.models import FeatureCreate, TaskCreate
-    from pct.board.service import BoardService
-    from pct.settings.templates import get_initial_features
-
     feat_templates = get_initial_features(project_type)
     if not feat_templates:
         return

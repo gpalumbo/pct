@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pct import config
 from pct.agent.models import AgentConfig
 from pct.agent.protocols import AgentProvider
 from pct.agent.providers.claude_code import ClaudeCodeProvider
 from pct.agent.providers.local_llm import LocalLLMProvider
 from pct.models.agents import ModelRegistryEntry
-from pct.models.enums import ProviderType
+from pct.models.enums import AgentType, ProviderType
+from pct.storage.project_io import load_project_config
+from pct.storage.registry_io import load_model_registry
 from loguru import logger
 
 
@@ -19,10 +22,6 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
 
     Uses prototype2's storage layer to load agent configs from pct.yaml.
     """
-    from pct.storage.project_io import load_project_config
-
-    from pct import config
-
     project = load_project_config(config.settings.project_root)
     if project is None:
         raise ValueError("No project config found")
@@ -41,8 +40,6 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
         )
 
     # Map project Agent model to AgentConfig
-    from pct.models.enums import AgentType
-
     agent_cfg = AgentConfig(
         id=agent_data.id,
         agent_type=getattr(agent_data, "agent_type", AgentType.llm),
@@ -77,10 +74,6 @@ def resolve_provider(agent_id: str) -> tuple[AgentProvider, AgentConfig]:
 
 def _resolve_model_path(model_id: str) -> str | None:
     """Look up file_path from the global model registry (~/.pct/registries/models.yaml)."""
-    from pct.storage.registry_io import load_model_registry
-
-    from pct import config
-
     models = load_model_registry(config.settings.global_config_dir)
     for m in models:
         if m.id == model_id:
@@ -93,11 +86,6 @@ def resolve_model_entry_for_agent(agent_id: str) -> ModelRegistryEntry | None:
 
     Returns ``None`` if the agent or model isn't found in the registry.
     """
-    from pct.storage.project_io import load_project_config
-    from pct.storage.registry_io import load_model_registry
-
-    from pct import config
-
     project = load_project_config(config.settings.project_root)
     if project is None:
         return None
@@ -124,10 +112,6 @@ def resolve_model_entry_for_agent(agent_id: str) -> ModelRegistryEntry | None:
 def get_default_planning_agent_id() -> str | None:
     """Return the configured planning agent, or first agent if none set."""
     try:
-        from pct.storage.project_io import load_project_config
-
-        from pct import config
-
         project = load_project_config(config.settings.project_root)
         if project is None:
             return None

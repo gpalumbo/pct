@@ -7,6 +7,7 @@ from pct.models.agents import Agent, ModelRegistryEntry
 from pct.models.core import Project
 from pct.models.enums import AgentType, ProviderType
 from pct.models.workflow import ArtifactType, WorkflowStage
+from pct.storage.registry_io import load_model_registry
 
 # Matches GGUF split shard pattern: -NNNNN-of-NNNNN.gguf
 _GGUF_SHARD_RE = re.compile(r"-(\d{5})-of-(\d{5})\.gguf$", re.IGNORECASE)
@@ -170,8 +171,6 @@ def discover_models(
     Returns (models, imagegen_model_ids) so callers know which models
     are image-generation (diffusers) pipelines.
     """
-    from pct.storage.registry_io import load_model_registry
-
     seen_ids: set[str] = set()
     models: list[ModelRegistryEntry] = []
     imagegen_ids: set[str] = set()

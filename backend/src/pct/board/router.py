@@ -7,7 +7,7 @@ from pct.board.dag_validation import CycleError
 from pct.board.models import FeatureCreate, FeatureUpdate, TaskCreate, TaskMove, TaskUpdate
 from pct.board.service import BoardService
 from pct.config import Settings
-from pct.storage.task_io import load_task_body
+from pct.storage.task_io import list_tasks as _list_tasks, load_task as _load_task, load_task_body, save_task as _save_task
 
 router = APIRouter(prefix="/api/board", tags=["board"])
 
@@ -106,8 +106,6 @@ async def list_tasks(
     svc: BoardService = Depends(_board_service),
     _user: str = Depends(get_current_user),
 ):
-    from pct.storage.task_io import list_tasks as _list_tasks
-
     tasks = _list_tasks(svc.project_root, feature_id)
     return [t.model_dump(mode="json") for t in tasks]
 
@@ -229,9 +227,6 @@ async def put_artifact(
     svc: BoardService = Depends(_board_service),
     _user: str = Depends(get_current_user),
 ):
-    from pct.storage.task_io import load_task as _load_task
-    from pct.storage.task_io import save_task as _save_task
-
     task = _load_task(svc.project_root, feature_id, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")

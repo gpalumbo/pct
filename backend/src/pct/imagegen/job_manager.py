@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pct.imagegen.models import JobStatus
+from pct.imagegen.service import generate
 from loguru import logger
 
 
@@ -129,8 +130,6 @@ class JobManager:
         self.set_running(job_id)
 
         try:
-            from pct.imagegen.service import generate
-
             result = await generate(
                 project_root=project_root,
                 feature_id=job.feature_id,

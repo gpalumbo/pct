@@ -54,14 +54,8 @@ def resolve_task_context(
     if task is None:
         return ("", None, None)
 
-    # Artifact type prompt
+    # Artifact type prompt (placeholder — needs real implementation)
     artifact_type_prompt = None
-    try:
-        from pct.board.artifact_types import get_artifact_type_prompt
-
-        artifact_type_prompt = get_artifact_type_prompt(task.artifact_type) or None
-    except (ImportError, AttributeError):
-        pass
 
     # Collect referenced task IDs (deduped) from multiple sources
     ref_pairs: list[tuple[str, str]] = []
@@ -201,46 +195,18 @@ def _expand_stage_prompt(
     return template
 
 
-def rag_search_context(project_id: str, query: str, max_results: int = 5) -> str:
-    """Perform RAG semantic search over indexed artifacts.
+def rag_search_context(query: str, max_results: int = 5) -> str:
+    """Perform RAG semantic search over indexed project documents.
 
-    Returns formatted results or empty string if RAG is unavailable.
+    Delegates to ``pct.rag.search.rag_search_context`` using the current
+    project root.  Returns formatted results or empty string if RAG is
+    unavailable.
     """
-    if not project_id or not query.strip():
+    if not query.strip():
         return ""
-
     try:
-        from pct.rag.indexer import _get_db, _get_model
+        from pct.rag.search import rag_search_context as _rag_search
+
+        return _rag_search(_project_root(), query, max_results)
     except ImportError:
-        return ""
-
-    try:
-        model = _get_model()
-        db = _get_db(project_id)
-
-        available = db.list_tables()
-        if "artifacts" not in available:
-            return ""
-
-        vector = model.encode(query[:8192]).tolist()
-        table = db.open_table("artifacts")
-        results = table.search(vector).limit(max_results).to_list()
-
-        if not results:
-            return ""
-
-        sections: list[str] = []
-        for r in results:
-            path = r.get("path", "unknown")
-            text = r.get("text", "")
-            snippet = text[:500] + "..." if len(text) > 500 else text
-            sections.append(f"[{path}]\n{snippet}")
-
-        return (
-            "## World Knowledge (RAG)\n"
-            "Potentially relevant artifacts from the project knowledge base:\n\n"
-            + "\n\n".join(sections)
-        )
-    except Exception:
-        logger.opt(exception=True).debug("RAG search failed")
         return ""

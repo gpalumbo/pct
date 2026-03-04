@@ -6,8 +6,10 @@ import re
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from pct import config
 from pct.models.agents import ModelRegistryEntry
 from pct.models.enums import DownloadStatus, ProviderType
+from pct.storage.registry_io import load_model_registry, save_model_registry
 from loguru import logger
 
 # Matches GGUF split shard pattern: -NNNNN-of-NNNNN.gguf
@@ -160,9 +162,6 @@ def _update_registry_status(
     entry: ModelRegistryEntry, status: DownloadStatus
 ) -> ModelRegistryEntry:
     """Update the download_status field in the global registry."""
-    from pct import config
-    from pct.storage.registry_io import load_model_registry, save_model_registry
-
     global_dir = config.settings.global_config_dir
     models = load_model_registry(global_dir)
     updated_entry = entry
@@ -179,9 +178,6 @@ def _update_registry_entry(
     entry: ModelRegistryEntry, file_path: str, status: DownloadStatus
 ) -> ModelRegistryEntry:
     """Update both file_path and download_status in the global registry."""
-    from pct import config
-    from pct.storage.registry_io import load_model_registry, save_model_registry
-
     global_dir = config.settings.global_config_dir
     models = load_model_registry(global_dir)
     updated_entry = entry

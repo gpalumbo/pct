@@ -10,6 +10,7 @@ from pct.agent.chat_loop import execute_chat_turn
 from pct.agent.models import AgentResult, AssembledContext
 from pct.agent.protocols import AgentProvider
 from pct.board.wikilinks import parse_wikilink
+from pct.chat.provider_factory import resolve_provider as _resolve_provider_from_factory
 from pct.chat.context_builder import expand_template
 from pct.models.core import ErrorDetails, Task
 from pct.models.enums import ExecutionStatus, TaskOutcome
@@ -28,9 +29,7 @@ def _resolve_provider(project_root: Path, agent_id: str | None) -> AgentProvider
     if agent_id is None:
         return None
     try:
-        from pct.chat.provider_factory import resolve_provider
-
-        provider, _cfg = resolve_provider(agent_id)
+        provider, _cfg = _resolve_provider_from_factory(agent_id)
         return provider
     except Exception:
         return None

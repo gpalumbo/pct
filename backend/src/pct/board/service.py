@@ -1,5 +1,6 @@
 """Board service — feature/task CRUD, workflow movement, lifecycle."""
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -99,8 +100,6 @@ class BoardService:
         # Remove feature admin dir
         admin_dir = self.project_root / "pct-admin" / "active-features" / feature_id
         if admin_dir.exists():
-            import shutil
-
             shutil.rmtree(admin_dir)
         return True
 

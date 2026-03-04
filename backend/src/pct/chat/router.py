@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from pct.agent.chat_loop import execute_chat_turn
 from pct.agent.models import AssembledContext, ContextMessage, ContextResource
+from pct.board import service as board_service
 from pct.models.enums import ResourceKind
 from pct.agent.tools import ToolRegistry, create_global_registry
 from pct.auth.dependencies import get_current_user
@@ -39,8 +42,6 @@ def _get_tool_registry() -> ToolRegistry:
     """Lazily create the global tool registry (singleton per process)."""
     global _tool_registry
     if _tool_registry is None:
-        from pathlib import Path
-
         project_root = Path(settings.project_root) if settings.project_root else Path.cwd()
         _tool_registry = create_global_registry(project_root)
     return _tool_registry
@@ -183,8 +184,6 @@ async def send_message(
     # Look up current stage from the task
     if is_task_chat:
         try:
-            from pct.board import service as board_service
-
             task_obj = board_service.get_task(feature_id, task_id)
             if task_obj:
                 stage_id = getattr(task_obj, "current_stage_id", None) or getattr(
@@ -252,7 +251,7 @@ async def send_message(
         "resolve_task_context result: cross_ref={!r}, artifact_type={!r}, stage={!r}",
         bool(cross_ref_text), artifact_type_prompt, stage_prompt,
     )
-    rag_text = rag_search_context("", req.content)
+    rag_text = rag_search_context(req.content)
 
     # Attach resources to context
     if cross_ref_text:
