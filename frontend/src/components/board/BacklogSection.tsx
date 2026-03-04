@@ -30,9 +30,9 @@ export default function BacklogSection({ features }: BacklogSectionProps) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {planningFeatures.map((f) => (
-                  <div key={f.id} style={{ padding: '4px 8px', background: '#fafafa', borderRadius: 4 }}>
+                  <div key={f.id} style={{ padding: '4px 8px', background: 'var(--pct-color-bg-light)', borderRadius: 4 }}>
                     <Text>{f.title}</Text>
-                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    <Text type="secondary" className="pct-text-base" style={{ marginLeft: 8 }}>
                       {f.tasks.length} task{f.tasks.length !== 1 ? 's' : ''}
                     </Text>
                   </div>

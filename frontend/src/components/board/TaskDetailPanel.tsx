@@ -155,7 +155,7 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
           flexShrink: 0,
         }}
       >
-        <Text strong style={{ flex: 1, fontSize: 13 }} ellipsis>
+        <Text strong className="pct-text-md" style={{ flex: 1 }} ellipsis>
           {task.title}
         </Text>
         <Select
@@ -163,7 +163,8 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
           value={task.current_stage_id}
           onChange={handleStageChange}
           loading={moveTask.isPending}
-          style={{ width: 130, fontSize: 11 }}
+          className="pct-text-sm"
+          style={{ width: 130 }}
           popupMatchSelectWidth={false}
         >
           {enabledStages.map((s) => (
@@ -172,10 +173,10 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
             </Select.Option>
           ))}
         </Select>
-        <Tag color={currentStage ? 'blue' : 'default'} style={{ fontSize: 10, margin: 0 }}>
+        <Tag color={currentStage ? 'blue' : 'default'} className="pct-text-xs" style={{ margin: 0 }}>
           {currentStage?.label ?? task.current_stage_id}
         </Tag>
-        <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
+        <Text type="secondary" className="pct-meta-text" style={{ flexShrink: 0 }}>
           {featureId}/{task.id}
         </Text>
         <Button type="text" size="small" icon={<CloseOutlined />} onClick={handleClose} />
@@ -194,12 +195,12 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
           }}
         >
           {task.blocked_by.map((ref) => (
-            <Tag key={ref} color="red" style={{ fontSize: 10, margin: 0 }}>
+            <Tag key={ref} color="red" className="pct-text-xs" style={{ margin: 0 }}>
               blocked: {ref}
             </Tag>
           ))}
           {task.cross_refs.map((ref) => (
-            <Tag key={ref} color="blue" style={{ fontSize: 10, margin: 0 }}>
+            <Tag key={ref} color="blue" className="pct-text-xs" style={{ margin: 0 }}>
               {ref}
             </Tag>
           ))}

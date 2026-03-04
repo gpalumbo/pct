@@ -81,7 +81,7 @@ export default function ChatInput({
   };
 
   return (
-    <div style={{ borderTop: '1px solid #f0f0f0', flexShrink: 0 }}>
+    <div style={{ borderTop: '1px solid var(--pct-color-border-light)', flexShrink: 0 }}>
       {/* Refine chip */}
       {refineTarget && (
         <div className="chat-input-refine-chip">
@@ -90,15 +90,16 @@ export default function ChatInput({
             alt="Refine target"
             style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }}
           />
-          <Text style={{ fontSize: 11, flex: 1 }} ellipsis>
+          <Text className="pct-meta-text" style={{ flex: 1 }} ellipsis>
             Refining <strong>{refineTarget.filename}</strong>
           </Text>
           <Tag
             closable
             onClose={onCancelRefine}
-            style={{ margin: 0, fontSize: 10, cursor: 'pointer' }}
+            className="pct-text-xs"
+            style={{ margin: 0, cursor: 'pointer' }}
           >
-            <CloseOutlined style={{ fontSize: 8 }} />
+            <CloseOutlined className="pct-text-2xs" />
           </Tag>
         </div>
       )}

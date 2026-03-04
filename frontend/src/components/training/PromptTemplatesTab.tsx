@@ -114,7 +114,7 @@ export default function PromptTemplatesTab() {
                 onClick={() => handleSelect(tmpl)}
                 style={{
                   cursor: 'pointer',
-                  backgroundColor: tmpl.id === selectedId ? '#e6f7ff' : undefined,
+                  backgroundColor: tmpl.id === selectedId ? 'var(--pct-bubble-user)' : undefined,
                   padding: '8px 12px',
                 }}
               >
@@ -123,7 +123,7 @@ export default function PromptTemplatesTab() {
                     <Text strong>{tmpl.name}</Text>
                     <Tag color="blue">v{tmpl.active_version}</Tag>
                   </div>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
+                  <Text type="secondary" className="pct-meta-text">
                     {tmpl.versions.length} version{tmpl.versions.length !== 1 ? 's' : ''}
                   </Text>
                 </div>
@@ -163,7 +163,8 @@ export default function PromptTemplatesTab() {
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               rows={16}
-              style={{ fontFamily: 'monospace', fontSize: 13, marginBottom: 16 }}
+              className="pct-text-md"
+              style={{ fontFamily: 'monospace', marginBottom: 16 }}
             />
 
             <div>
@@ -185,7 +186,7 @@ export default function PromptTemplatesTab() {
                           Active
                         </Tag>
                       ) : (
-                        <Text key="load" type="secondary" style={{ fontSize: 11 }}>
+                        <Text key="load" type="secondary" className="pct-meta-text">
                           Click to load
                         </Text>
                       ),
@@ -230,7 +231,8 @@ export default function PromptTemplatesTab() {
           >
             <TextArea
               rows={10}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              className="pct-text-md"
+              style={{ fontFamily: 'monospace' }}
               placeholder="Enter your prompt template content..."
             />
           </Form.Item>

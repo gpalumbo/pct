@@ -55,7 +55,7 @@ function TaskCardInner({ task, index, featureId, agentType }: TaskCardProps) {
             }}
             onClick={handleClick}
           >
-            <Text strong ellipsis style={{ fontSize: 12 }}>
+            <Text strong ellipsis className="pct-text-base">
               {task.title}
             </Text>
             <div style={{ marginTop: 4 }}>
@@ -68,7 +68,7 @@ function TaskCardInner({ task, index, featureId, agentType }: TaskCardProps) {
                         ? 'error'
                         : 'default'
                   }
-                  style={{ fontSize: 10 }}
+                  className="pct-text-xs"
                 >
                   {task.execution_status}
                 </Tag>

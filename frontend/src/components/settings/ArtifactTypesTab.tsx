@@ -129,14 +129,14 @@ export default function ArtifactTypesTab() {
                 height: 14,
                 borderRadius: '50%',
                 backgroundColor: color,
-                border: '1px solid #d9d9d9',
+                border: '1px solid var(--pct-color-border)',
                 verticalAlign: 'middle',
               }}
             />
             <Tag color={color}>{color}</Tag>
           </Space>
         ) : (
-          <span style={{ color: '#999' }}>Default</span>
+          <span style={{ color: 'var(--pct-color-text-muted)' }}>Default</span>
         ),
     },
     {
@@ -147,7 +147,7 @@ export default function ArtifactTypesTab() {
         hint ? (
           <span style={{ maxWidth: 300, display: 'inline-block' }}>{hint}</span>
         ) : (
-          <span style={{ color: '#999' }}>--</span>
+          <span style={{ color: 'var(--pct-color-text-muted)' }}>--</span>
         ),
     },
     {

@@ -126,11 +126,11 @@ function layoutGraph({ nodes, edges, direction, criticalTaskIds }: LayoutInput):
         border: borderStyle + " " + borderColor,
         borderRadius: 8,
         padding: "6px 10px",
-        fontSize: 12,
+        fontSize: "var(--pct-fs-base)",
         fontWeight: 500,
         width: NODE_WIDTH,
         opacity,
-        color: node.is_completed ? "#595959" : "#141414",
+        color: node.is_completed ? "var(--pct-color-text-secondary)" : "var(--pct-color-text)",
       },
     };
   });
@@ -157,7 +157,7 @@ function layoutGraph({ nodes, edges, direction, criticalTaskIds }: LayoutInput):
         color: isCritical ? "#fa541c" : edge.edge_type === "blocked_by" ? "#595959" : "#bfbfbf",
       },
       label: edge.edge_type === "cross_ref" ? "ref" : undefined,
-      labelStyle: { fontSize: 10, fill: "#8c8c8c" },
+      labelStyle: { fontSize: "var(--pct-fs-xs)", fill: "#8c8c8c" },
     };
   });
 
@@ -246,7 +246,7 @@ export default function PertChart({
 
   if (filteredNodes.length === 0) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#8c8c8c" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--pct-color-text-muted)" }}>
         No tasks to display. Adjust filters or create tasks first.
       </div>
     );
@@ -270,7 +270,7 @@ export default function PertChart({
           nodeStrokeWidth={3}
           pannable
           zoomable
-          style={{ background: "#fafafa" }}
+          style={{ background: "var(--pct-color-bg-light)" }}
         />
       </ReactFlow>
     </div>

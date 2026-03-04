@@ -63,7 +63,7 @@ export default function MessageList({
           onChange={setShowToolCalls}
           checkedChildren={<ToolOutlined />}
         />
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text type="secondary" className="pct-text-base">
           Show tool calls
         </Text>
       </div>
@@ -77,17 +77,16 @@ export default function MessageList({
             {
               key: 'system',
               label: (
-                <Text type="secondary" style={{ fontSize: 12 }}>
+                <Text type="secondary" className="pct-text-base">
                   System prompt
                 </Text>
               ),
               children: (
                 <pre
+                  className="pct-tool-pre"
                   style={{
-                    fontSize: 11,
                     maxHeight: 200,
                     overflow: 'auto',
-                    whiteSpace: 'pre-wrap',
                     margin: 0,
                   }}
                 >
@@ -139,21 +138,21 @@ export default function MessageList({
               {toolActivity.map((ta) => (
                 <div
                   key={ta.callId}
+                  className="pct-text-base"
                   style={{
-                    background: '#f9f0ff',
+                    background: 'var(--pct-bubble-tool-call)',
                     borderRadius: 6,
                     padding: '4px 8px',
                     marginBottom: 4,
-                    fontSize: 12,
                   }}
                 >
                   <Tag color="purple" style={{ marginRight: 4 }}>
                     {ta.name}
                   </Tag>
                   {ta.output === undefined ? (
-                    <LoadingOutlined style={{ fontSize: 11 }} />
+                    <LoadingOutlined className="pct-text-sm" />
                   ) : (
-                    <Text type="secondary" style={{ fontSize: 11 }}>
+                    <Text type="secondary" className="pct-meta-text">
                       done
                     </Text>
                   )}
@@ -163,7 +162,7 @@ export default function MessageList({
           )}
 
           <div
-            style={{ background: '#f6ffed', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
+            style={{ background: 'var(--pct-bubble-assistant)', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
           >
             {streamingContent ? (
               <ReactMarkdown>{streamingContent}</ReactMarkdown>

@@ -57,7 +57,7 @@ export default function NotificationPanel({ onClose }: NotificationPanelProps) {
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '8px 12px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: '1px solid var(--pct-color-border-light)',
         }}
       >
         <Text strong>Notifications</Text>
@@ -107,13 +107,13 @@ export default function NotificationPanel({ onClose }: NotificationPanelProps) {
                     <Tag color={SEVERITY_COLOR[item.severity]} style={{ marginInlineEnd: 0 }}>
                       {SEVERITY_LABEL[item.severity]}
                     </Tag>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                    <Text type="secondary" className="pct-text-base">
                       {dayjs(item.created_at).fromNow()}
                     </Text>
                   </div>
                 }
                 description={
-                  <Text style={{ fontSize: 13 }}>{item.message}</Text>
+                  <Text className="pct-text-md">{item.message}</Text>
                 }
               />
             </List.Item>

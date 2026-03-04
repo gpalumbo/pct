@@ -66,12 +66,13 @@ function TextPreview({ featureId, taskId }: TextPreviewProps) {
       <div className="artifact-output-section-header" onClick={() => setCollapsed(!collapsed)}>
         <Text
           type="secondary"
-          style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}
+          className="pct-meta-text"
+          style={{ fontWeight: 500, flex: 1, cursor: 'pointer' }}
         >
           {collapsed ? (
-            <DownOutlined style={{ fontSize: 9, marginRight: 4 }} />
+            <DownOutlined className="pct-text-2xs" style={{ marginRight: 4 }} />
           ) : (
-            <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />
+            <UpOutlined className="pct-text-2xs" style={{ marginRight: 4 }} />
           )}
           Text Artifact
         </Text>
@@ -96,7 +97,7 @@ function TextPreview({ featureId, taskId }: TextPreviewProps) {
           {content ? (
             <ReactMarkdown>{content}</ReactMarkdown>
           ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" className="pct-text-base">
               {artifact
                 ? '(empty)'
                 : 'Artifact file does not exist yet. Use "Copy to artifact" or the editor to create it.'}
@@ -138,12 +139,13 @@ function ImageSection({ activeAgentType }: ImageSectionProps) {
       <div className="artifact-output-section-header" onClick={() => setCollapsed(!collapsed)}>
         <Text
           type="secondary"
-          style={{ fontSize: 11, fontWeight: 500, flex: 1, cursor: 'pointer' }}
+          className="pct-meta-text"
+          style={{ fontWeight: 500, flex: 1, cursor: 'pointer' }}
         >
           {collapsed ? (
-            <DownOutlined style={{ fontSize: 9, marginRight: 4 }} />
+            <DownOutlined className="pct-text-2xs" style={{ marginRight: 4 }} />
           ) : (
-            <UpOutlined style={{ fontSize: 9, marginRight: 4 }} />
+            <UpOutlined className="pct-text-2xs" style={{ marginRight: 4 }} />
           )}
           Images
         </Text>
@@ -151,7 +153,7 @@ function ImageSection({ activeAgentType }: ImageSectionProps) {
 
       {!collapsed && (
         <div style={{ padding: '8px', minHeight: 60 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className="pct-text-base">
             Image generation is available. Send a prompt to generate images.
           </Text>
         </div>

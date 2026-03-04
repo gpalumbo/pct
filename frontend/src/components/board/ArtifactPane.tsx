@@ -53,14 +53,14 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
 
       {content ? (
         <div
+          className="pct-text-md"
           style={{
             padding: 8,
-            background: '#fafafa',
+            background: 'var(--pct-color-bg-light)',
             borderRadius: 4,
-            border: '1px solid #f0f0f0',
+            border: '1px solid var(--pct-color-border-light)',
             maxHeight: 300,
             overflow: 'auto',
-            fontSize: 13,
           }}
         >
           <ReactMarkdown>{content}</ReactMarkdown>

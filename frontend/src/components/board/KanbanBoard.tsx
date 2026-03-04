@@ -76,17 +76,14 @@ export default function KanbanBoard() {
         {enabledStages.map((stage) => (
           <div
             key={stage.id}
+            className="pct-col-header"
             style={{
               minWidth: 180,
               maxWidth: 220,
               flex: '1 0 180px',
               textAlign: 'center',
-              fontWeight: 600,
-              fontSize: 12,
-              color: '#595959',
-              textTransform: 'uppercase',
               padding: '4px 0',
-              borderBottom: '2px solid #1890ff',
+              borderBottom: '2px solid var(--pct-color-primary)',
             }}
           >
             {stage.label}

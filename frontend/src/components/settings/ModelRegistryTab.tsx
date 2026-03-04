@@ -458,11 +458,11 @@ export default function ModelRegistryTab() {
               style={{ cursor: 'pointer', padding: '6px 12px' }}
             >
               <Space>
-                {entry.is_dir ? <FolderOutlined style={{ color: '#faad14' }} /> : <FileOutlined />}
+                {entry.is_dir ? <FolderOutlined style={{ color: 'var(--pct-color-warning)' }} /> : <FileOutlined />}
                 <span>{entry.name}</span>
               </Space>
               {!entry.is_dir && (
-                <span style={{ color: '#999', fontSize: 12 }}>
+                <span className="pct-text-base" style={{ color: 'var(--pct-color-text-muted)' }}>
                   {(entry.size / 1024).toFixed(1)} KB
                 </span>
               )}

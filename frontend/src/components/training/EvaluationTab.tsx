@@ -8,13 +8,13 @@ export default function EvaluationTab() {
     <div>
       <Title level={5}>A/B Evaluation</Title>
       <Empty
-        image={<ExperimentOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />}
+        image={<ExperimentOutlined style={{ fontSize: 48, color: 'var(--pct-color-text-disabled)' }} />}
         description={
           <>
             <Paragraph type="secondary">
               Evaluation sessions will appear here after training completes.
             </Paragraph>
-            <Paragraph type="secondary" style={{ fontSize: 12 }}>
+            <Paragraph type="secondary" className="pct-text-base">
               You will be able to compare base model responses with LoRA-enhanced
               responses in a blind A/B test.
             </Paragraph>

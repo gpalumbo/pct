@@ -57,8 +57,8 @@ export default function PlanningChat({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {chat.activeSessionId && (
-        <div style={{ padding: '4px 16px', borderBottom: '1px solid #f0f0f0' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+        <div style={{ padding: '4px 16px', borderBottom: '1px solid var(--pct-color-border-light)' }}>
+          <Text type="secondary" className="pct-text-base">
             Session: {chat.activeSessionId}
           </Text>
         </div>

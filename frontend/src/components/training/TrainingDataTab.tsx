@@ -120,9 +120,9 @@ export default function TrainingDataTab() {
       width: 70,
       render: (flagType: FlagType) =>
         flagType === 'positive' ? (
-          <LikeOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+          <LikeOutlined className="pct-text-xl" style={{ color: 'var(--pct-color-success)' }} />
         ) : (
-          <DislikeOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
+          <DislikeOutlined className="pct-text-xl" style={{ color: 'var(--pct-color-error)' }} />
         ),
     },
     {
@@ -131,7 +131,7 @@ export default function TrainingDataTab() {
       key: 'session_ref',
       ellipsis: true,
       width: 140,
-      render: (ref: string) => <Text code style={{ fontSize: 11 }}>{ref}</Text>,
+      render: (ref: string) => <Text code className="pct-meta-text">{ref}</Text>,
     },
     {
       title: 'Category',

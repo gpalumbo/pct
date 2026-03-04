@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, theme, Layout, Menu, Button, Space, Spin, Typography, App as AntApp } from "antd";
 import { LogoutOutlined } from "@ant-design/icons";
 import { useAuthStore } from "./stores/authStore";
+import { useUIStore } from "./stores/uiStore";
 import { useProjectStatus } from "./hooks/useConfigQueries";
+import { useThemeSync } from "./hooks/useThemeSync";
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
 import BoardPage from "./pages/BoardPage";
@@ -11,6 +13,7 @@ import SettingsPage from "./pages/SettingsPage";
 import TrainingPage from "./pages/TrainingPage";
 import PertPage from "./pages/PertPage";
 import PlanningPage from "./pages/PlanningPage";
+import "./theme.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +34,7 @@ function AppHeader() {
 
   return (
     <Layout.Header style={{ display: "flex", alignItems: "center", padding: "0 16px" }}>
-      <Typography.Text strong style={{ color: "#fff", fontSize: 16, marginRight: 24, whiteSpace: "nowrap" }}>
+      <Typography.Text strong className="pct-text-xl" style={{ color: "#fff", marginRight: 24, whiteSpace: "nowrap" }}>
         PCT
       </Typography.Text>
       <Menu
@@ -80,6 +83,7 @@ function AppShell() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const location = useLocation();
   const showHeader = isAuthenticated && location.pathname !== "/login";
+  useThemeSync();
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -152,16 +156,30 @@ function AppShell() {
   );
 }
 
+function ThemedApp() {
+  const fontSize = useUIStore((s) => s.fontSize);
+
+  return (
+    <ConfigProvider
+      theme={{
+        algorithm: theme.compactAlgorithm,
+        cssVar: true,
+        token: { fontSize },
+      }}
+    >
+      <AntApp>
+        <BrowserRouter>
+          <AppShell />
+        </BrowserRouter>
+      </AntApp>
+    </ConfigProvider>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider theme={{ algorithm: theme.compactAlgorithm }}>
-        <AntApp>
-          <BrowserRouter>
-            <AppShell />
-          </BrowserRouter>
-        </AntApp>
-      </ConfigProvider>
+      <ThemedApp />
     </QueryClientProvider>
   );
 }

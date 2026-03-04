@@ -15,6 +15,7 @@ import {
   Typography,
 } from 'antd';
 import { useProject, useUpdateProject, useInitializeProject } from '../../hooks/useConfigQueries';
+import { useUIStore } from '../../stores/uiStore';
 import type { Project, SmtpConfig } from '../../types/config';
 
 const { Text } = Typography;
@@ -68,6 +69,7 @@ function InitForm() {
 function EditForm({ project }: { project: Project }) {
   const { message } = App.useApp();
   const updateProject = useUpdateProject();
+  const setFontSize = useUIStore((s) => s.setFontSize);
   const [form] = Form.useForm();
 
   const agentOptions = (project.agents ?? []).map((a) => ({
@@ -122,6 +124,7 @@ function EditForm({ project }: { project: Project }) {
     };
     try {
       await updateProject.mutateAsync(updated);
+      setFontSize(updated.font_size);
       message.success('Project settings saved');
     } catch {
       message.error('Failed to save settings');

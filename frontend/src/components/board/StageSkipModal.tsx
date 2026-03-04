@@ -17,7 +17,7 @@ export default function StageSkipModal({ open, fromStage, toStage, onConfirm, on
       open={open}
       title={
         <span>
-          <ExclamationCircleOutlined style={{ color: '#faad14', marginRight: 8 }} />
+          <ExclamationCircleOutlined style={{ color: 'var(--pct-color-warning)', marginRight: 8 }} />
           Skip Stage Confirmation
         </span>
       }

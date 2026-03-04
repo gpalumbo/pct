@@ -160,12 +160,12 @@ function MessageBubbleInner({
           {message.role}
         </Tag>
         {message.agent_id && (
-          <Text type="secondary" style={{ fontSize: 11 }}>
+          <Text type="secondary" className="pct-meta-text">
             {message.agent_id}
           </Text>
         )}
         {message.tokens != null && (
-          <Text type="secondary" style={{ fontSize: 11 }}>
+          <Text type="secondary" className="pct-meta-text">
             {message.tokens} tokens
           </Text>
         )}
@@ -175,12 +175,12 @@ function MessageBubbleInner({
       <div
         style={{
           background: isUser
-            ? '#e6f4ff'
+            ? 'var(--pct-bubble-user)'
             : isToolCall
-              ? '#f9f0ff'
+              ? 'var(--pct-bubble-tool-call)'
               : isToolResult
-                ? '#e6fffb'
-                : '#f6ffed',
+                ? 'var(--pct-bubble-tool-result)'
+                : 'var(--pct-bubble-assistant)',
           borderRadius: 8,
           padding: '8px 12px',
           maxWidth: '80%',
@@ -208,32 +208,24 @@ function MessageBubbleInner({
               style={{ marginBottom: 4 }}
             />
             <Space size={4}>
-              <CheckOutlined onClick={handleSave} style={{ cursor: 'pointer', color: '#52c41a' }} />
+              <CheckOutlined onClick={handleSave} style={{ cursor: 'pointer', color: 'var(--pct-color-success)' }} />
               <CloseOutlined
                 onClick={handleCancel}
-                style={{ cursor: 'pointer', color: '#ff4d4f' }}
+                style={{ cursor: 'pointer', color: 'var(--pct-color-error)' }}
               />
             </Space>
           </div>
         ) : isToolCall ? (
           <div>
             <Tag color="purple">{message.tool_name || 'tool'}</Tag>
-            <pre style={{ fontSize: 11, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+            <pre className="pct-tool-pre">
               {message.content}
             </pre>
           </div>
         ) : isToolResult ? (
           <div>
             <Tag color="cyan">{message.tool_name || 'result'}</Tag>
-            <pre
-              style={{
-                fontSize: 11,
-                margin: '4px 0 0',
-                whiteSpace: 'pre-wrap',
-                maxHeight: 200,
-                overflow: 'auto',
-              }}
-            >
+            <pre className="pct-tool-pre" style={{ maxHeight: 200, overflow: 'auto' }}>
               {message.content}
             </pre>
           </div>
@@ -251,27 +243,30 @@ function MessageBubbleInner({
             checked={message.included}
             onChange={(e) => onUpdate(message.id, { included: e.target.checked })}
           >
-            <Text type="secondary" style={{ fontSize: 11 }}>
+            <Text type="secondary" className="pct-meta-text">
               Include
             </Text>
           </Checkbox>
           {!isToolMessage && (
             <EditOutlined
               onClick={() => setEditing(true)}
-              style={{ cursor: 'pointer', fontSize: 12, color: '#8c8c8c' }}
+              className="pct-action-icon"
+              style={{ color: 'var(--pct-color-text-muted)' }}
             />
           )}
           {onDelete && (
             <DeleteOutlined
               onClick={() => onDelete(message.id)}
-              style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
+              className="pct-action-icon"
+              style={{ color: 'var(--pct-color-error)' }}
             />
           )}
           {isAssistant && onCopyToArtifact && (
             <Tooltip title="Copy to artifact">
               <CopyOutlined
                 onClick={() => onCopyToArtifact(message.content)}
-                style={{ cursor: 'pointer', fontSize: 12, color: '#722ed1' }}
+                className="pct-action-icon"
+                style={{ color: 'var(--pct-color-purple)' }}
               />
             </Tooltip>
           )}
@@ -279,10 +274,10 @@ function MessageBubbleInner({
             <Tooltip title="Replay">
               <RedoOutlined
                 onClick={() => !isStreaming && onReplay(message)}
+                className="pct-action-icon"
                 style={{
                   cursor: isStreaming ? 'not-allowed' : 'pointer',
-                  fontSize: 12,
-                  color: isStreaming ? '#d9d9d9' : '#1677ff',
+                  color: isStreaming ? 'var(--pct-color-text-disabled)' : 'var(--pct-color-primary)',
                 }}
               />
             </Tooltip>
@@ -291,10 +286,10 @@ function MessageBubbleInner({
             <Tooltip title="Truncate & edit">
               <ScissorOutlined
                 onClick={() => !isStreaming && onTruncate(message)}
+                className="pct-action-icon"
                 style={{
                   cursor: isStreaming ? 'not-allowed' : 'pointer',
-                  fontSize: 12,
-                  color: isStreaming ? '#d9d9d9' : '#fa8c16',
+                  color: isStreaming ? 'var(--pct-color-text-disabled)' : 'var(--pct-color-warning)',
                 }}
               />
             </Tooltip>
@@ -312,14 +307,16 @@ function MessageBubbleInner({
                 <Tooltip title="Good response">
                   <LikeOutlined
                     onClick={() => handleFlag('positive')}
-                    style={{ cursor: 'pointer', fontSize: 12, color: '#52c41a' }}
+                    className="pct-action-icon"
+                    style={{ color: 'var(--pct-color-success)' }}
                   />
                 </Tooltip>
               </Popover>
               <Tooltip title="Poor response">
                 <DislikeOutlined
                   onClick={() => handleFlag('negative')}
-                  style={{ cursor: 'pointer', fontSize: 12, color: '#ff4d4f' }}
+                  className="pct-action-icon"
+                  style={{ color: 'var(--pct-color-error)' }}
                 />
               </Tooltip>
             </>

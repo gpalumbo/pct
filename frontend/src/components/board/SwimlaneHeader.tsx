@@ -45,7 +45,7 @@ function SwimlaneHeaderInner({ feature }: SwimlaneHeaderProps) {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
-        <Text strong ellipsis style={{ fontSize: 13 }}>
+        <Text strong ellipsis className="pct-text-md">
           {feature.title}
         </Text>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -54,18 +54,20 @@ function SwimlaneHeaderInner({ feature }: SwimlaneHeaderProps) {
             onChange={handleStageChange}
             size="small"
             variant="borderless"
-            style={{ width: 110, fontSize: 10 }}
+            className="pct-text-xs"
+            style={{ width: 110 }}
             popupMatchSelectWidth={false}
           >
             {FEATURE_STAGES.map((s) => (
               <Select.Option key={s.value} value={s.value}>
-                <span style={{ color: s.color, fontSize: 11 }}>{s.label}</span>
+                <span className="pct-text-sm" style={{ color: s.color }}>{s.label}</span>
               </Select.Option>
             ))}
           </Select>
           <Badge
             count={taskCount}
-            style={{ backgroundColor: '#8c8c8c', fontSize: 10 }}
+            className="pct-text-xs"
+            style={{ backgroundColor: 'var(--pct-color-text-muted)' }}
             size="small"
             title={`${taskCount} task${taskCount !== 1 ? 's' : ''}`}
           />

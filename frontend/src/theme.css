@@ -1,0 +1,80 @@
+/* PCT Global Theme — CSS custom properties & utility classes */
+
+:root {
+  /* Base font size (set dynamically by JS via useThemeSync) */
+  --pct-font-size: 14px;
+
+  /* Font size scale — values updated dynamically relative to --pct-font-size */
+  --pct-fs-2xs: 8px;
+  --pct-fs-xs: 10px;
+  --pct-fs-sm: 11px;
+  --pct-fs-base: 12px;
+  --pct-fs-md: 13px;
+  --pct-fs-lg: 14px;
+  --pct-fs-xl: 16px;
+
+  /* Semantic text colors */
+  --pct-color-text: #141414;
+  --pct-color-text-secondary: #595959;
+  --pct-color-text-muted: #8c8c8c;
+  --pct-color-text-disabled: #bfbfbf;
+
+  /* Borders & backgrounds */
+  --pct-color-border: #d9d9d9;
+  --pct-color-border-light: #f0f0f0;
+  --pct-color-bg-light: #fafafa;
+  --pct-color-bg-code: #f5f5f5;
+
+  /* Semantic accent colors */
+  --pct-color-primary: #1677ff;
+  --pct-color-success: #52c41a;
+  --pct-color-error: #ff4d4f;
+  --pct-color-warning: #faad14;
+  --pct-color-purple: #722ed1;
+  --pct-color-pink: #eb2f96;
+  --pct-color-orange: #fa541c;
+
+  /* Role bubble backgrounds */
+  --pct-bubble-user: #e6f4ff;
+  --pct-bubble-assistant: #f6ffed;
+  --pct-bubble-tool-call: #f9f0ff;
+  --pct-bubble-tool-result: #e6fffb;
+}
+
+/* ── Font size utility classes ── */
+
+.pct-text-2xs { font-size: var(--pct-fs-2xs); }
+.pct-text-xs  { font-size: var(--pct-fs-xs); }
+.pct-text-sm  { font-size: var(--pct-fs-sm); }
+.pct-text-base { font-size: var(--pct-fs-base); }
+.pct-text-md  { font-size: var(--pct-fs-md); }
+.pct-text-lg  { font-size: var(--pct-fs-lg); }
+.pct-text-xl  { font-size: var(--pct-fs-xl); }
+
+/* ── Component pattern classes ── */
+
+/* Action icons in curation rows (edit, delete, copy, replay, etc.) */
+.pct-action-icon {
+  cursor: pointer;
+  font-size: var(--pct-fs-base);
+}
+
+/* Metadata text (tokens, timestamps, IDs) */
+.pct-meta-text {
+  font-size: var(--pct-fs-sm);
+}
+
+/* Tool content <pre> blocks */
+.pct-tool-pre {
+  font-size: var(--pct-fs-sm);
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+/* Table/list column headers */
+.pct-col-header {
+  font-weight: 600;
+  font-size: var(--pct-fs-base);
+  color: var(--pct-color-text-muted);
+  text-transform: uppercase;
+}

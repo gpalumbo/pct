@@ -223,15 +223,12 @@ export default function WorkflowTab() {
               <div ref={provided.innerRef} {...provided.droppableProps}>
                 {/* Table header */}
                 <div
+                  className="pct-col-header"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     padding: '8px 12px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    color: '#8c8c8c',
-                    borderBottom: '1px solid #f0f0f0',
-                    textTransform: 'uppercase',
+                    borderBottom: '1px solid var(--pct-color-border-light)',
                   }}
                 >
                   <div style={{ width: 36 }} />
@@ -258,9 +255,9 @@ export default function WorkflowTab() {
                           display: 'flex',
                           alignItems: 'center',
                           padding: '10px 12px',
-                          borderBottom: '1px solid #f0f0f0',
+                          borderBottom: '1px solid var(--pct-color-border-light)',
                           background: snapshot.isDragging
-                            ? '#e6f4ff'
+                            ? 'var(--pct-bubble-user)'
                             : '#fff',
                           boxShadow: snapshot.isDragging
                             ? '0 2px 8px rgba(0,0,0,0.15)'
@@ -279,10 +276,10 @@ export default function WorkflowTab() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             cursor: 'grab',
-                            color: '#bfbfbf',
+                            color: 'var(--pct-color-text-disabled)',
                           }}
                         >
-                          <HolderOutlined style={{ fontSize: 16 }} />
+                          <HolderOutlined className="pct-text-xl" />
                         </div>
 
                         {/* Label */}
@@ -327,18 +324,18 @@ export default function WorkflowTab() {
                             <Tooltip title={stage.prompt_template}>
                               <Text
                                 ellipsis
+                                className="pct-text-base"
                                 style={{
                                   maxWidth: '100%',
                                   display: 'inline-block',
-                                  fontSize: 12,
-                                  color: '#595959',
+                                  color: 'var(--pct-color-text-secondary)',
                                 }}
                               >
                                 {stage.prompt_template}
                               </Text>
                             </Tooltip>
                           ) : (
-                            <Text type="secondary" style={{ fontSize: 12 }}>
+                            <Text type="secondary" className="pct-text-base">
                               --
                             </Text>
                           )}

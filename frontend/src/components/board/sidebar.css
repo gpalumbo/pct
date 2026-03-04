@@ -63,7 +63,7 @@
 /* Toolbar buttons */
 .toolbar-btn {
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: var(--pct-fs-base);
   border: 1px solid var(--toolbar-btn-border);
   border-radius: 3px;
   background: var(--toolbar-btn-bg);
@@ -89,7 +89,7 @@
 /* Tiptap editor styles */
 .artifact-editor .tiptap {
   outline: none;
-  font-size: 14px;
+  font-size: var(--pct-fs-lg);
   line-height: 1.6;
 }
 
@@ -129,7 +129,7 @@
   border-radius: 4px;
   padding: 12px;
   font-family: monospace;
-  font-size: 13px;
+  font-size: var(--pct-fs-md);
   overflow-x: auto;
 }
 
@@ -186,7 +186,7 @@
   justify-content: center;
   background: var(--editor-code-bg);
   color: var(--editor-blockquote-color);
-  font-size: 11px;
+  font-size: var(--pct-fs-sm);
 }
 
 /* Smaller grid for round history thumbnails */
@@ -243,7 +243,7 @@
   padding: 8px;
   overflow-y: auto;
   max-height: 200px;
-  font-size: 13px;
+  font-size: var(--pct-fs-md);
   line-height: 1.5;
 }
 
@@ -274,7 +274,7 @@
   border-radius: 4px;
   padding: 8px;
   font-family: monospace;
-  font-size: 12px;
+  font-size: var(--pct-fs-base);
   overflow-x: auto;
 }
 .artifact-output-text-body code {
