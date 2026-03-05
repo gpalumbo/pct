@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pct.imagegen.models import JobStatus
-from pct.imagegen.service import generate
+from pct.imagegen.service import ensure_pipeline, generate
 from loguru import logger
 
 
@@ -26,6 +26,7 @@ class JobRecord:
     prompt: str
     negative_prompt: str | None = None
     guidance_scale: float = 7.5
+    num_images: int = 4
     divergence: float | None = None
     source_image_id: str | None = None
     status: JobStatus = JobStatus.pending
@@ -53,6 +54,7 @@ class JobManager:
         prompt: str,
         negative_prompt: str | None = None,
         guidance_scale: float = 7.5,
+        num_images: int = 4,
         divergence: float | None = None,
         source_image_id: str | None = None,
     ) -> str:
@@ -65,6 +67,7 @@ class JobManager:
             prompt=prompt,
             negative_prompt=negative_prompt,
             guidance_scale=guidance_scale,
+            num_images=num_images,
             divergence=divergence,
             source_image_id=source_image_id,
         )
@@ -74,6 +77,13 @@ class JobManager:
     def get_job(self, job_id: str) -> JobRecord | None:
         """Get a job record by id."""
         return self._jobs.get(job_id)
+
+    def set_downloading(self, job_id: str) -> None:
+        """Transition a job to downloading state."""
+        job = self._jobs.get(job_id)
+        if job:
+            job.status = JobStatus.downloading
+            logger.debug("Job {} -> downloading", job_id)
 
     def set_running(self, job_id: str) -> None:
         """Transition a job to running state."""
@@ -99,6 +109,27 @@ class JobManager:
             job.error = error
             job.completed_at = datetime.now(UTC)
             logger.warning("Job {} failed: {}", job_id, error)
+
+    def add_image(self, job_id: str, image_dict: dict) -> None:
+        """Append a single completed image to a running job (progressive)."""
+        job = self._jobs.get(job_id)
+        if job and job.status == JobStatus.running:
+            job.images.append(image_dict)
+
+    def cancel_job(self, job_id: str) -> bool:
+        """Cancel a pending/downloading/running job. Returns True if cancelled."""
+        job = self._jobs.get(job_id)
+        if job and job.status in (
+            JobStatus.pending,
+            JobStatus.downloading,
+            JobStatus.running,
+        ):
+            job.status = JobStatus.failed
+            job.error = "Cancelled"
+            job.completed_at = datetime.now(UTC)
+            logger.info("Job {} cancelled", job_id)
+            return True
+        return False
 
     def list_jobs(
         self,
@@ -127,9 +158,19 @@ class JobManager:
         if job is None:
             return
 
-        self.set_running(job_id)
+        self.set_downloading(job_id)
 
         try:
+            pipeline_ok = await ensure_pipeline()
+            if not pipeline_ok:
+                self.set_failed(job_id, "Pipeline unavailable")
+                return
+
+            self.set_running(job_id)
+
+            def on_image_complete(img):
+                self.add_image(job_id, img.model_dump(mode="json"))
+
             result = await generate(
                 project_root=project_root,
                 feature_id=job.feature_id,
@@ -137,6 +178,8 @@ class JobManager:
                 prompt=job.prompt,
                 negative_prompt=job.negative_prompt,
                 guidance_scale=job.guidance_scale,
+                num_images=job.num_images,
+                on_image_complete=on_image_complete,
             )
 
             if result is None:

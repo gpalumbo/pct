@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,7 @@ async def generate(
     guidance_scale: float = 7.5,
     num_images: int = 4,
     seed: int | None = None,
+    on_image_complete: Callable[[GeneratedImage], None] | None = None,
 ) -> ImageRound | None:
     """Generate images for a task.
 
@@ -142,14 +144,16 @@ async def generate(
 
         await asyncio.to_thread(pil_image.save, str(file_path))
 
-        generated.append(
-            GeneratedImage(
-                id=image_id,
-                file_path=str(file_path.relative_to(project_root)),
-                seed=img_seed,
-                index=idx,
-            )
+        img = GeneratedImage(
+            id=image_id,
+            file_path=str(file_path.relative_to(project_root)),
+            seed=img_seed,
+            index=idx,
         )
+        generated.append(img)
+
+        if on_image_complete is not None:
+            on_image_complete(img)
 
     # Count existing rounds to determine round number
     round_number = 1  # Default for first round
@@ -166,6 +170,11 @@ async def generate(
         "Generated {} images for {}/{}", len(generated), feature_id, task_id
     )
     return image_round
+
+
+async def ensure_pipeline() -> bool:
+    """Ensure the diffusion pipeline is loaded. Returns True if available."""
+    return (await _get_pipeline()) is not None
 
 
 def get_session(

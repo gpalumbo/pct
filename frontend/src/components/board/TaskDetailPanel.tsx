@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button, Select, Tag, Typography } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { CloseOutlined, StepForwardOutlined } from '@ant-design/icons';
 import { useBoardStore } from '../../stores/boardStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useMoveTask } from '../../hooks/useBoardQueries';
@@ -72,6 +72,7 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
   /* ------------------------------------------------------------------ */
   const [activeAgentType, setActiveAgentType] = useState<AgentType | null>(null);
   const [pendingImagePrompt, setPendingImagePrompt] = useState<string | null>(null);
+  const [pendingSourceImageId, setPendingSourceImageId] = useState<string | null>(null);
 
   /* ------------------------------------------------------------------ */
   /*  Refine image -> input                                               */
@@ -91,13 +92,16 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
     taskId: task?.id,
     taskStage: task?.current_stage_id,
     onAgentTypeChange: setActiveAgentType,
-    onImageGenerate: setPendingImagePrompt,
+    onImageGenerate: (prompt: string, sourceImageId?: string) => {
+      setPendingImagePrompt(prompt);
+      setPendingSourceImageId(sourceImageId ?? null);
+    },
   });
 
   // Wrap handleSend to clear refine target on send
   const handleSend = useCallback(
     (content: string, agentId: string | null) => {
-      chat.handleSend(content, agentId);
+      chat.handleSend(content, agentId, refineTarget?.filename);
       if (refineTarget) {
         setRefineTarget(null);
       }
@@ -117,6 +121,15 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
   const handleStageChange = async (stageId: string) => {
     if (!task || !featureId) return;
     await moveTask.mutateAsync({ target_stage_id: stageId });
+  };
+
+  const nextStageId = useMemo(() => {
+    const idx = enabledStages.findIndex((s) => s.id === task?.current_stage_id);
+    return idx >= 0 && idx < enabledStages.length - 1 ? enabledStages[idx + 1].id : null;
+  }, [enabledStages, task?.current_stage_id]);
+
+  const handleAdvanceStage = async () => {
+    if (nextStageId) await handleStageChange(nextStageId);
   };
 
   const handleClose = () => {
@@ -173,9 +186,15 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
             </Select.Option>
           ))}
         </Select>
-        <Tag color={currentStage ? 'blue' : 'default'} className="pct-text-xs" style={{ margin: 0 }}>
-          {currentStage?.label ?? task.current_stage_id}
-        </Tag>
+        <Button
+          size="small"
+          icon={<StepForwardOutlined />}
+          disabled={!nextStageId}
+          loading={moveTask.isPending}
+          onClick={handleAdvanceStage}
+        >
+          Next
+        </Button>
         <Text type="secondary" className="pct-meta-text" style={{ flexShrink: 0 }}>
           {featureId}/{task.id}
         </Text>
@@ -267,7 +286,9 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
           taskId={task.id}
           activeAgentType={activeAgentType}
           pendingImagePrompt={pendingImagePrompt}
-          onPromptConsumed={() => setPendingImagePrompt(null)}
+          pendingSourceImageId={pendingSourceImageId}
+          onPromptConsumed={() => { setPendingImagePrompt(null); setPendingSourceImageId(null); }}
+          onRefine={setRefineTarget}
         />
       </div>
     </div>

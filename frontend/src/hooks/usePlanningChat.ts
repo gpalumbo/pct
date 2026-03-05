@@ -30,7 +30,7 @@ export interface UsePlanningChatOptions {
   /** Called when the selected agent's type changes (or null if cleared/unknown). */
   onAgentTypeChange?: (agentType: AgentType | null) => void;
   /** When provided, imagegen-type agent prompts are routed here instead of chat API. */
-  onImageGenerate?: (prompt: string) => void;
+  onImageGenerate?: (prompt: string, sourceImageId?: string) => void;
 }
 
 export interface ToolActivity {
@@ -52,7 +52,7 @@ export interface UsePlanningChatReturn {
   toolActivity: ToolActivity[];
   selectedAgent: string | null;
   handleAgentChange: (agentId: string | null) => void;
-  handleSend: (content: string, agentId: string | null) => void;
+  handleSend: (content: string, agentId: string | null, sourceImageId?: string) => void;
   handleStop: () => void;
   handleReplay: (msg: ChatMessage) => void;
   handleTruncate: (msg: ChatMessage) => Promise<void>;
@@ -212,13 +212,26 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
   /*  Send / replay / truncate-and-replay                                */
   /* ------------------------------------------------------------------ */
   const handleSend = useCallback(
-    (content: string, agentId: string | null) => {
+    (content: string, agentId: string | null, sourceImageId?: string) => {
       if (!activeSessionId) return;
 
       // Route imagegen prompts to image generation instead of chat
       const agentCfg = agentId ? agents.find((a) => a.id === agentId) : null;
       if (agentCfg?.agent_type === 'image_gen' && onImageGenerate) {
-        onImageGenerate(content);
+        console.log('[usePlanningChat] Routing to imagegen:', content);
+        // Show the user's prompt in chat so it's not silent
+        const imageMsg: ChatMessage = {
+          id: crypto.randomUUID().slice(0, 12),
+          role: 'user',
+          content: `[Image Gen] ${content}`,
+          created_at: new Date().toISOString(),
+          tokens: null,
+          included: true,
+          agent_id: agentId,
+          model_id: null,
+        };
+        setMessages((prev) => [...prev, imageMsg]);
+        onImageGenerate(content, sourceImageId);
         return;
       }
 

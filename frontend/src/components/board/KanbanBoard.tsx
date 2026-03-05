@@ -35,7 +35,8 @@ export default function KanbanBoard() {
       // droppableId format: "featureId::stageId"
       const [, destStageId] = destDroppable.split('::');
       const [sourceFeatureId] = sourceDroppable.split('::');
-      const taskId = result.draggableId;
+      // draggableId format: "featureId::taskId"
+      const [, taskId] = result.draggableId.split('::');
 
       if (destStageId && sourceFeatureId && taskId) {
         moveTask.mutate({

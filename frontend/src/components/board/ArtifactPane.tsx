@@ -72,6 +72,8 @@ export default function ArtifactPane({ featureId, taskId }: ArtifactPaneProps) {
       <ArtifactEditorModal
         open={editorOpen}
         content={content}
+        featureId={featureId}
+        taskId={taskId}
         onSave={handleSave}
         onCancel={() => setEditorOpen(false)}
       />

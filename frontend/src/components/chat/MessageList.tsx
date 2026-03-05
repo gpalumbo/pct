@@ -123,9 +123,6 @@ export default function MessageList({
             marginBottom: 12,
           }}
         >
-          <Tag color="green" style={{ marginBottom: 2 }}>
-            assistant
-          </Tag>
           {statusMessage && (
             <Tag color="blue" style={{ marginBottom: 4 }}>
               {statusMessage}
@@ -134,7 +131,7 @@ export default function MessageList({
 
           {/* Live tool activity */}
           {toolActivity.length > 0 && (
-            <div style={{ marginBottom: 8, width: '80%' }}>
+            <div style={{ marginBottom: 8, width: '95%' }}>
               {toolActivity.map((ta) => (
                 <div
                   key={ta.callId}
@@ -162,7 +159,7 @@ export default function MessageList({
           )}
 
           <div
-            style={{ background: 'var(--pct-bubble-assistant)', borderRadius: 8, padding: '8px 12px', maxWidth: '80%' }}
+            style={{ background: 'var(--pct-bubble-assistant)', borderRadius: 8, padding: '8px 12px', maxWidth: '95%' }}
           >
             {streamingContent ? (
               <ReactMarkdown>{streamingContent}</ReactMarkdown>
@@ -170,6 +167,9 @@ export default function MessageList({
               <Spin size="small" />
             )}
           </div>
+          <Tag color="green" style={{ marginTop: 2 }}>
+            assistant
+          </Tag>
         </div>
       )}
 

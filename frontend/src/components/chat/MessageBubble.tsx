@@ -154,23 +154,6 @@ function MessageBubbleInner({
         marginBottom: 12,
       }}
     >
-      {/* Header: role badge + metadata */}
-      <Space size={4} style={{ marginBottom: 2 }}>
-        <Tag color={ROLE_COLORS[message.role] || 'default'} style={{ margin: 0 }}>
-          {message.role}
-        </Tag>
-        {message.agent_id && (
-          <Text type="secondary" className="pct-meta-text">
-            {message.agent_id}
-          </Text>
-        )}
-        {message.tokens != null && (
-          <Text type="secondary" className="pct-meta-text">
-            {message.tokens} tokens
-          </Text>
-        )}
-      </Space>
-
       {/* Content bubble */}
       <div
         style={{
@@ -183,7 +166,7 @@ function MessageBubbleInner({
                 : 'var(--pct-bubble-assistant)',
           borderRadius: 8,
           padding: '8px 12px',
-          maxWidth: '80%',
+          maxWidth: '95%',
           wordBreak: 'break-word',
           opacity: message.included ? 1 : 0.5,
         }}
@@ -236,9 +219,20 @@ function MessageBubbleInner({
         )}
       </div>
 
-      {/* Curation controls */}
+      {/* Footer: role badge + metadata + curation controls */}
+      <Space size={8} style={{ marginTop: 2 }}>
+        <Tooltip title={message.agent_id || undefined}>
+          <Tag color={ROLE_COLORS[message.role] || 'default'} style={{ margin: 0, cursor: message.agent_id ? 'pointer' : undefined }}>
+            {message.role}
+          </Tag>
+        </Tooltip>
+        {message.tokens != null && (
+          <Text type="secondary" className="pct-meta-text">
+            {message.tokens} tokens
+          </Text>
+        )}
       {onUpdate && !editing && (
-        <Space size={8} style={{ marginTop: 2 }}>
+        <>
           <Checkbox
             checked={message.included}
             onChange={(e) => onUpdate(message.id, { included: e.target.checked })}
@@ -321,8 +315,9 @@ function MessageBubbleInner({
               </Tooltip>
             </>
           )}
-        </Space>
+        </>
       )}
+      </Space>
     </div>
   );
 }

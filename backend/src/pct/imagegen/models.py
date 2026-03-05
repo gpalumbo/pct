@@ -15,6 +15,7 @@ class GenerateRequest(BaseModel):
     prompt: str
     negative_prompt: str | None = None
     guidance_scale: float = 7.5
+    num_images: int = Field(default=4, ge=1, le=6)
     divergence: float | None = None
     source_image_id: str | None = None
 
@@ -23,6 +24,7 @@ class JobStatus(StrEnum):
     """Image generation job lifecycle states."""
 
     pending = "pending"
+    downloading = "downloading"
     running = "running"
     completed = "completed"
     failed = "failed"

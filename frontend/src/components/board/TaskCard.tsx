@@ -34,7 +34,7 @@ function TaskCardInner({ task, index, featureId, agentType }: TaskCardProps) {
   }, [selectTask, setTaskPanelOpen, featureId, task.id]);
 
   return (
-    <Draggable draggableId={task.id} index={index}>
+    <Draggable draggableId={`${featureId}::${task.id}`} index={index}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
