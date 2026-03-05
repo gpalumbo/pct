@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Button, Select, Tag, Typography } from 'antd';
-import { CloseOutlined, StepForwardOutlined } from '@ant-design/icons';
+import { Button, message, Select, Tag, Typography } from 'antd';
+import { CloseOutlined, LinkOutlined, StopOutlined, StepForwardOutlined } from '@ant-design/icons';
 import { useBoardStore } from '../../stores/boardStore';
 import { useUIStore } from '../../stores/uiStore';
-import { useMoveTask } from '../../hooks/useBoardQueries';
+import { useMoveTask, useUpdateTask } from '../../hooks/useBoardQueries';
 import usePlanningChat from '../../hooks/usePlanningChat';
 import type { RefineTarget } from '../chat/ChatInput';
 import type { AgentType } from '../../types/enums';
@@ -11,6 +11,7 @@ import type { Task, WorkflowStage } from '../../types/board';
 import MessageList from '../chat/MessageList';
 import ChatInput from '../chat/ChatInput';
 import ArtifactOutputPane from './ArtifactOutputPane';
+import CrossRefPicker from './CrossRefPicker';
 import './sidebar.css';
 
 const { Text } = Typography;
@@ -28,6 +29,9 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
   const { taskPanelOpen, setTaskPanelOpen, taskPanelWidth, setTaskPanelWidth } = useUIStore();
   const selectTask = useBoardStore((s) => s.selectTask);
   const moveTask = useMoveTask(featureId ?? '', task?.id ?? '');
+  const updateTask = useUpdateTask();
+  const [showRefPicker, setShowRefPicker] = useState(false);
+  const [showBlockerPicker, setShowBlockerPicker] = useState(false);
   const sessionId = task && featureId
     ? `${featureId}--${task.id}--${task.current_stage_id}`
     : undefined;
@@ -113,11 +117,6 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
   /*  Config UI                                                          */
   /* ------------------------------------------------------------------ */
   const enabledStages = useMemo(() => stages.filter((s) => s.enabled), [stages]);
-  const currentStage = useMemo(
-    () => stages.find((s) => s.id === task?.current_stage_id),
-    [stages, task?.current_stage_id],
-  );
-
   const handleStageChange = async (stageId: string) => {
     if (!task || !featureId) return;
     await moveTask.mutateAsync({ target_stage_id: stageId });
@@ -202,27 +201,105 @@ export default function TaskDetailPanel({ task, featureId, stages }: TaskDetailP
       </div>
 
       {/* Cross-references & blocked_by strip */}
-      {(task.blocked_by.length > 0 || task.cross_refs.length > 0) && (
-        <div
-          style={{
-            padding: '4px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            flexWrap: 'wrap',
-            flexShrink: 0,
-          }}
+      <div
+        style={{
+          padding: '4px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          flexWrap: 'wrap',
+          flexShrink: 0,
+        }}
+      >
+        {task.blocked_by.map((ref) => (
+          <Tag
+            key={ref}
+            color="red"
+            className="pct-text-xs"
+            style={{ margin: 0 }}
+            closable
+            onClose={() => {
+              const next = task.blocked_by.filter((r) => r !== ref);
+              updateTask.mutate(
+                { featureId, taskId: task.id, data: { blocked_by: next } },
+                { onError: (err: any) => message.error(err?.response?.data?.detail ?? 'Failed to update') },
+              );
+            }}
+          >
+            blocked: {ref}
+          </Tag>
+        ))}
+        {task.cross_refs.map((ref) => (
+          <Tag
+            key={ref}
+            color="blue"
+            className="pct-text-xs"
+            style={{ margin: 0 }}
+            closable
+            onClose={() => {
+              const next = task.cross_refs.filter((r) => r !== ref);
+              updateTask.mutate(
+                { featureId, taskId: task.id, data: { cross_refs: next } },
+                { onError: (err: any) => message.error(err?.response?.data?.detail ?? 'Failed to update') },
+              );
+            }}
+          >
+            {ref}
+          </Tag>
+        ))}
+        <Button
+          type="dashed"
+          size="small"
+          icon={<StopOutlined />}
+          onClick={() => { setShowBlockerPicker((v) => !v); setShowRefPicker(false); }}
+          className="pct-text-xs"
         >
-          {task.blocked_by.map((ref) => (
-            <Tag key={ref} color="red" className="pct-text-xs" style={{ margin: 0 }}>
-              blocked: {ref}
-            </Tag>
-          ))}
-          {task.cross_refs.map((ref) => (
-            <Tag key={ref} color="blue" className="pct-text-xs" style={{ margin: 0 }}>
-              {ref}
-            </Tag>
-          ))}
+          Add Blocker
+        </Button>
+        <Button
+          type="dashed"
+          size="small"
+          icon={<LinkOutlined />}
+          onClick={() => { setShowRefPicker((v) => !v); setShowBlockerPicker(false); }}
+          className="pct-text-xs"
+        >
+          Add Ref
+        </Button>
+      </div>
+      {showBlockerPicker && (
+        <div style={{ padding: '4px 12px', flexShrink: 0 }}>
+          <CrossRefPicker
+            currentTaskId={task.id}
+            selectedRefs={task.blocked_by}
+            label="Blocked By"
+            onChange={(refs) => {
+              updateTask.mutate(
+                { featureId, taskId: task.id, data: { blocked_by: refs } },
+                {
+                  onError: (err: any) => message.error(err?.response?.data?.detail ?? 'Failed to update'),
+                  onSuccess: () => setShowBlockerPicker(false),
+                },
+              );
+            }}
+          />
+        </div>
+      )}
+      {showRefPicker && (
+        <div style={{ padding: '4px 12px', flexShrink: 0 }}>
+          <CrossRefPicker
+            currentTaskId={task.id}
+            selectedRefs={task.cross_refs}
+            label="Cross References"
+            onChange={(refs) => {
+              updateTask.mutate(
+                { featureId, taskId: task.id, data: { cross_refs: refs } },
+                {
+                  onError: (err: any) => message.error(err?.response?.data?.detail ?? 'Failed to update'),
+                  onSuccess: () => setShowRefPicker(false),
+                },
+              );
+            }}
+          />
         </div>
       )}
 

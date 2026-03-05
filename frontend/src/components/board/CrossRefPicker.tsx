@@ -8,9 +8,10 @@ interface CrossRefPickerProps {
   currentTaskId: string;
   selectedRefs: string[];
   onChange: (refs: string[]) => void;
+  label?: string;
 }
 
-export default function CrossRefPicker({ currentTaskId, selectedRefs, onChange }: CrossRefPickerProps) {
+export default function CrossRefPicker({ currentTaskId, selectedRefs, onChange, label = 'Cross References' }: CrossRefPickerProps) {
   const features = useBoardStore((s) => s.features);
 
   const allTasks: Task[] = features.flatMap((f) => f.tasks).filter((t) => t.id !== currentTaskId);
@@ -26,7 +27,7 @@ export default function CrossRefPicker({ currentTaskId, selectedRefs, onChange }
   return (
     <div>
       <Text strong style={{ display: 'block', marginBottom: 4 }}>
-        Cross References
+        {label}
       </Text>
       <Select
         mode="multiple"

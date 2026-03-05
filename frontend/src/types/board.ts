@@ -70,6 +70,13 @@ export interface TaskCreate {
   cross_refs?: string[];
 }
 
+export interface TaskUpdate {
+  title?: string;
+  artifact_type_id?: string | null;
+  blocked_by?: string[];
+  cross_refs?: string[];
+}
+
 export interface TaskMove {
   target_stage_id: string;
   bypass?: boolean;

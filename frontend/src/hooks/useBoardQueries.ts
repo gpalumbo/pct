@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { boardApi } from '../api/boardApi';
-import type { BoardState, Feature, FeatureCreate, TaskCreate, TaskMove } from '../types/board';
+import type { BoardState, Feature, FeatureCreate, TaskCreate, TaskMove, TaskUpdate } from '../types/board';
 
 export function useBoardQuery() {
   return useQuery({
@@ -76,6 +76,15 @@ export function useMoveTaskDynamic() {
       // Always refetch to sync with server truth
       qc.invalidateQueries({ queryKey: ['board'] });
     },
+  });
+}
+
+export function useUpdateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ featureId, taskId, data }: { featureId: string; taskId: string; data: TaskUpdate }) =>
+      boardApi.updateTask(featureId, taskId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['board'] }),
   });
 }
 

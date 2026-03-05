@@ -41,13 +41,22 @@ async def _get_pipeline() -> Any:
             def _load():
                 from diffusers import StableDiffusionPipeline
 
-                pipe = StableDiffusionPipeline.from_pretrained(
-                    "runwayml/stable-diffusion-v1-5",
-                )
-                return pipe
+                model_id = "runwayml/stable-diffusion-v1-5"
+                # Try loading from cache first (no network request)
+                try:
+                    pipe = StableDiffusionPipeline.from_pretrained(
+                        model_id,
+                        local_files_only=True,
+                    )
+                    logger.info("Loaded diffusion pipeline from cache")
+                    return pipe
+                except Exception:
+                    logger.info("Model not in cache, downloading {}...", model_id)
+                    pipe = StableDiffusionPipeline.from_pretrained(model_id)
+                    return pipe
 
             _pipeline = await asyncio.to_thread(_load)
-            logger.info("Loaded diffusion pipeline")
+            logger.info("Diffusion pipeline ready")
             return _pipeline
         except ImportError:
             logger.warning(

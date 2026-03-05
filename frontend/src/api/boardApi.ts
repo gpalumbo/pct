@@ -1,7 +1,7 @@
 /** Board API wrapper. */
 
 import client from './client';
-import type { BoardState, Feature, FeatureCreate, Task, TaskCreate, TaskMove } from '../types/board';
+import type { BoardState, Feature, FeatureCreate, Task, TaskCreate, TaskMove, TaskUpdate } from '../types/board';
 import type { PertData } from '../types/pert';
 
 export const boardApi = {
@@ -35,6 +35,9 @@ export const boardApi = {
 
   moveTask: (featureId: string, taskId: string, data: TaskMove) =>
     client.post<Task>(`/api/board/features/${featureId}/tasks/${taskId}/move`, data).then((r) => r.data),
+
+  updateTask: (featureId: string, taskId: string, data: TaskUpdate) =>
+    client.put<Task>(`/api/board/features/${featureId}/tasks/${taskId}`, data).then((r) => r.data),
 
   deleteTask: (featureId: string, taskId: string) =>
     client.delete(`/api/board/features/${featureId}/tasks/${taskId}`),
