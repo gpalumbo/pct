@@ -4,25 +4,76 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
 
 from pct.auth.dependencies import get_current_user, get_settings
 from pct.config import Settings
 from pct.imagegen.job_manager import get_job_manager
 from pct.imagegen.models import (
+    ARCHITECTURE_RESOLUTIONS,
+    SDXL_RESOLUTIONS,
     GenerateRequest,
     GenerateResponse,
+    ImagegenModelInfo,
     JobStatus,
     JobStatusResponse,
     SelectImageRequest,
 )
-from pct.imagegen.service import get_session, select_image
+from pct.imagegen.service import detect_architecture, get_session, select_image
+from pct.sse import sse_event
+from pct.storage.registry_io import load_model_registry
 
 router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
 
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+@router.get("/models")
+async def list_imagegen_models(
+    settings: Settings = Depends(get_settings),
+    _user: str = Depends(get_current_user),
+):
+    """List diffusion models from the registry (those with model_index.json)."""
+    models = load_model_registry(settings.global_config_dir)
+    results: list[dict] = []
+    for m in models:
+        if m.file_path and Path(m.file_path).is_dir():
+            if (Path(m.file_path) / "model_index.json").exists():
+                # Detect architecture from model_index.json pipeline class
+                arch: str | None = None
+                try:
+                    import json
+
+                    idx = json.loads(
+                        (Path(m.file_path) / "model_index.json").read_text()
+                    )
+                    cls_name = idx.get("_class_name", "")
+                    arch = detect_architecture(cls_name)
+                except Exception:
+                    pass
+
+                results.append(
+                    ImagegenModelInfo(
+                        id=m.id,
+                        name=m.name,
+                        architecture=arch,
+                        download_status=m.download_status,
+                    ).model_dump(mode="json")
+                )
+    return {"models": results}
+
+
+@router.get("/resolutions")
+async def get_resolutions(
+    architecture: str | None = Query(default=None),
+):
+    """Return resolution presets for the given architecture (default: sdxl)."""
+    arch = architecture or "sdxl"
+    resolutions = ARCHITECTURE_RESOLUTIONS.get(arch, SDXL_RESOLUTIONS)
+    return {"resolutions": resolutions}
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -45,15 +96,48 @@ async def generate_images(
         num_images=req.num_images,
         divergence=req.divergence,
         source_image_id=req.source_image_id,
+        width=req.width,
+        height=req.height,
+        model_id=req.model_id,
     )
 
     # Fire and forget — run the job in the background
     asyncio.create_task(
-        manager.run_job(job_id, settings.project_root),
+        manager.run_job(
+            job_id,
+            settings.project_root,
+            global_config_dir=settings.global_config_dir,
+        ),
         name=f"imagegen-{job_id}",
     )
 
     return GenerateResponse(job_id=job_id, status=JobStatus.pending)
+
+
+@router.get("/jobs")
+async def list_jobs(
+    feature_id: str | None = Query(default=None),
+    task_id: str | None = Query(default=None),
+    _user: str = Depends(get_current_user),
+):
+    """List jobs, optionally filtered by feature/task. Only active jobs returned."""
+    manager = get_job_manager()
+    _ACTIVE = {JobStatus.pending, JobStatus.loading, JobStatus.running}
+    jobs = manager.list_jobs(feature_id=feature_id, task_id=task_id)
+    return [
+        JobStatusResponse(
+            job_id=j.job_id,
+            status=j.status,
+            status_message=j.status_message,
+            feature_id=j.feature_id,
+            task_id=j.task_id,
+            images=j.images,
+            error=j.error,
+            model_id=j.model_id,
+        )
+        for j in jobs
+        if j.status in _ACTIVE
+    ]
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -70,11 +154,55 @@ async def get_job_status(
     return JobStatusResponse(
         job_id=job.job_id,
         status=job.status,
+        status_message=job.status_message,
         feature_id=job.feature_id,
         task_id=job.task_id,
         images=job.images,
         error=job.error,
+        model_id=job.model_id,
     )
+
+
+@router.get("/jobs/{job_id}/stream")
+async def stream_job_status(
+    job_id: str,
+    _user: str = Depends(get_current_user),
+):
+    """Stream job status updates via SSE until the job completes or fails."""
+    manager = get_job_manager()
+    job = manager.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # If already terminal, return single event and close
+    if job.status in (JobStatus.completed, JobStatus.failed):
+        async def done_stream():
+            if job.status == JobStatus.completed:
+                yield sse_event({"done": True, "status": "completed", "images": job.images})
+            else:
+                yield sse_event({"error": job.error or "Unknown error", "status": "failed"})
+        return StreamingResponse(done_stream(), media_type="text/event-stream")
+
+    # Subscribe and stream live events
+    queue = manager.subscribe(job_id)
+
+    async def event_stream():
+        try:
+            # Send current state as initial event
+            yield sse_event({
+                "status": job.status.value,
+                "status_message": job.status_message,
+                "images": job.images,
+            })
+            while True:
+                event = await queue.get()
+                yield sse_event(event)
+                if "done" in event or "error" in event:
+                    break
+        finally:
+            manager.unsubscribe(job_id, queue)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/{feature_id}/{task_id}/session")
@@ -218,7 +346,7 @@ async def cancel_job(
     job_id: str,
     _user: str = Depends(get_current_user),
 ):
-    """Cancel a pending/downloading/running job."""
+    """Cancel a pending/loading/running job."""
     manager = get_job_manager()
     ok = manager.cancel_job(job_id)
     if not ok:

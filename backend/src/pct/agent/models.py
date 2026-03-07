@@ -79,11 +79,15 @@ class ContextMessage(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    role: Literal["user", "assistant", "tool_result"]
+    role: Literal["user", "assistant", "tool_result", "imagegen_positive", "imagegen_negative", "imagegen_result"]
     content: str = ""
     inclusion: InclusionFlag = InclusionFlag.included
     tool_call_id: str | None = None
     tool_name: str | None = None
+
+
+_TEXT_ROLES: frozenset[str] = frozenset({"user", "assistant", "tool_result"})
+_IMAGEGEN_ROLES: frozenset[str] = frozenset({"imagegen_positive", "imagegen_negative", "imagegen_result"})
 
 
 class AssembledContext(BaseModel):
@@ -132,6 +136,10 @@ class AssembledContext(BaseModel):
 
         for msg in self.messages:
             if msg.inclusion == InclusionFlag.excluded:
+                continue
+
+            # Skip non-LLM roles (imagegen context etc.)
+            if msg.role not in _TEXT_ROLES:
                 continue
 
             if msg.role == "tool_result":
@@ -201,6 +209,26 @@ class AssembledContext(BaseModel):
                 tool_name=tool_name,
             )
         )
+
+    def append_imagegen_positive(self, content: str) -> None:
+        """Append an imagegen positive prompt message."""
+        self.messages.append(ContextMessage(role="imagegen_positive", content=content))
+
+    def append_imagegen_negative(self, content: str) -> None:
+        """Append an imagegen negative prompt message."""
+        self.messages.append(ContextMessage(role="imagegen_negative", content=content))
+
+    def append_imagegen_result(self, content: str) -> None:
+        """Append an imagegen result message (JSON or newline-separated image paths)."""
+        self.messages.append(ContextMessage(role="imagegen_result", content=content))
+
+    def get_imagegen_messages(self) -> list[ContextMessage]:
+        """Return only imagegen messages (for imagegen context)."""
+        return [
+            m for m in self.messages
+            if m.role in _IMAGEGEN_ROLES
+            and m.inclusion != InclusionFlag.excluded
+        ]
 
 
 class AgentConfig(BaseModel):

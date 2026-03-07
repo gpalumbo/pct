@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Global registry dir (~/.pct)
     global_config_dir: Path = Field(default_factory=lambda: Path.home() / ".pct")
 
+    # HuggingFace (optional — needed for gated/private models)
+    hf_token: str | None = None
+
     # Debug
     debug: bool = False
     log_level: str = "DEBUG"

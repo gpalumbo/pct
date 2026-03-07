@@ -31,6 +31,7 @@ from pct.chat.provider_factory import (
     resolve_provider,
 )
 from pct.config import settings
+from pct.sse import sse_event
 from loguru import logger
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -212,7 +213,7 @@ async def send_message(
     agent_id = req.agent_id or session.agent_id or get_default_planning_agent_id()
     if agent_id is None:
         async def no_agent_stream():
-            yield _sse({"error": "No agent configured. Add an agent in Settings."})
+            yield sse_event({"error": "No agent configured. Add an agent in Settings."})
 
         return StreamingResponse(no_agent_stream(), media_type="text/event-stream")
 
@@ -224,6 +225,7 @@ async def send_message(
     else:
         included = service.get_included_messages(session_id)
 
+    _IMAGEGEN_ROLES = {"imagegen_positive", "imagegen_negative", "imagegen_result"}
     context = AssembledContext()
     for m in included:
         # Skip system and tool_call roles (backwards compat with old JSONL)
@@ -241,6 +243,10 @@ async def send_message(
                     tool_call_id=m.tool_call_id,
                     tool_name=m.tool_name,
                 )
+            )
+        elif m.role in _IMAGEGEN_ROLES:
+            context.messages.append(
+                ContextMessage(role=m.role, content=m.content)
             )
 
     # 3a. Resolve cross-reference and RAG context for task sessions
@@ -361,21 +367,21 @@ async def send_message(
             item = await event_queue.get()
             if item is None:
                 break
-            yield _sse(item)
+            yield sse_event(item)
 
         try:
             assistant_msg = await task
-            yield _sse(
+            yield sse_event(
                 {
                     "done": True,
                     "message": json.loads(assistant_msg.model_dump_json()),
                 }
             )
         except ValueError as e:
-            yield _sse({"error": str(e)})
+            yield sse_event({"error": str(e)})
         except Exception as e:
             logger.exception("Unexpected error in chat stream")
-            yield _sse({"error": f"An unexpected error occurred: {e}"})
+            yield sse_event({"error": f"An unexpected error occurred: {e}"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -392,10 +398,19 @@ def _persist_turn_messages(
     Iterates ``context.messages[pre_turn_count:]``, skipping ``user`` (already
     persisted before the turn).  No system prompt or tool_call persistence.
     """
+    _IMAGEGEN_ROLES = {"imagegen_positive", "imagegen_negative", "imagegen_result"}
     for msg in context.messages[pre_turn_count:]:
         if msg.role == "user":
             continue
-        if msg.role == "tool_result":
+        if msg.role in _IMAGEGEN_ROLES:
+            append_fn(
+                PlanningMessage(
+                    role=msg.role,
+                    content=msg.content[:10000],
+                    included=True,
+                ),
+            )
+        elif msg.role == "tool_result":
             append_fn(
                 PlanningMessage(
                     role="tool_result",
@@ -414,8 +429,3 @@ def _persist_turn_messages(
                     agent_id=agent_id,
                 ),
             )
-
-
-def _sse(data: dict) -> str:
-    """Format a dict as an SSE data line."""
-    return f"data: {json.dumps(data)}\n\n"

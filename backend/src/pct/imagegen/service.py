@@ -3,61 +3,250 @@
 Lazy-loads the diffusion pipeline on first use. Generation runs in
 asyncio.to_thread to avoid blocking the event loop. Images are saved
 to work/{feature_id}/{task_id}/images/.
+
+Pipeline loading is registry-driven: ``DiffusionPipeline.from_pretrained``
+reads the model's ``model_index.json`` and dynamically imports only the
+needed pipeline class.  An LRU-1 cache evicts the old model on switch.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pct.models.imagegen import GeneratedImage, ImageRound, ImageSession
-from pct.storage.directory_manager import create_task_work_dir
 from loguru import logger
 
-# Lazy singleton for the diffusion pipeline
-_pipeline: Any = None
-_pipeline_lock = asyncio.Lock()
+from pct.models.imagegen import GeneratedImage, ImageRound, ImageSession
+from pct.storage.directory_manager import create_task_work_dir
+
+# ---------------------------------------------------------------------------
+# Pipeline cache (LRU-1: one model at a time)
+# ---------------------------------------------------------------------------
 
 
-async def _get_pipeline() -> Any:
-    """Lazy-load the HuggingFace Diffusers pipeline.
+@dataclass
+class CachedPipeline:
+    """Holds a loaded text2img pipeline and its derived img2img variant."""
 
-    Returns None if diffusers is not installed or the model cannot be loaded.
+    model_id: str
+    model_path: str
+    pipeline: Any
+    img2img_pipeline: Any | None = None
+    architecture: str | None = None
+    pipeline_class_name: str = ""
+
+
+_cached: CachedPipeline | None = None
+_cache_lock = asyncio.Lock()
+
+# ---------------------------------------------------------------------------
+# Architecture detection
+# ---------------------------------------------------------------------------
+
+_ARCH_PATTERNS: dict[str, str] = {
+    "StableDiffusionXL": "sdxl",
+    "StableDiffusion3": "sd3",
+    "StableDiffusion": "sd15",  # must come after XL/3
+    "Flux": "flux",
+    "Kandinsky": "kandinsky",
+    "PixArt": "pixart",
+    "Wuerstchen": "wuerstchen",
+}
+
+
+def detect_architecture(class_name: str) -> str | None:
+    """Map a pipeline class name to an architecture family string."""
+    for pattern, arch in _ARCH_PATTERNS.items():
+        if pattern in class_name:
+            return arch
+    return None
+
+
+# ---------------------------------------------------------------------------
+# img2img class mapping
+# ---------------------------------------------------------------------------
+
+_IMG2IMG_CLASS_MAP: dict[str, str] = {
+    "StableDiffusionXLPipeline": "StableDiffusionXLImg2ImgPipeline",
+    "StableDiffusionPipeline": "StableDiffusionImg2ImgPipeline",
+    "StableDiffusion3Pipeline": "StableDiffusion3Img2ImgPipeline",
+}
+
+
+def _get_img2img_class(text2img_class_name: str) -> type | None:
+    """Resolve the img2img pipeline class for a given text2img class.
+
+    Uses an explicit mapping dict, with a naming-convention fallback
+    (insert ``Img2Img`` before ``Pipeline``).
     """
-    global _pipeline
-    if _pipeline is not None:
-        return _pipeline
+    import diffusers
 
-    async with _pipeline_lock:
-        # Double-check after acquiring lock
-        if _pipeline is not None:
-            return _pipeline
+    # Explicit map first
+    mapped = _IMG2IMG_CLASS_MAP.get(text2img_class_name)
+    if mapped:
+        cls = getattr(diffusers, mapped, None)
+        if cls is not None:
+            return cls
 
+    # Naming convention fallback: FooPipeline -> FooImg2ImgPipeline
+    if text2img_class_name.endswith("Pipeline"):
+        candidate = text2img_class_name.replace("Pipeline", "Img2ImgPipeline")
+        cls = getattr(diffusers, candidate, None)
+        if cls is not None:
+            return cls
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Skip optional pipeline components
+# ---------------------------------------------------------------------------
+
+
+def _build_skip_kwargs(model_path: str) -> dict[str, None]:
+    """Read model_index.json and return kwargs that disable optional components.
+
+    Many model distributions omit weights for optional components like
+    safety_checker, feature_extractor, or image_encoder.  Rather than
+    letting ``from_pretrained`` fail with an OSError we proactively pass
+    ``component=None`` for every component listed in the pipeline class's
+    ``_optional_components``.
+
+    Returns a dict like ``{"safety_checker": None, "feature_extractor": None}``.
+    Falls back to the minimal safety-checker-only dict on any error.
+    """
+    fallback: dict[str, None] = {"safety_checker": None}
+    try:
+        import diffusers
+
+        index_path = Path(model_path) / "model_index.json"
+        if not index_path.exists():
+            return fallback
+
+        with open(index_path) as f:
+            index = json.load(f)
+
+        class_name = index.get("_class_name")
+        if not class_name:
+            return fallback
+
+        pipeline_cls = getattr(diffusers, class_name, None)
+        if pipeline_cls is None:
+            return fallback
+
+        optional: list[str] = getattr(pipeline_cls, "_optional_components", [])
+        if not optional:
+            return fallback
+
+        return {name: None for name in optional}
+
+    except Exception:
+        logger.debug("Could not read _optional_components, using fallback")
+        return fallback
+
+
+# ---------------------------------------------------------------------------
+# Pipeline loading
+# ---------------------------------------------------------------------------
+
+
+async def get_pipeline(
+    model_id: str | None = None,
+    model_path: str | None = None,
+) -> CachedPipeline | None:
+    """Load (or return cached) the diffusion pipeline for *model_path*.
+
+    Uses ``DiffusionPipeline.from_pretrained`` which reads
+    ``model_index.json`` and dynamically imports the correct pipeline class.
+
+    Evicts the old pipeline when a different *model_id* is requested.
+    Returns ``None`` if diffusers is not installed or loading fails.
+    """
+    global _cached
+
+    if model_path is None:
+        # No model specified — return whatever is cached, or None
+        return _cached
+
+    # Resolve file paths to the directory containing model_index.json
+    # (guards against registry entries that point to a specific .safetensors)
+    mp = Path(model_path)
+    if mp.is_file():
+        for parent in (mp.parent, *mp.parents):
+            if (parent / "model_index.json").exists():
+                model_path = str(parent)
+                break
+
+    # Fast path: already loaded
+    if _cached is not None and _cached.model_id == model_id:
+        return _cached
+
+    async with _cache_lock:
+        # Double-check after lock
+        if _cached is not None and _cached.model_id == model_id:
+            return _cached
+
+        # Evict old model
+        if _cached is not None:
+            logger.info(
+                "Evicting pipeline {} in favour of {}",
+                _cached.model_id,
+                model_id,
+            )
+            _cached.pipeline = None
+            _cached.img2img_pipeline = None
+            _cached = None
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+
+        # Load new model
         try:
 
-            def _load():
-                from diffusers import StableDiffusionPipeline
+            def _load() -> tuple[Any, str]:
+                import torch
+                from diffusers import DiffusionPipeline
 
-                model_id = "runwayml/stable-diffusion-v1-5"
-                # Try loading from cache first (no network request)
-                try:
-                    pipe = StableDiffusionPipeline.from_pretrained(
-                        model_id,
-                        local_files_only=True,
-                    )
-                    logger.info("Loaded diffusion pipeline from cache")
-                    return pipe
-                except Exception:
-                    logger.info("Model not in cache, downloading {}...", model_id)
-                    pipe = StableDiffusionPipeline.from_pretrained(model_id)
-                    return pipe
+                skip_kwargs = _build_skip_kwargs(model_path)
+                # Use float16 on CUDA, float32 on CPU to avoid dtype mismatches
+                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+                pipe = DiffusionPipeline.from_pretrained(
+                    model_path,
+                    torch_dtype=dtype,
+                    local_files_only=True,
+                    requires_safety_checker=False,
+                    **skip_kwargs,
+                )
+                if torch.cuda.is_available():
+                    pipe = pipe.to("cuda")
+                return pipe, type(pipe).__name__
 
-            _pipeline = await asyncio.to_thread(_load)
-            logger.info("Diffusion pipeline ready")
-            return _pipeline
+            pipe, cls_name = await asyncio.to_thread(_load)
+            arch = detect_architecture(cls_name)
+            _cached = CachedPipeline(
+                model_id=model_id or "",
+                model_path=model_path,
+                pipeline=pipe,
+                architecture=arch,
+                pipeline_class_name=cls_name,
+            )
+            logger.info(
+                "Loaded pipeline {} (class={}, arch={})",
+                model_id,
+                cls_name,
+                arch,
+            )
+            return _cached
+
         except ImportError:
             logger.warning(
                 "diffusers not installed — image generation unavailable"
@@ -68,6 +257,41 @@ async def _get_pipeline() -> Any:
             return None
 
 
+async def get_img2img_pipeline(cached: CachedPipeline) -> Any | None:
+    """Derive an img2img pipeline from *cached*, sharing weights via from_pipe().
+
+    Returns the img2img pipeline object, or None if unsupported.
+    """
+    if cached.img2img_pipeline is not None:
+        return cached.img2img_pipeline
+
+    try:
+
+        def _derive() -> Any | None:
+            cls = _get_img2img_class(cached.pipeline_class_name)
+            if cls is None:
+                logger.warning(
+                    "No img2img class for {}", cached.pipeline_class_name
+                )
+                return None
+            return cls.from_pipe(cached.pipeline)
+
+        img2img = await asyncio.to_thread(_derive)
+        if img2img is not None:
+            cached.img2img_pipeline = img2img
+            logger.info("img2img pipeline ready (shared weights)")
+        return img2img
+
+    except Exception as e:
+        logger.error("Failed to derive img2img pipeline: {}", e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Synchronous generation (runs in thread)
+# ---------------------------------------------------------------------------
+
+
 def _sync_generate(
     pipeline: Any,
     prompt: str,
@@ -75,9 +299,17 @@ def _sync_generate(
     guidance_scale: float,
     num_images: int = 4,
     seed: int | None = None,
+    source_image: Any | None = None,
+    strength: float = 0.75,
+    img2img_pipeline: Any | None = None,
+    width: int = 1024,
+    height: int = 1024,
 ) -> list[tuple[Any, int]]:
     """Synchronous generation call. Returns list of (PIL.Image, seed) tuples."""
     import torch
+
+    # Choose the right pipeline
+    active_pipeline = img2img_pipeline if source_image is not None else pipeline
 
     results: list[tuple[Any, int]] = []
 
@@ -90,15 +322,26 @@ def _sync_generate(
             "guidance_scale": guidance_scale,
             "generator": generator,
             "num_inference_steps": 30,
+            "height": height,
+            "width": width,
         }
         if negative_prompt:
             kwargs["negative_prompt"] = negative_prompt
 
-        output = pipeline(**kwargs)
+        if source_image is not None:
+            kwargs["image"] = source_image
+            kwargs["strength"] = strength
+
+        output = active_pipeline(**kwargs)
         image = output.images[0]
         results.append((image, img_seed))
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# High-level generate
+# ---------------------------------------------------------------------------
 
 
 async def generate(
@@ -111,16 +354,25 @@ async def generate(
     num_images: int = 4,
     seed: int | None = None,
     on_image_complete: Callable[[GeneratedImage], None] | None = None,
+    source_image_id: str | None = None,
+    divergence: float | None = None,
+    width: int = 1024,
+    height: int = 1024,
+    model_id: str | None = None,
+    model_path: str | None = None,
 ) -> ImageRound | None:
     """Generate images for a task.
 
     Saves images to work/{feature_id}/{task_id}/images/ and returns
     an ImageRound describing the generated images.
 
+    When source_image_id is provided, runs img2img instead of text2img.
+    divergence maps to the diffusion strength parameter (default 0.75).
+
     Returns None if the pipeline is unavailable.
     """
-    pipeline = await _get_pipeline()
-    if pipeline is None:
+    cached = await get_pipeline(model_id=model_id, model_path=model_path)
+    if cached is None:
         logger.warning(
             "Image generation skipped — pipeline unavailable for {}/{}",
             feature_id,
@@ -128,10 +380,38 @@ async def generate(
         )
         return None
 
+    pipeline = cached.pipeline
+
     # Ensure output directory exists
     task_dir = create_task_work_dir(project_root, feature_id, task_id)
     images_dir = task_dir / "images"
     images_dir.mkdir(exist_ok=True)
+
+    # Handle img2img source
+    source_image = None
+    img2img_pipe = None
+    strength = 0.75
+
+    if source_image_id is not None:
+        source_path = images_dir / f"{source_image_id}.png"
+        if not source_path.exists():
+            logger.warning(
+                "Source image not found: {}", source_path
+            )
+            return None
+
+        from PIL import Image
+
+        source_image = Image.open(source_path).convert("RGB")
+        source_image = source_image.resize((width, height))
+
+        img2img_pipe = await get_img2img_pipeline(cached)
+        if img2img_pipe is None:
+            logger.warning("img2img pipeline unavailable")
+            return None
+
+        if divergence is not None:
+            strength = divergence
 
     # Run generation in a thread
     image_results = await asyncio.to_thread(
@@ -142,6 +422,11 @@ async def generate(
         guidance_scale,
         num_images,
         seed,
+        source_image,
+        strength,
+        img2img_pipe,
+        width,
+        height,
     )
 
     # Save images and build response
@@ -172,6 +457,8 @@ async def generate(
         prompt=prompt,
         negative_prompt=negative_prompt,
         guidance_scale=guidance_scale,
+        divergence=divergence,
+        source_image_id=source_image_id,
         images=generated,
     )
 
@@ -181,9 +468,22 @@ async def generate(
     return image_round
 
 
-async def ensure_pipeline() -> bool:
+# ---------------------------------------------------------------------------
+# Ensure pipeline (convenience for job manager)
+# ---------------------------------------------------------------------------
+
+
+async def ensure_pipeline(
+    model_id: str | None = None,
+    model_path: str | None = None,
+) -> bool:
     """Ensure the diffusion pipeline is loaded. Returns True if available."""
-    return (await _get_pipeline()) is not None
+    return (await get_pipeline(model_id=model_id, model_path=model_path)) is not None
+
+
+# ---------------------------------------------------------------------------
+# Session helpers
+# ---------------------------------------------------------------------------
 
 
 def get_session(

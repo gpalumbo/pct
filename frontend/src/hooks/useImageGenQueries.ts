@@ -1,7 +1,24 @@
 /** TanStack Query hooks for image generation API. */
 
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { imagegenApi, type GenerateRequest } from '../api/imagegenApi';
+import { imagegenApi, type GenerateRequest, type JobStatusResponse } from '../api/imagegenApi';
+
+export function useResolutions(architecture?: string) {
+  return useQuery({
+    queryKey: ['imagegen-resolutions', architecture],
+    queryFn: () => imagegenApi.getResolutions(architecture),
+    staleTime: Infinity,
+  });
+}
+
+export function useImagegenModels() {
+  return useQuery({
+    queryKey: ['imagegen-models'],
+    queryFn: () => imagegenApi.listModels(),
+    staleTime: 30_000,
+  });
+}
 
 export function useImageSession(featureId: string, taskId: string) {
   return useQuery({
@@ -54,15 +71,81 @@ export function useCancelJob() {
   });
 }
 
-export function useJobStatus(jobId: string | null) {
+export function useActiveJob(featureId: string, taskId: string) {
   return useQuery({
-    queryKey: ['imagegen', 'job', jobId],
-    queryFn: () => imagegenApi.getJobStatus(jobId!),
-    enabled: !!jobId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === 'completed' || status === 'failed') return false;
-      return 1500;
-    },
+    queryKey: ['imagegen', 'active-job', featureId, taskId],
+    queryFn: () => imagegenApi.listJobs(featureId, taskId),
+    enabled: !!featureId && !!taskId,
+    staleTime: 0,
+    select: (jobs) => jobs[0] ?? null,
   });
+}
+
+export function useJobStatus(jobId: string | null) {
+  const [status, setStatus] = useState<JobStatusResponse | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!jobId) {
+      setStatus(null);
+      return;
+    }
+
+    // Reset status when job changes
+    setStatus(null);
+
+    const controller = imagegenApi.streamJobStatus(
+      jobId,
+      (event) => {
+        if ('image' in event) {
+          // Progressive image — append to current status
+          setStatus((prev) => {
+            if (!prev) return prev;
+            const img = event.image as { id?: string; image_id?: string };
+            return { ...prev, images: [...prev.images, img] };
+          });
+        } else if ('done' in event) {
+          // Job completed
+          setStatus((prev) => ({
+            ...(prev || { job_id: jobId }),
+            job_id: prev?.job_id || jobId,
+            status: 'completed',
+            images: (event.images as Array<{ id?: string; image_id?: string }>) || prev?.images || [],
+          }));
+        } else if ('error' in event) {
+          // Job failed
+          setStatus((prev) => ({
+            ...(prev || { job_id: jobId }),
+            job_id: prev?.job_id || jobId,
+            status: 'failed',
+            error: event.error as string,
+            images: prev?.images || [],
+          }));
+        } else if ('status' in event) {
+          // Status transition (loading/running) or initial state
+          setStatus((prev) => ({
+            ...(prev || { job_id: jobId, images: [] }),
+            job_id: prev?.job_id || jobId,
+            status: event.status as string,
+            status_message: (event.status_message as string) || undefined,
+            images: (event.images as Array<{ id?: string; image_id?: string }>) || prev?.images || [],
+          }));
+        }
+      },
+      (error) => {
+        setStatus((prev) => ({
+          ...(prev || { job_id: jobId }),
+          job_id: prev?.job_id || jobId,
+          status: 'failed',
+          error,
+          images: prev?.images || [],
+        }));
+      },
+    );
+
+    controllerRef.current = controller;
+    return () => controller.abort();
+  }, [jobId]);
+
+  return { data: status };
 }

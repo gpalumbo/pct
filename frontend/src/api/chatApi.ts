@@ -1,7 +1,7 @@
 /** Chat API wrapper with SSE streaming support. */
 
 import client from './client';
-import { useAuthStore } from '../stores/authStore';
+import { connectSSE } from './sseStream';
 import type { ChatMessage, ChatSession, UpdateMessageRequest, SSEEvent } from '../types/chat';
 
 // Session CRUD
@@ -68,9 +68,7 @@ export function sendMessageStream(
   taskId?: string | null,
   onFlushBubble?: (content: string) => void,
 ): AbortController {
-  const controller = new AbortController();
   const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  const token = useAuthStore.getState().token;
 
   const body: Record<string, unknown> = { content };
   if (agentId) body.agent_id = agentId;
@@ -78,72 +76,22 @@ export function sendMessageStream(
   if (featureId) body.feature_id = featureId;
   if (taskId) body.task_id = taskId;
 
-  fetch(`${baseURL}/api/chat/sessions/${sessionId}/send`, {
+  return connectSSE({
+    url: `${baseURL}/api/chat/sessions/${sessionId}/send`,
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    body,
+    onEvent: (event) => {
+      if ('token' in event) onToken(event.token as string);
+      else if ('done' in event) onDone(event.message as ChatMessage);
+      else if ('error' in event) onError(event.error as string);
+      else if ('status' in event) onStatus?.(event.status as string);
+      else if ('tool_call' in event) onToolCall?.(event.tool_call as { id: string; name: string; arguments: string });
+      else if ('tool_result' in event) onToolResult?.(event.tool_result as { id: string; name: string; output: string });
+      else if ('system_prompt' in event) onSystemPrompt?.(event.system_prompt as string);
+      else if ('flush_bubble' in event) onFlushBubble?.(event.flush_bubble as string);
     },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        onError(`HTTP ${response.status}: ${response.statusText}`);
-        return;
-      }
-      const reader = response.body?.getReader();
-      if (!reader) {
-        onError('No response body');
-        return;
-      }
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      let done = false;
-      while (!done) {
-        const result = await reader.read();
-        if (result.done) { done = true; break; }
-        const { value } = result;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if ('token' in event) {
-              onToken(event.token);
-            } else if ('done' in event) {
-              onDone(event.message);
-            } else if ('error' in event) {
-              onError(event.error);
-            } else if ('status' in event) {
-              onStatus?.(event.status);
-            } else if ('tool_call' in event) {
-              onToolCall?.(event.tool_call);
-            } else if ('tool_result' in event) {
-              onToolResult?.(event.tool_result);
-            } else if ('system_prompt' in event) {
-              onSystemPrompt?.(event.system_prompt);
-            } else if ('flush_bubble' in event) {
-              onFlushBubble?.(event.flush_bubble);
-            }
-          } catch {
-            // skip malformed lines
-          }
-        }
-      }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        onError(err.message || 'Stream failed');
-      }
-    });
-
-  return controller;
+    onError,
+  });
 }
 
 // Legacy namespace export for backwards compatibility (PlanningPage, etc.)
@@ -158,66 +106,30 @@ export const chatApi = {
     onEvent?: (event: SSEEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const token = localStorage.getItem('pct_token');
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    const response = await fetch(`${baseUrl}/api/chat/sessions/${sessionId}/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ content, agent_id: agentId }),
-      signal,
+
+    return new Promise<void>((resolve, reject) => {
+      connectSSE({
+        url: `${baseUrl}/api/chat/sessions/${sessionId}/send`,
+        method: 'POST',
+        body: { content, agent_id: agentId },
+        signal,
+        onEvent: (raw) => {
+          let event: SSEEvent;
+          if ('token' in raw) event = { type: 'token', content: raw.token as string };
+          else if ('done' in raw) { event = { type: 'done', message: raw.message as ChatMessage }; onEvent?.(event); resolve(); return; }
+          else if ('error' in raw) { event = { type: 'error', content: raw.error as string }; onEvent?.(event); reject(new Error(raw.error as string)); return; }
+          else if ('status' in raw) event = { type: 'status', content: raw.status as string };
+          else if ('tool_call' in raw) event = { type: 'tool_call', toolCall: raw.tool_call as { id: string; name: string; arguments: string } };
+          else if ('tool_result' in raw) event = { type: 'tool_result', toolResult: raw.tool_result as { id: string; name: string; output: string } };
+          else if ('system_prompt' in raw) event = { type: 'system_prompt', content: raw.system_prompt as string };
+          else if ('flush_bubble' in raw) event = { type: 'flush_bubble', content: raw.flush_bubble as string };
+          else return;
+          onEvent?.(event);
+        },
+        onError: (err) => reject(new Error(err)),
+      });
     });
-
-    if (!response.ok || !response.body) {
-      throw new Error(`SSE request failed: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let streamDone = false;
-
-    while (!streamDone) {
-      const result = await reader.read();
-      if (result.done) { streamDone = true; break; }
-      buffer += decoder.decode(result.value, { stream: true });
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const raw = JSON.parse(line.slice(6));
-            let event: SSEEvent;
-            if ('token' in raw) {
-              event = { type: 'token', content: raw.token };
-            } else if ('done' in raw) {
-              event = { type: 'done', message: raw.message };
-            } else if ('error' in raw) {
-              event = { type: 'error', content: raw.error };
-            } else if ('status' in raw) {
-              event = { type: 'status', content: raw.status };
-            } else if ('tool_call' in raw) {
-              event = { type: 'tool_call', toolCall: raw.tool_call };
-            } else if ('tool_result' in raw) {
-              event = { type: 'tool_result', toolResult: raw.tool_result };
-            } else if ('system_prompt' in raw) {
-              event = { type: 'system_prompt', content: raw.system_prompt };
-            } else if ('flush_bubble' in raw) {
-              event = { type: 'flush_bubble', content: raw.flush_bubble };
-            } else {
-              continue;
-            }
-            onEvent?.(event);
-          } catch {
-            // Skip malformed events
-          }
-        }
-      }
-    }
   },
   updateMessage,
   deleteMessage,

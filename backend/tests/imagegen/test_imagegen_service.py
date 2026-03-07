@@ -9,7 +9,17 @@ import pytest
 
 from pct.imagegen.job_manager import JobManager, get_job_manager
 from pct.imagegen.models import JobStatus
-from pct.imagegen.service import generate, get_session, select_image
+from pct.models.agents import ModelRegistryEntry
+from pct.models.enums import ProviderType
+from pct.imagegen.service import (
+    CachedPipeline,
+    _build_skip_kwargs,
+    _sync_generate,
+    detect_architecture,
+    generate,
+    get_session,
+    select_image,
+)
 
 
 @pytest.fixture
@@ -19,6 +29,35 @@ def project_root(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _make_cached(pipeline=None, img2img=None, model_id="test", model_path="/fake"):
+    """Helper to build a CachedPipeline for tests."""
+    return CachedPipeline(
+        model_id=model_id,
+        model_path=model_path,
+        pipeline=pipeline or MagicMock(),
+        img2img_pipeline=img2img,
+        architecture="sdxl",
+        pipeline_class_name="StableDiffusionXLPipeline",
+    )
+
+
+class TestDetectArchitecture:
+    def test_sdxl(self):
+        assert detect_architecture("StableDiffusionXLPipeline") == "sdxl"
+
+    def test_sd15(self):
+        assert detect_architecture("StableDiffusionPipeline") == "sd15"
+
+    def test_flux(self):
+        assert detect_architecture("FluxPipeline") == "flux"
+
+    def test_sd3(self):
+        assert detect_architecture("StableDiffusion3Pipeline") == "sd3"
+
+    def test_unknown(self):
+        assert detect_architecture("SomethingElsePipeline") is None
+
+
 class TestGenerateImages:
     @pytest.mark.asyncio
     async def test_generate_returns_none_without_pipeline(
@@ -26,12 +65,13 @@ class TestGenerateImages:
     ):
         """generate() returns None when diffusers pipeline is not available."""
         with patch(
-            "pct.imagegen.service._get_pipeline",
+            "pct.imagegen.service.get_pipeline",
             new_callable=AsyncMock,
             return_value=None,
         ):
             result = await generate(
-                project_root, "f1", "t1", prompt="A cat"
+                project_root, "f1", "t1", prompt="A cat",
+                model_id="test", model_path="/fake",
             )
 
         assert result is None
@@ -43,16 +83,12 @@ class TestGenerateImages:
         mock_image = MagicMock()
         mock_image.save = MagicMock()
 
-        # Create a mock pipeline
-        mock_pipeline = MagicMock()
-        mock_output = MagicMock()
-        mock_output.images = [mock_image]
-        mock_pipeline.return_value = mock_output
+        cached = _make_cached()
 
         with patch(
-            "pct.imagegen.service._get_pipeline",
+            "pct.imagegen.service.get_pipeline",
             new_callable=AsyncMock,
-            return_value=mock_pipeline,
+            return_value=cached,
         ), patch(
             "pct.imagegen.service._sync_generate",
             return_value=[(mock_image, 42), (mock_image, 43)],
@@ -63,6 +99,8 @@ class TestGenerateImages:
                 "t1",
                 prompt="A beautiful sunset",
                 num_images=2,
+                model_id="test",
+                model_path="/fake",
             )
 
         assert result is not None
@@ -73,17 +111,391 @@ class TestGenerateImages:
 
     @pytest.mark.asyncio
     async def test_generate_creates_directories(self, project_root: Path):
-        """generate() creates the images directory structure."""
+        """generate() returns None cleanly when pipeline unavailable."""
         with patch(
-            "pct.imagegen.service._get_pipeline",
+            "pct.imagegen.service.get_pipeline",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            await generate(project_root, "f1", "t1", prompt="test")
+            await generate(
+                project_root, "f1", "t1", prompt="test",
+                model_id="test", model_path="/fake",
+            )
 
-        # Directory creation happens before pipeline check, so it should exist
-        # (actually, directory creation is after pipeline check in our implementation)
         # This test verifies the early-return path works without errors
+
+
+class TestSyncGenerateImg2Img:
+    def test_img2img_uses_img2img_pipeline(self):
+        """When source_image is provided, img2img pipeline is called with image and strength."""
+        mock_t2i_pipeline = MagicMock()
+        mock_i2i_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_pil_image = MagicMock()
+        mock_output.images = [mock_pil_image]
+        mock_i2i_pipeline.return_value = mock_output
+
+        source_img = MagicMock()
+
+        results = _sync_generate(
+            pipeline=mock_t2i_pipeline,
+            prompt="refine this",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=1,
+            seed=42,
+            source_image=source_img,
+            strength=0.6,
+            img2img_pipeline=mock_i2i_pipeline,
+        )
+
+        assert len(results) == 1
+        # img2img pipeline should be called, not text2img
+        mock_i2i_pipeline.assert_called_once()
+        mock_t2i_pipeline.assert_not_called()
+        # Verify image and strength were passed
+        call_kwargs = mock_i2i_pipeline.call_args[1]
+        assert call_kwargs["image"] is source_img
+        assert call_kwargs["strength"] == 0.6
+
+    def test_text2img_unchanged_without_source(self):
+        """When source_image is None, text2img pipeline is used as before."""
+        mock_t2i_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_pil_image = MagicMock()
+        mock_output.images = [mock_pil_image]
+        mock_t2i_pipeline.return_value = mock_output
+
+        results = _sync_generate(
+            pipeline=mock_t2i_pipeline,
+            prompt="a cat",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=1,
+            seed=42,
+        )
+
+        assert len(results) == 1
+        mock_t2i_pipeline.assert_called_once()
+        call_kwargs = mock_t2i_pipeline.call_args[1]
+        assert "image" not in call_kwargs
+        assert "strength" not in call_kwargs
+
+
+class TestGenerateImg2Img:
+    @pytest.mark.asyncio
+    async def test_generate_img2img_source_not_found(self, project_root: Path):
+        """generate() returns None when source image file doesn't exist."""
+        cached = _make_cached()
+
+        with patch(
+            "pct.imagegen.service.get_pipeline",
+            new_callable=AsyncMock,
+            return_value=cached,
+        ):
+            result = await generate(
+                project_root,
+                "f1",
+                "t1",
+                prompt="refine this",
+                source_image_id="nonexistent",
+                model_id="test",
+                model_path="/fake",
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_img2img_populates_round_fields(
+        self, project_root: Path
+    ):
+        """generate() sets divergence and source_image_id on the returned ImageRound."""
+        mock_image = MagicMock()
+        mock_image.save = MagicMock()
+
+        cached = _make_cached()
+        mock_img2img = MagicMock()
+
+        # Create a source image file
+        task_dir = project_root / "work" / "f1" / "t1" / "images"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        source_path = task_dir / "src123.png"
+        # Write a minimal valid PNG
+        from PIL import Image
+
+        img = Image.new("RGB", (64, 64), color="red")
+        img.save(str(source_path))
+
+        with patch(
+            "pct.imagegen.service.get_pipeline",
+            new_callable=AsyncMock,
+            return_value=cached,
+        ), patch(
+            "pct.imagegen.service.get_img2img_pipeline",
+            new_callable=AsyncMock,
+            return_value=mock_img2img,
+        ), patch(
+            "pct.imagegen.service._sync_generate",
+            return_value=[(mock_image, 42)],
+        ):
+            result = await generate(
+                project_root,
+                "f1",
+                "t1",
+                prompt="refine",
+                num_images=1,
+                source_image_id="src123",
+                divergence=0.6,
+                model_id="test",
+                model_path="/fake",
+            )
+
+        assert result is not None
+        assert result.source_image_id == "src123"
+        assert result.divergence == 0.6
+
+
+class TestRunJobPassthrough:
+    @pytest.mark.asyncio
+    async def test_run_job_passes_source_image_id_and_divergence(
+        self, project_root: Path
+    ):
+        """run_job passes source_image_id and divergence through to generate()."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="refine it",
+            source_image_id="img42",
+            divergence=0.5,
+        )
+
+        mock_round = MagicMock()
+        mock_round.images = []
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            return_value=mock_round,
+        ) as mock_generate, patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            new_callable=AsyncMock,
+            side_effect=lambda entry, *a, **kw: entry,
+        ):
+            await manager.run_job(job_id, project_root)
+
+        mock_generate.assert_called_once()
+        call_kwargs = mock_generate.call_args[1]
+        assert call_kwargs["source_image_id"] == "img42"
+        assert call_kwargs["divergence"] == 0.5
+        assert call_kwargs["model_id"] == "test-model"
+        assert call_kwargs["model_path"] == "/fake/path"
+
+
+class TestSyncGenerateResolution:
+    def test_sync_generate_passes_width_height_to_pipeline(self):
+        """_sync_generate includes width and height in pipeline kwargs."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_pil_image = MagicMock()
+        mock_output.images = [mock_pil_image]
+        mock_pipeline.return_value = mock_output
+
+        _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="a cat",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=1,
+            seed=42,
+            width=1344,
+            height=768,
+        )
+
+        call_kwargs = mock_pipeline.call_args[1]
+        assert call_kwargs["width"] == 1344
+        assert call_kwargs["height"] == 768
+
+    def test_sync_generate_default_resolution(self):
+        """_sync_generate defaults to 1024x1024."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_output.images = [MagicMock()]
+        mock_pipeline.return_value = mock_output
+
+        _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="a cat",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=1,
+            seed=42,
+        )
+
+        call_kwargs = mock_pipeline.call_args[1]
+        assert call_kwargs["width"] == 1024
+        assert call_kwargs["height"] == 1024
+
+
+class TestGenerateImg2ImgResolution:
+    @pytest.mark.asyncio
+    async def test_generate_img2img_resizes_to_custom_resolution(
+        self, project_root: Path
+    ):
+        """generate() resizes source image to (width, height), not hardcoded 1024."""
+        mock_image = MagicMock()
+        mock_image.save = MagicMock()
+
+        cached = _make_cached()
+        mock_img2img = MagicMock()
+
+        # Create a source image file
+        task_dir = project_root / "work" / "f1" / "t1" / "images"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        source_path = task_dir / "src456.png"
+        from PIL import Image
+
+        img = Image.new("RGB", (64, 64), color="blue")
+        img.save(str(source_path))
+
+        with patch(
+            "pct.imagegen.service.get_pipeline",
+            new_callable=AsyncMock,
+            return_value=cached,
+        ), patch(
+            "pct.imagegen.service.get_img2img_pipeline",
+            new_callable=AsyncMock,
+            return_value=mock_img2img,
+        ), patch(
+            "pct.imagegen.service._sync_generate",
+            return_value=[(mock_image, 42)],
+        ) as mock_sync_gen:
+            result = await generate(
+                project_root,
+                "f1",
+                "t1",
+                prompt="refine",
+                num_images=1,
+                source_image_id="src456",
+                divergence=0.6,
+                width=1344,
+                height=768,
+                model_id="test",
+                model_path="/fake",
+            )
+
+        assert result is not None
+        # _sync_generate should have received width=1344, height=768
+        call_args = mock_sync_gen.call_args
+        assert call_args[0][-2] == 1344  # width
+        assert call_args[0][-1] == 768  # height
+
+
+class TestResolutionsEndpoint:
+    def test_resolutions_returns_expected_list(self):
+        """GET /api/imagegen/resolutions returns the SDXL preset list."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from pct.imagegen.router import router
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.get("/api/imagegen/resolutions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "resolutions" in data
+        resolutions = data["resolutions"]
+        assert len(resolutions) == 9
+        assert resolutions[0]["label"] == "1:1 Square"
+        assert resolutions[0]["width"] == 1024
+        assert resolutions[0]["height"] == 1024
+        # Verify a landscape entry
+        labels = [r["label"] for r in resolutions]
+        assert "16:9 Landscape" in labels
+
+    def test_resolutions_with_architecture_param(self):
+        """GET /api/imagegen/resolutions?architecture=sd15 returns SD 1.5 presets."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from pct.imagegen.router import router
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        resp = client.get("/api/imagegen/resolutions?architecture=sd15")
+        assert resp.status_code == 200
+        data = resp.json()
+        resolutions = data["resolutions"]
+        assert len(resolutions) == 5
+        assert resolutions[0]["width"] == 512
+
+
+class TestRunJobPassesResolution:
+    @pytest.mark.asyncio
+    async def test_run_job_passes_width_height(self, project_root: Path):
+        """run_job passes width and height through to generate()."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="landscape",
+            width=1344,
+            height=768,
+        )
+
+        mock_round = MagicMock()
+        mock_round.images = []
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            return_value=mock_round,
+        ) as mock_generate, patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            new_callable=AsyncMock,
+            side_effect=lambda entry, *a, **kw: entry,
+        ):
+            await manager.run_job(job_id, project_root)
+
+        mock_generate.assert_called_once()
+        call_kwargs = mock_generate.call_args[1]
+        assert call_kwargs["width"] == 1344
+        assert call_kwargs["height"] == 768
 
 
 class TestGetSession:
@@ -118,6 +530,20 @@ class TestJobManager:
         assert job.status == JobStatus.pending
         assert job.feature_id == "f1"
         assert job.task_id == "t1"
+
+    def test_create_job_with_model_id(self):
+        """JobManager.create_job stores model_id."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="A cat",
+            model_id="my-model",
+        )
+
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.model_id == "my-model"
 
     def test_job_lifecycle(self):
         """Job transitions through pending -> running -> completed."""
@@ -183,9 +609,12 @@ class TestJobManager:
         )
 
         with patch(
-            "pct.imagegen.service._get_pipeline",
-            new_callable=AsyncMock,
+            "pct.imagegen.job_manager._resolve_model",
             return_value=None,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=False,
         ):
             await manager.run_job(job_id, project_root)
 
@@ -207,3 +636,119 @@ class TestJobManager:
 
         # Clean up
         mod._job_manager = None
+
+
+class TestJobStatusMessage:
+    @pytest.mark.asyncio
+    async def test_run_job_sets_status_message_from_download(
+        self, project_root: Path
+    ):
+        """run_job updates job.status_message via _on_status callback."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+
+        captured_messages: list[str] = []
+
+        async def fake_ensure(entry, on_status, **kw):
+            await on_status("Downloading model X...")
+            await on_status("Download complete.")
+            return entry
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        mock_round = MagicMock()
+        mock_round.images = []
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            side_effect=fake_ensure,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            return_value=mock_round,
+        ):
+            await manager.run_job(job_id, project_root)
+
+        job = manager.get_job(job_id)
+        assert job is not None
+        # status_message should be the last message from the callback
+        assert job.status_message == "Download complete."
+
+    def test_job_record_status_message_default(self):
+        """JobRecord.status_message defaults to None."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.status_message is None
+
+
+class TestBuildSkipKwargs:
+    def test_reads_optional_components_from_class(self, tmp_path: Path):
+        """_build_skip_kwargs returns None for each _optional_components entry."""
+        import json
+
+        # Write a model_index.json pointing to StableDiffusionPipeline
+        (tmp_path / "model_index.json").write_text(
+            json.dumps({"_class_name": "StableDiffusionPipeline"})
+        )
+
+        result = _build_skip_kwargs(str(tmp_path))
+
+        # StableDiffusionPipeline has safety_checker and feature_extractor
+        assert "safety_checker" in result
+        assert "feature_extractor" in result
+        for v in result.values():
+            assert v is None
+
+    def test_fallback_when_no_model_index(self, tmp_path: Path):
+        """Returns fallback dict when model_index.json is missing."""
+        result = _build_skip_kwargs(str(tmp_path))
+        assert result == {"safety_checker": None}
+
+    def test_fallback_when_class_not_found(self, tmp_path: Path):
+        """Returns fallback dict when _class_name doesn't exist in diffusers."""
+        import json
+
+        (tmp_path / "model_index.json").write_text(
+            json.dumps({"_class_name": "TotallyFakePipeline"})
+        )
+        result = _build_skip_kwargs(str(tmp_path))
+        assert result == {"safety_checker": None}
+
+    def test_fallback_when_malformed_json(self, tmp_path: Path):
+        """Returns fallback dict when model_index.json is invalid JSON."""
+        (tmp_path / "model_index.json").write_text("not valid json {{{")
+        result = _build_skip_kwargs(str(tmp_path))
+        assert result == {"safety_checker": None}
+
+    def test_fallback_when_no_optional_components(self, tmp_path: Path):
+        """Returns fallback dict when pipeline class has empty _optional_components."""
+        import json
+
+        # Mock a pipeline class with no optional components
+        with patch("diffusers.FakePipelineNoOpt", create=True) as mock_cls:
+            mock_cls._optional_components = []
+            (tmp_path / "model_index.json").write_text(
+                json.dumps({"_class_name": "FakePipelineNoOpt"})
+            )
+            result = _build_skip_kwargs(str(tmp_path))
+
+        assert result == {"safety_checker": None}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Image, Input, Modal, Slider, Spin, Typography, message } from 'antd';
+import { Button, Image, Input, Modal, Select, Slider, Spin, Typography, message } from 'antd';
 import {
   EditOutlined,
   ReloadOutlined,
@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import { useArtifact, useSaveArtifact } from '../../hooks/useBoardQueries';
-import { useGenerate, useJobStatus, useTaskImages, useDeleteImage, useCancelJob } from '../../hooks/useImageGenQueries';
+import { useGenerate, useJobStatus, useActiveJob, useTaskImages, useDeleteImage, useCancelJob, useResolutions, useImagegenModels } from '../../hooks/useImageGenQueries';
 import { getImageUrl, imagegenApi } from '../../api/imagegenApi';
 import type { RefineTarget } from '../chat/ChatInput';
 import type { AgentType } from '../../types/enums';
@@ -172,12 +172,25 @@ function ImageSection({
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewCurrent, setPreviewCurrent] = useState(0);
+  const [resolution, setResolution] = useState({ width: 1024, height: 1024 });
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
 
   const generateMutation = useGenerate();
+  const { data: models } = useImagegenModels();
+  const selectedModel = models?.find((m) => m.id === selectedModelId) ?? models?.[0];
+  const { data: resolutions } = useResolutions(selectedModel?.architecture || undefined);
   const { data: jobStatus } = useJobStatus(activeJobId);
   const { data: taskImages, refetch: refetchTaskImages } = useTaskImages(featureId, taskId);
   const deleteMutation = useDeleteImage();
   const cancelMutation = useCancelJob();
+
+  // Recover active job on mount (reconnect after navigation)
+  const { data: recoveredJob } = useActiveJob(featureId, taskId);
+  useEffect(() => {
+    if (recoveredJob && !activeJobId) {
+      setActiveJobId(recoveredJob.job_id);
+    }
+  }, [recoveredJob, activeJobId]);
 
   // Track previous pendingImagePrompt to detect new arrivals
   const prevPromptRef = useRef<string | null>(null);
@@ -196,6 +209,9 @@ function ImageSection({
         guidance_scale: guidanceScale,
         num_images: numImages,
         source_image_id: pendingSourceImageId || undefined,
+        width: resolution.width,
+        height: resolution.height,
+        model_id: selectedModel?.id,
       },
       {
         onSuccess: (data) => {
@@ -221,7 +237,7 @@ function ImageSection({
     activeJobId &&
     jobStatus &&
     (jobStatus.status === 'pending' ||
-      jobStatus.status === 'downloading' ||
+      jobStatus.status === 'loading' ||
       jobStatus.status === 'running');
   const isJobCompleted = jobStatus?.status === 'completed';
   const isJobFailed = jobStatus?.status === 'failed';
@@ -304,6 +320,25 @@ function ImageSection({
           {/* Controls — only show when image_gen agent is active */}
           {activeAgentType === 'image_gen' && (
             <>
+              {/* Model selector — only when multiple models available */}
+              {models && models.length > 1 && (
+                <div>
+                  <Text type="secondary" className="pct-text-xs" style={{ display: 'block', marginBottom: 2 }}>
+                    Model
+                  </Text>
+                  <Select
+                    size="small"
+                    style={{ width: '100%' }}
+                    value={selectedModel?.id}
+                    onChange={(val) => setSelectedModelId(val)}
+                    options={models.map((m) => ({
+                      label: `${m.name}${m.architecture ? ` (${m.architecture})` : ''}`,
+                      value: m.id,
+                    }))}
+                  />
+                </div>
+              )}
+
               {/* Negative prompt */}
               <div>
                 <Text type="secondary" className="pct-text-xs" style={{ display: 'block', marginBottom: 2 }}>
@@ -339,6 +374,26 @@ function ImageSection({
                   <Slider min={1} max={6} step={1} value={numImages} onChange={setNumImages} />
                 </div>
               </div>
+
+              {/* Resolution preset */}
+              <div>
+                <Text type="secondary" className="pct-text-xs" style={{ display: 'block', marginBottom: 2 }}>
+                  Resolution
+                </Text>
+                <Select
+                  size="small"
+                  style={{ width: '100%' }}
+                  value={`${resolution.width}x${resolution.height}`}
+                  onChange={(val) => {
+                    const [w, h] = val.split('x').map(Number);
+                    setResolution({ width: w, height: h });
+                  }}
+                  options={(resolutions || []).map((r) => ({
+                    label: `${r.label} (${r.width}\u00d7${r.height})`,
+                    value: `${r.width}x${r.height}`,
+                  }))}
+                />
+              </div>
             </>
           )}
 
@@ -353,8 +408,8 @@ function ImageSection({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Text type="secondary" className="pct-text-sm" style={{ flex: 1 }}>
                 <LoadingOutlined style={{ marginRight: 4 }} />
-                {jobStatus.status === 'downloading'
-                  ? 'Downloading model...'
+                {jobStatus.status === 'loading'
+                  ? (jobStatus.status_message || 'Loading model...')
                   : `Generating... (${progressiveImages.length}/${numImages})`}
               </Text>
               <Button

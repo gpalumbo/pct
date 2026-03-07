@@ -1,6 +1,7 @@
 /** Image generation API wrapper. */
 
 import client from './client';
+import { connectSSE } from './sseStream';
 
 export interface GenerateRequest {
   feature_id: string;
@@ -11,6 +12,15 @@ export interface GenerateRequest {
   num_images?: number;
   divergence?: number;
   source_image_id?: string;
+  width?: number;
+  height?: number;
+  model_id?: string;
+}
+
+export interface ResolutionOption {
+  label: string;
+  width: number;
+  height: number;
 }
 
 export interface TaskImage {
@@ -33,10 +43,19 @@ export interface FeatureImage {
 export interface JobStatusResponse {
   job_id: string;
   status: string;
+  status_message?: string;
   feature_id?: string;
   task_id?: string;
   images: Array<{ id?: string; image_id?: string }>;
   error?: string;
+  model_id?: string;
+}
+
+export interface ImagegenModel {
+  id: string;
+  name: string;
+  architecture?: string;
+  download_status?: string;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -48,6 +67,18 @@ export function getImageUrl(featureId: string, taskId: string, imageId: string):
 export const imagegenApi = {
   generate: (data: GenerateRequest) =>
     client.post<{ job_id: string }>('/api/imagegen/generate', data).then((r) => r.data),
+
+  getResolutions: (architecture?: string) =>
+    client
+      .get<{ resolutions: ResolutionOption[] }>('/api/imagegen/resolutions', {
+        params: architecture ? { architecture } : undefined,
+      })
+      .then((r) => r.data.resolutions),
+
+  listModels: () =>
+    client
+      .get<{ models: ImagegenModel[] }>('/api/imagegen/models')
+      .then((r) => r.data.models),
 
   getJobStatus: (jobId: string) =>
     client.get<JobStatusResponse>(`/api/imagegen/jobs/${jobId}`).then((r) => r.data),
@@ -73,4 +104,22 @@ export const imagegenApi = {
 
   cancelJob: (jobId: string) =>
     client.post(`/api/imagegen/jobs/${jobId}/cancel`).then((r) => r.data),
+
+  listJobs: (featureId: string, taskId: string) =>
+    client
+      .get<JobStatusResponse[]>('/api/imagegen/jobs', {
+        params: { feature_id: featureId, task_id: taskId },
+      })
+      .then((r) => r.data),
+
+  streamJobStatus: (
+    jobId: string,
+    onEvent: (event: Record<string, unknown>) => void,
+    onError?: (error: string) => void,
+  ) =>
+    connectSSE({
+      url: `${API_BASE_URL}/api/imagegen/jobs/${jobId}/stream`,
+      onEvent,
+      onError,
+    }),
 };

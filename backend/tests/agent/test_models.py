@@ -185,6 +185,64 @@ class TestAssembledContext:
         assert ctx.metadata.items_included == 0
 
 
+class TestImagegenContextRoles:
+    def test_build_llm_messages_skips_imagegen_roles(self):
+        """build_llm_messages ignores imagegen_positive/negative/result roles."""
+        ctx = AssembledContext()
+        ctx.append_user("Hello")
+        ctx.append_imagegen_positive("a cat in space")
+        ctx.append_imagegen_negative("blurry")
+        ctx.append_imagegen_result("img001.png")
+        ctx.append_assistant("Here are your images")
+        msgs = ctx.build_llm_messages()
+        assert len(msgs) == 2
+        assert msgs[0] == {"role": "user", "content": "Hello"}
+        assert msgs[1] == {"role": "assistant", "content": "Here are your images"}
+
+    def test_append_imagegen_helpers(self):
+        """append_imagegen_positive/negative/result create correct messages."""
+        ctx = AssembledContext()
+        ctx.append_imagegen_positive("sunset")
+        ctx.append_imagegen_negative("blurry")
+        ctx.append_imagegen_result("img1.png\nimg2.png")
+        assert len(ctx.messages) == 3
+        assert ctx.messages[0].role == "imagegen_positive"
+        assert ctx.messages[0].content == "sunset"
+        assert ctx.messages[1].role == "imagegen_negative"
+        assert ctx.messages[2].role == "imagegen_result"
+        assert ctx.messages[2].content == "img1.png\nimg2.png"
+
+    def test_get_imagegen_messages(self):
+        """get_imagegen_messages returns only imagegen messages, excludes excluded."""
+        ctx = AssembledContext()
+        ctx.append_user("Hello")
+        ctx.append_imagegen_positive("a dog")
+        ctx.append_imagegen_negative("ugly")
+        ctx.append_imagegen_result("img.png")
+        ctx.append_assistant("Done")
+        # Exclude the negative prompt
+        ctx.messages[2].inclusion = InclusionFlag.excluded
+        result = ctx.get_imagegen_messages()
+        assert len(result) == 2
+        assert result[0].role == "imagegen_positive"
+        assert result[1].role == "imagegen_result"
+
+    def test_imagegen_roles_do_not_corrupt_tool_result_flush(self):
+        """Imagegen roles between tool_results don't break the tool flush logic."""
+        ctx = AssembledContext()
+        ctx.append_user("Do something")
+        ctx.append_tool_result("tc1", "read", "content")
+        ctx.append_imagegen_positive("a prompt")
+        ctx.append_assistant("Done")
+        msgs = ctx.build_llm_messages()
+        # user, assistant (synthesized tool_call), tool result, assistant
+        assert len(msgs) == 4
+        assert msgs[0]["role"] == "user"
+        assert msgs[1]["role"] == "assistant"  # synthesized wrapper
+        assert msgs[2]["role"] == "tool"
+        assert msgs[3]["role"] == "assistant"
+
+
 class TestContextMetadata:
     def test_defaults(self):
         cm = ContextMetadata()

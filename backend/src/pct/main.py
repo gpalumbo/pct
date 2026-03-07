@@ -46,6 +46,14 @@ async def lifespan(app: FastAPI):
     logger.info("PCT_ROOT = {}", settings.root.resolve())
     logger.info("PCT_PROJECT_ROOT = {}", settings.project_root.resolve())
     logger.info("PCT_GLOBAL_CONFIG_DIR = {}", settings.global_config_dir.resolve())
+    if settings.hf_token:
+        logger.info("PCT_HF_TOKEN = configured")
+    else:
+        logger.warning(
+            "PCT_HF_TOKEN not set — HuggingFace downloads will be anonymous. "
+            "This is fine for public models, but gated models (e.g. Stable Diffusion) "
+            "require a token. Set PCT_HF_TOKEN in .env or your environment."
+        )
     init_user_store(settings.global_config_dir)
     yield
     # Shutdown

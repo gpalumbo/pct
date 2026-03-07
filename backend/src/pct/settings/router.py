@@ -129,7 +129,9 @@ async def list_hf_gguf_files(
         )
 
     try:
-        tree = list_repo_tree(repo_id)
+        from pct.config import settings as app_settings
+
+        tree = list_repo_tree(repo_id, token=app_settings.hf_token)
         gguf_files = [
             item for item in tree
             if hasattr(item, "rfilename") and item.rfilename.endswith(".gguf")
@@ -183,7 +185,11 @@ async def list_models(
     settings: Settings = Depends(get_settings),
     _user: str = Depends(get_current_user),
 ):
-    models = load_model_registry(settings.global_config_dir)
+    import asyncio
+
+    from pct.agent.model_downloader import sync_hf_download_status
+
+    models = await asyncio.to_thread(sync_hf_download_status, settings.global_config_dir)
     return [m.model_dump(mode="json") for m in models]
 
 
