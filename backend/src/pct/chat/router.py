@@ -275,6 +275,8 @@ async def send_message(
     async def event_stream():
         collected_tokens: list[str] = []
         event_queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        # Shared ref so we can interrupt the provider on client disconnect
+        provider_ref: list = []
 
         async def on_token(token: str) -> None:
             collected_tokens.append(token)
@@ -311,6 +313,7 @@ async def send_message(
                     await ensure_model_ready(model_entry, on_status)
 
                 provider, agent_cfg = resolve_provider(agent_id)
+                provider_ref.append(provider)
 
                 # Set prompts on context
                 context.agent_prompt = agent_cfg.prompt_template or ""
@@ -354,6 +357,9 @@ async def send_message(
                     agent_id=agent_id,
                 )
                 return assistant_msg
+            except asyncio.CancelledError:
+                logger.info("Chat turn cancelled for session {}", session_id)
+                raise
             except Exception:
                 logger.exception("Chat turn failed")
                 raise
@@ -362,26 +368,39 @@ async def send_message(
 
         task = asyncio.create_task(run_chat())
 
-        # Stream events as they arrive
-        while True:
-            item = await event_queue.get()
-            if item is None:
-                break
-            yield sse_event(item)
-
         try:
-            assistant_msg = await task
-            yield sse_event(
-                {
-                    "done": True,
-                    "message": json.loads(assistant_msg.model_dump_json()),
-                }
-            )
-        except ValueError as e:
-            yield sse_event({"error": str(e)})
-        except Exception as e:
-            logger.exception("Unexpected error in chat stream")
-            yield sse_event({"error": f"An unexpected error occurred: {e}"})
+            # Stream events as they arrive
+            while True:
+                item = await event_queue.get()
+                if item is None:
+                    break
+                yield sse_event(item)
+
+            try:
+                assistant_msg = await task
+                yield sse_event(
+                    {
+                        "done": True,
+                        "message": json.loads(assistant_msg.model_dump_json()),
+                    }
+                )
+            except asyncio.CancelledError:
+                yield sse_event({"error": "Cancelled"})
+            except ValueError as e:
+                yield sse_event({"error": str(e)})
+            except Exception as e:
+                logger.exception("Unexpected error in chat stream")
+                yield sse_event({"error": f"An unexpected error occurred: {e}"})
+        finally:
+            # Client disconnected or stream ended — stop the LLM if still running
+            if not task.done():
+                logger.info("Client disconnected, interrupting chat for session {}", session_id)
+                if provider_ref:
+                    try:
+                        await provider_ref[0].interrupt()
+                    except Exception:
+                        pass
+                task.cancel()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

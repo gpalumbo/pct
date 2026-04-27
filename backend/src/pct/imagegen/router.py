@@ -21,8 +21,14 @@ from pct.imagegen.models import (
     JobStatus,
     JobStatusResponse,
     SelectImageRequest,
+    build_resolutions,
 )
-from pct.imagegen.service import detect_architecture, get_session, select_image
+from pct.imagegen.service import (
+    detect_architecture,
+    detect_native_resolution,
+    get_session,
+    select_image,
+)
 from pct.sse import sse_event
 from pct.storage.registry_io import load_model_registry
 
@@ -55,12 +61,14 @@ async def list_imagegen_models(
                 except Exception:
                     pass
 
+                native_res = detect_native_resolution(m.file_path)
                 results.append(
                     ImagegenModelInfo(
                         id=m.id,
                         name=m.name,
                         architecture=arch,
                         download_status=m.download_status,
+                        native_resolution=native_res,
                     ).model_dump(mode="json")
                 )
     return {"models": results}
@@ -69,8 +77,15 @@ async def list_imagegen_models(
 @router.get("/resolutions")
 async def get_resolutions(
     architecture: str | None = Query(default=None),
+    native_resolution: int | None = Query(default=None),
 ):
-    """Return resolution presets for the given architecture (default: sdxl)."""
+    """Return resolution presets for the given architecture (default: sdxl).
+
+    When *native_resolution* is provided, generates presets dynamically
+    scaled to that native pixel size instead of using the static lookup.
+    """
+    if native_resolution is not None:
+        return {"resolutions": build_resolutions(native_resolution)}
     arch = architecture or "sdxl"
     resolutions = ARCHITECTURE_RESOLUTIONS.get(arch, SDXL_RESOLUTIONS)
     return {"resolutions": resolutions}
@@ -99,10 +114,11 @@ async def generate_images(
         width=req.width,
         height=req.height,
         model_id=req.model_id,
+        draft=req.draft,
     )
 
-    # Fire and forget — run the job in the background
-    asyncio.create_task(
+    # Run the job in the background and register the task for cancellation
+    task = asyncio.create_task(
         manager.run_job(
             job_id,
             settings.project_root,
@@ -110,6 +126,7 @@ async def generate_images(
         ),
         name=f"imagegen-{job_id}",
     )
+    manager.register_task(job_id, task)
 
     return GenerateResponse(job_id=job_id, status=JobStatus.pending)
 

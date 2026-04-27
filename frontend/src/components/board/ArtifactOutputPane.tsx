@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Image, Input, Modal, Select, Slider, Spin, Typography, message } from 'antd';
+import { Button, Checkbox, Image, Input, Modal, Select, Slider, Spin, Typography, message } from 'antd';
 import {
   EditOutlined,
   ReloadOutlined,
@@ -174,11 +174,15 @@ function ImageSection({
   const [previewCurrent, setPreviewCurrent] = useState(0);
   const [resolution, setResolution] = useState({ width: 1024, height: 1024 });
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
+  const [draft, setDraft] = useState(false);
 
   const generateMutation = useGenerate();
   const { data: models } = useImagegenModels();
   const selectedModel = models?.find((m) => m.id === selectedModelId) ?? models?.[0];
-  const { data: resolutions } = useResolutions(selectedModel?.architecture || undefined);
+  const { data: resolutions } = useResolutions(
+    selectedModel?.architecture || undefined,
+    selectedModel?.native_resolution || undefined,
+  );
   const { data: jobStatus } = useJobStatus(activeJobId);
   const { data: taskImages, refetch: refetchTaskImages } = useTaskImages(featureId, taskId);
   const deleteMutation = useDeleteImage();
@@ -212,6 +216,7 @@ function ImageSection({
         width: resolution.width,
         height: resolution.height,
         model_id: selectedModel?.id,
+        draft,
       },
       {
         onSuccess: (data) => {
@@ -374,6 +379,13 @@ function ImageSection({
                   <Slider min={1} max={6} step={1} value={numImages} onChange={setNumImages} />
                 </div>
               </div>
+
+              {/* Draft mode */}
+              <Checkbox checked={draft} onChange={(e) => setDraft(e.target.checked)}>
+                <Text type="secondary" className="pct-text-xs">
+                  Draft (half res, 10 steps)
+                </Text>
+              </Checkbox>
 
               {/* Resolution preset */}
               <div>

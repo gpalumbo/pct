@@ -7,6 +7,7 @@ completed/failed.
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from loguru import logger
 
 from pct.agent.model_downloader import ensure_model_ready
 from pct.imagegen.models import JobStatus
-from pct.imagegen.service import ensure_pipeline, generate
+from pct.imagegen.service import GenerationCancelled, ensure_pipeline, generate
 from pct.models.agents import ModelRegistryEntry
 from pct.storage.registry_io import load_model_registry
 
@@ -37,12 +38,14 @@ class JobRecord:
     width: int = 1024
     height: int = 1024
     model_id: str | None = None
+    num_inference_steps: int = 30
     status: JobStatus = JobStatus.pending
     status_message: str | None = None
     images: list[dict] = field(default_factory=list)
     error: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
+    cancel_event: threading.Event = field(default_factory=threading.Event)
 
 
 def _resolve_model(
@@ -96,6 +99,7 @@ class JobManager:
 
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
+        self._tasks: dict[str, asyncio.Task] = {}
         self._event_queues: dict[str, list[asyncio.Queue]] = {}
 
     def create_job(
@@ -111,8 +115,19 @@ class JobManager:
         width: int = 1024,
         height: int = 1024,
         model_id: str | None = None,
+        draft: bool = False,
     ) -> str:
-        """Create a new pending job. Returns the job_id."""
+        """Create a new pending job. Returns the job_id.
+
+        When *draft* is True, resolution is halved (rounded to nearest
+        multiple of 8) and inference steps are reduced to 10.
+        """
+        num_inference_steps = 30
+        if draft:
+            num_inference_steps = 10
+            width = max(8, round(width / 2 / 8) * 8)
+            height = max(8, round(height / 2 / 8) * 8)
+
         job_id = str(uuid.uuid4())
         self._jobs[job_id] = JobRecord(
             job_id=job_id,
@@ -127,9 +142,14 @@ class JobManager:
             width=width,
             height=height,
             model_id=model_id,
+            num_inference_steps=num_inference_steps,
         )
         logger.info("Created image gen job {} for {}/{}", job_id, feature_id, task_id)
         return job_id
+
+    def register_task(self, job_id: str, task: asyncio.Task) -> None:
+        """Store the asyncio task handle for a job so it can be cancelled."""
+        self._tasks[job_id] = task
 
     def get_job(self, job_id: str) -> JobRecord | None:
         """Get a job record by id."""
@@ -201,18 +221,30 @@ class JobManager:
             self._push_event(job_id, {"image": image_dict})
 
     def cancel_job(self, job_id: str) -> bool:
-        """Cancel a pending/loading/running job. Returns True if cancelled."""
+        """Cancel a pending/loading/running job. Returns True if cancelled.
+
+        Sets the cancel_event to signal the generation thread, marks the
+        job as failed, and cancels the asyncio task if one is registered.
+        """
         job = self._jobs.get(job_id)
         if job and job.status in (
             JobStatus.pending,
             JobStatus.loading,
             JobStatus.running,
         ):
+            # Signal the generation thread to stop between images
+            job.cancel_event.set()
             job.status = JobStatus.failed
             job.error = "Cancelled"
             job.completed_at = datetime.now(UTC)
             logger.info("Job {} cancelled", job_id)
             self._push_event(job_id, {"error": "Cancelled", "status": "failed"})
+
+            # Cancel the asyncio task (will raise CancelledError in run_job)
+            task = self._tasks.pop(job_id, None)
+            if task is not None and not task.done():
+                task.cancel()
+
             return True
         return False
 
@@ -247,6 +279,10 @@ class JobManager:
         self.set_loading(job_id)
 
         try:
+            # Check if cancelled before starting work
+            if job.cancel_event.is_set():
+                return
+
             # Resolve model from registry
             cfg_dir = global_config_dir or Path.home() / ".pct"
             entry = _resolve_model(job.model_id, cfg_dir)
@@ -266,6 +302,10 @@ class JobManager:
                     entry, _on_status, require_gguf=False
                 )
                 model_path = entry.file_path
+
+            # Check again after model download
+            if job.cancel_event.is_set():
+                return
 
             pipeline_ok = await ensure_pipeline(
                 model_id=resolved_id, model_path=model_path
@@ -297,18 +337,29 @@ class JobManager:
                 height=job.height,
                 model_id=resolved_id,
                 model_path=model_path,
+                num_inference_steps=job.num_inference_steps,
+                cancel_event=job.cancel_event,
             )
 
             if result is None:
                 self.set_failed(job_id, "Pipeline unavailable")
                 return
 
+            # Don't overwrite cancelled status
+            if job.cancel_event.is_set():
+                return
+
             images = [img.model_dump(mode="json") for img in result.images]
             self.set_completed(job_id, images)
 
+        except (asyncio.CancelledError, GenerationCancelled):
+            # Job was cancelled — status already set by cancel_job()
+            logger.info("Job {} cancelled during execution", job_id)
         except Exception as e:
             self.set_failed(job_id, str(e))
             logger.exception("Job {} failed with exception", job_id)
+        finally:
+            self._tasks.pop(job_id, None)
 
 
 # Module-level singleton

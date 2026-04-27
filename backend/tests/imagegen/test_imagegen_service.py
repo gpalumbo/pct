@@ -11,11 +11,16 @@ from pct.imagegen.job_manager import JobManager, get_job_manager
 from pct.imagegen.models import JobStatus
 from pct.models.agents import ModelRegistryEntry
 from pct.models.enums import ProviderType
+import threading
+
+from pct.imagegen.models import build_resolutions
 from pct.imagegen.service import (
     CachedPipeline,
+    GenerationCancelled,
     _build_skip_kwargs,
     _sync_generate,
     detect_architecture,
+    detect_native_resolution,
     generate,
     get_session,
     select_image,
@@ -401,9 +406,11 @@ class TestGenerateImg2ImgResolution:
 
         assert result is not None
         # _sync_generate should have received width=1344, height=768
-        call_args = mock_sync_gen.call_args
-        assert call_args[0][-2] == 1344  # width
-        assert call_args[0][-1] == 768  # height
+        # Args are positional: ..., width, height, num_inference_steps, cancel_event
+        call_args = mock_sync_gen.call_args[0]
+        # Find by known values — width=1344 and height=768 are unique
+        assert 1344 in call_args, f"width 1344 not in positional args: {call_args}"
+        assert 768 in call_args, f"height 768 not in positional args: {call_args}"
 
 
 class TestResolutionsEndpoint:
@@ -752,3 +759,476 @@ class TestBuildSkipKwargs:
             result = _build_skip_kwargs(str(tmp_path))
 
         assert result == {"safety_checker": None}
+
+
+class TestDetectNativeResolution:
+    def test_reads_unet_config(self, tmp_path: Path):
+        """detect_native_resolution reads sample_size from unet/config.json."""
+        import json
+
+        unet_dir = tmp_path / "unet"
+        unet_dir.mkdir()
+        (unet_dir / "config.json").write_text(json.dumps({"sample_size": 128}))
+
+        assert detect_native_resolution(str(tmp_path)) == 128 * 8
+
+    def test_reads_transformer_config(self, tmp_path: Path):
+        """detect_native_resolution reads from transformer/config.json when unet absent."""
+        import json
+
+        trans_dir = tmp_path / "transformer"
+        trans_dir.mkdir()
+        (trans_dir / "config.json").write_text(json.dumps({"sample_size": 64}))
+
+        assert detect_native_resolution(str(tmp_path)) == 64 * 8
+
+    def test_prefers_unet_over_transformer(self, tmp_path: Path):
+        """detect_native_resolution checks unet first."""
+        import json
+
+        unet_dir = tmp_path / "unet"
+        unet_dir.mkdir()
+        (unet_dir / "config.json").write_text(json.dumps({"sample_size": 128}))
+
+        trans_dir = tmp_path / "transformer"
+        trans_dir.mkdir()
+        (trans_dir / "config.json").write_text(json.dumps({"sample_size": 64}))
+
+        assert detect_native_resolution(str(tmp_path)) == 128 * 8
+
+    def test_handles_list_sample_size(self, tmp_path: Path):
+        """detect_native_resolution handles sample_size as a list."""
+        import json
+
+        unet_dir = tmp_path / "unet"
+        unet_dir.mkdir()
+        (unet_dir / "config.json").write_text(json.dumps({"sample_size": [96, 96]}))
+
+        assert detect_native_resolution(str(tmp_path)) == 96 * 8
+
+    def test_fallback_when_missing(self, tmp_path: Path):
+        """detect_native_resolution returns 1024 when no config found."""
+        assert detect_native_resolution(str(tmp_path)) == 1024
+
+    def test_fallback_when_no_sample_size(self, tmp_path: Path):
+        """detect_native_resolution returns 1024 when sample_size key is missing."""
+        import json
+
+        unet_dir = tmp_path / "unet"
+        unet_dir.mkdir()
+        (unet_dir / "config.json").write_text(json.dumps({"in_channels": 4}))
+
+        assert detect_native_resolution(str(tmp_path)) == 1024
+
+
+class TestBuildResolutions:
+    def test_1024_matches_sdxl_square(self):
+        """build_resolutions(1024) produces 1024x1024 for 1:1."""
+        res = build_resolutions(1024)
+        square = res[0]
+        assert square["label"] == "1:1 Square"
+        assert square["width"] == 1024
+        assert square["height"] == 1024
+
+    def test_512_produces_smaller(self):
+        """build_resolutions(512) produces 512x512 for 1:1."""
+        res = build_resolutions(512)
+        square = res[0]
+        assert square["width"] == 512
+        assert square["height"] == 512
+
+    def test_all_multiples_of_8(self):
+        """All generated widths and heights are multiples of 8."""
+        for native in (512, 768, 1024, 1536):
+            for entry in build_resolutions(native):
+                assert entry["width"] % 8 == 0, f"width {entry['width']} not multiple of 8"
+                assert entry["height"] % 8 == 0, f"height {entry['height']} not multiple of 8"
+
+    def test_aspect_ratio_count(self):
+        """build_resolutions returns 9 presets (matching template count)."""
+        assert len(build_resolutions(1024)) == 9
+
+    def test_pixel_count_close_to_native_squared(self):
+        """Each preset's pixel count should be close to native_res^2."""
+        native = 1024
+        target = native * native
+        for entry in build_resolutions(native):
+            pixels = entry["width"] * entry["height"]
+            # Allow 5% deviation due to rounding
+            assert abs(pixels - target) / target < 0.05
+
+
+class TestDraftMode:
+    def test_draft_halves_resolution(self):
+        """create_job with draft=True halves width and height."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="test",
+            width=1024,
+            height=1024,
+            draft=True,
+        )
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.width == 512
+        assert job.height == 512
+        assert job.num_inference_steps == 10
+
+    def test_draft_rounds_to_multiple_of_8(self):
+        """Draft mode rounds halved dimensions to nearest multiple of 8."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="test",
+            width=1344,
+            height=768,
+            draft=True,
+        )
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.width % 8 == 0
+        assert job.height % 8 == 0
+        assert job.width == 672
+        assert job.height == 384
+
+    def test_non_draft_preserves_defaults(self):
+        """create_job without draft keeps 30 steps and original resolution."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="test",
+            width=1024,
+            height=1024,
+        )
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.width == 1024
+        assert job.height == 1024
+        assert job.num_inference_steps == 30
+
+    def test_sync_generate_passes_num_inference_steps(self):
+        """_sync_generate passes num_inference_steps to the pipeline."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_output.images = [MagicMock()]
+        mock_pipeline.return_value = mock_output
+
+        _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="test",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=1,
+            seed=42,
+            num_inference_steps=10,
+        )
+
+        call_kwargs = mock_pipeline.call_args[1]
+        assert call_kwargs["num_inference_steps"] == 10
+
+    @pytest.mark.asyncio
+    async def test_run_job_passes_num_inference_steps(self, project_root: Path):
+        """run_job passes num_inference_steps through to generate()."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1",
+            task_id="t1",
+            prompt="draft test",
+            width=1024,
+            height=1024,
+            draft=True,
+        )
+
+        mock_round = MagicMock()
+        mock_round.images = []
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            return_value=mock_round,
+        ) as mock_generate, patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            new_callable=AsyncMock,
+            side_effect=lambda entry, *a, **kw: entry,
+        ):
+            await manager.run_job(job_id, project_root)
+
+        mock_generate.assert_called_once()
+        call_kwargs = mock_generate.call_args[1]
+        assert call_kwargs["num_inference_steps"] == 10
+        assert call_kwargs["width"] == 512
+        assert call_kwargs["height"] == 512
+
+
+class TestPerImageCallback:
+    def test_callback_called_for_each_image(self):
+        """per_image_callback is called once per image with (pil_image, seed, index)."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_pil_image = MagicMock()
+        mock_output.images = [mock_pil_image]
+        mock_pipeline.return_value = mock_output
+
+        calls: list[tuple] = []
+
+        def on_image(pil_img, seed, idx):
+            calls.append((pil_img, seed, idx))
+
+        results = _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="test",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=3,
+            seed=100,
+            per_image_callback=on_image,
+        )
+
+        assert len(results) == 3
+        assert len(calls) == 3
+        # Verify indices are sequential
+        assert [c[2] for c in calls] == [0, 1, 2]
+        # Verify seeds match results
+        assert [c[1] for c in calls] == [r[1] for r in results]
+        # Verify PIL images match
+        for call, result in zip(calls, results):
+            assert call[0] is result[0]
+
+    def test_callback_not_called_when_none(self):
+        """per_image_callback=None (default) does not crash."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_output.images = [MagicMock()]
+        mock_pipeline.return_value = mock_output
+
+        results = _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="test",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=2,
+            seed=42,
+        )
+
+        assert len(results) == 2
+
+
+class TestCancellation:
+    def test_cancel_event_stops_sync_generate_between_images(self):
+        """_sync_generate raises GenerationCancelled when cancel_event is set."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_output.images = [MagicMock()]
+        mock_pipeline.return_value = mock_output
+
+        # Set the cancel event immediately — should stop before generating
+        cancel_event = threading.Event()
+        cancel_event.set()
+
+        with pytest.raises(GenerationCancelled):
+            _sync_generate(
+                pipeline=mock_pipeline,
+                prompt="test",
+                negative_prompt=None,
+                guidance_scale=7.5,
+                num_images=4,
+                seed=42,
+                cancel_event=cancel_event,
+            )
+
+        # Pipeline should never have been called
+        mock_pipeline.assert_not_called()
+
+    def test_cancel_event_stops_after_first_image(self):
+        """cancel_event set after first image stops before second."""
+        call_count = 0
+
+        def fake_pipeline(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            # Set cancel after first call
+            if call_count == 1:
+                cancel_event.set()
+            output = MagicMock()
+            output.images = [MagicMock()]
+            return output
+
+        cancel_event = threading.Event()
+
+        with pytest.raises(GenerationCancelled):
+            _sync_generate(
+                pipeline=fake_pipeline,
+                prompt="test",
+                negative_prompt=None,
+                guidance_scale=7.5,
+                num_images=4,
+                seed=42,
+                cancel_event=cancel_event,
+            )
+
+        # Only one image generated before cancel was checked
+        assert call_count == 1
+
+    def test_no_cancel_event_generates_all(self):
+        """Without cancel_event, all images are generated normally."""
+        mock_pipeline = MagicMock()
+        mock_output = MagicMock()
+        mock_output.images = [MagicMock()]
+        mock_pipeline.return_value = mock_output
+
+        results = _sync_generate(
+            pipeline=mock_pipeline,
+            prompt="test",
+            negative_prompt=None,
+            guidance_scale=7.5,
+            num_images=3,
+            seed=42,
+            cancel_event=None,
+        )
+
+        assert len(results) == 3
+        assert mock_pipeline.call_count == 3
+
+    def test_cancel_job_sets_event_and_status(self):
+        """cancel_job sets the cancel_event and marks job as failed."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert not job.cancel_event.is_set()
+
+        manager.set_running(job_id)
+        ok = manager.cancel_job(job_id)
+
+        assert ok
+        assert job.cancel_event.is_set()
+        assert job.status == JobStatus.failed
+        assert job.error == "Cancelled"
+
+    def test_cancel_job_cancels_registered_task(self):
+        """cancel_job cancels the registered asyncio task."""
+        import asyncio
+
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+
+        # Create a mock task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = False
+        manager.register_task(job_id, mock_task)
+
+        manager.set_running(job_id)
+        manager.cancel_job(job_id)
+
+        mock_task.cancel.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_job_skips_completed_when_cancelled(self, project_root: Path):
+        """run_job does not overwrite cancelled status with completed."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+
+        mock_round = MagicMock()
+        mock_round.images = []
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        async def fake_generate(**kwargs):
+            # Simulate cancel happening during generation
+            job = manager.get_job(job_id)
+            job.cancel_event.set()
+            return mock_round
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            side_effect=fake_generate,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            new_callable=AsyncMock,
+            side_effect=lambda entry, *a, **kw: entry,
+        ):
+            await manager.run_job(job_id, project_root)
+
+        job = manager.get_job(job_id)
+        assert job is not None
+        # Should NOT be completed — cancel_event was set
+        assert job.status != JobStatus.completed
+
+    @pytest.mark.asyncio
+    async def test_run_job_handles_generation_cancelled(self, project_root: Path):
+        """run_job handles GenerationCancelled from the generation thread."""
+        manager = JobManager()
+        job_id = manager.create_job(
+            feature_id="f1", task_id="t1", prompt="test"
+        )
+
+        mock_entry = ModelRegistryEntry(
+            id="test-model",
+            name="Test",
+            provider_type=ProviderType.huggingface,
+            model_identifier="test/model",
+            file_path="/fake/path",
+        )
+
+        with patch(
+            "pct.imagegen.job_manager._resolve_model",
+            return_value=mock_entry,
+        ), patch(
+            "pct.imagegen.job_manager.ensure_pipeline",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "pct.imagegen.job_manager.generate",
+            new_callable=AsyncMock,
+            side_effect=GenerationCancelled(),
+        ), patch(
+            "pct.imagegen.job_manager.ensure_model_ready",
+            new_callable=AsyncMock,
+            side_effect=lambda entry, *a, **kw: entry,
+        ):
+            # Should not raise
+            await manager.run_job(job_id, project_root)
+
+        job = manager.get_job(job_id)
+        assert job is not None
+        # GenerationCancelled is caught — job not marked as completed
+        assert job.status != JobStatus.completed

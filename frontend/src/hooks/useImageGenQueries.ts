@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { imagegenApi, type GenerateRequest, type JobStatusResponse } from '../api/imagegenApi';
 
-export function useResolutions(architecture?: string) {
+export function useResolutions(architecture?: string, nativeResolution?: number) {
   return useQuery({
-    queryKey: ['imagegen-resolutions', architecture],
-    queryFn: () => imagegenApi.getResolutions(architecture),
+    queryKey: ['imagegen-resolutions', architecture, nativeResolution],
+    queryFn: () => imagegenApi.getResolutions(architecture, nativeResolution),
     staleTime: Infinity,
   });
 }

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -39,6 +40,7 @@ class CachedPipeline:
     img2img_pipeline: Any | None = None
     architecture: str | None = None
     pipeline_class_name: str = ""
+    native_resolution: int = 1024
 
 
 _cached: CachedPipeline | None = None
@@ -65,6 +67,30 @@ def detect_architecture(class_name: str) -> str | None:
         if pattern in class_name:
             return arch
     return None
+
+
+def detect_native_resolution(model_path: str) -> int:
+    """Read native resolution from model metadata.
+
+    Looks for ``sample_size`` in ``unet/config.json`` or
+    ``transformer/config.json`` and multiplies by 8 (VAE scale factor).
+    Returns 1024 as fallback.
+    """
+    for subdir in ("unet", "transformer"):
+        config_file = Path(model_path) / subdir / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    cfg = json.load(f)
+                sample_size = cfg.get("sample_size")
+                if sample_size is not None:
+                    # sample_size can be int or list — take first element if list
+                    if isinstance(sample_size, list):
+                        sample_size = sample_size[0]
+                    return int(sample_size) * 8
+            except Exception:
+                logger.debug("Could not read sample_size from {}", config_file)
+    return 1024
 
 
 # ---------------------------------------------------------------------------
@@ -232,12 +258,14 @@ async def get_pipeline(
 
             pipe, cls_name = await asyncio.to_thread(_load)
             arch = detect_architecture(cls_name)
+            native_res = detect_native_resolution(model_path)
             _cached = CachedPipeline(
                 model_id=model_id or "",
                 model_path=model_path,
                 pipeline=pipe,
                 architecture=arch,
                 pipeline_class_name=cls_name,
+                native_resolution=native_res,
             )
             logger.info(
                 "Loaded pipeline {} (class={}, arch={})",
@@ -292,6 +320,10 @@ async def get_img2img_pipeline(cached: CachedPipeline) -> Any | None:
 # ---------------------------------------------------------------------------
 
 
+class GenerationCancelled(Exception):
+    """Raised when image generation is cancelled between images."""
+
+
 def _sync_generate(
     pipeline: Any,
     prompt: str,
@@ -304,8 +336,15 @@ def _sync_generate(
     img2img_pipeline: Any | None = None,
     width: int = 1024,
     height: int = 1024,
+    num_inference_steps: int = 30,
+    cancel_event: threading.Event | None = None,
+    per_image_callback: Callable[[Any, int, int], None] | None = None,
 ) -> list[tuple[Any, int]]:
-    """Synchronous generation call. Returns list of (PIL.Image, seed) tuples."""
+    """Synchronous generation call. Returns list of (PIL.Image, seed) tuples.
+
+    When *per_image_callback* is provided it is called after each image
+    with ``(pil_image, seed, index)`` — still on the generation thread.
+    """
     import torch
 
     # Choose the right pipeline
@@ -314,6 +353,11 @@ def _sync_generate(
     results: list[tuple[Any, int]] = []
 
     for i in range(num_images):
+        # Check for cancellation between images
+        if cancel_event is not None and cancel_event.is_set():
+            logger.info("Generation cancelled after {} images", len(results))
+            raise GenerationCancelled()
+
         img_seed = (seed or torch.randint(0, 2**32, (1,)).item()) + i
         generator = torch.Generator().manual_seed(img_seed)
 
@@ -321,7 +365,7 @@ def _sync_generate(
             "prompt": prompt,
             "guidance_scale": guidance_scale,
             "generator": generator,
-            "num_inference_steps": 30,
+            "num_inference_steps": num_inference_steps,
             "height": height,
             "width": width,
         }
@@ -335,6 +379,9 @@ def _sync_generate(
         output = active_pipeline(**kwargs)
         image = output.images[0]
         results.append((image, img_seed))
+
+        if per_image_callback is not None:
+            per_image_callback(image, img_seed, i)
 
     return results
 
@@ -360,6 +407,8 @@ async def generate(
     height: int = 1024,
     model_id: str | None = None,
     model_path: str | None = None,
+    num_inference_steps: int = 30,
+    cancel_event: threading.Event | None = None,
 ) -> ImageRound | None:
     """Generate images for a task.
 
@@ -413,6 +462,27 @@ async def generate(
         if divergence is not None:
             strength = divergence
 
+    # Progressive callback: save each image and notify as it finishes
+    # (runs on the generation thread inside _sync_generate)
+    generated: list[GeneratedImage] = []
+    loop = asyncio.get_running_loop()
+
+    def _per_image(pil_image: Any, img_seed: int, idx: int) -> None:
+        image_id = str(uuid.uuid4())[:8]
+        file_path = images_dir / f"{image_id}.png"
+        pil_image.save(str(file_path))
+
+        img = GeneratedImage(
+            id=image_id,
+            file_path=str(file_path.relative_to(project_root)),
+            seed=img_seed,
+            index=idx,
+        )
+        generated.append(img)
+
+        if on_image_complete is not None:
+            loop.call_soon_threadsafe(on_image_complete, img)
+
     # Run generation in a thread
     image_results = await asyncio.to_thread(
         _sync_generate,
@@ -427,27 +497,30 @@ async def generate(
         img2img_pipe,
         width,
         height,
+        num_inference_steps,
+        cancel_event,
+        _per_image,
     )
 
-    # Save images and build response
-    generated: list[GeneratedImage] = []
-    for idx, (pil_image, img_seed) in enumerate(image_results):
-        image_id = str(uuid.uuid4())[:8]
-        filename = f"{image_id}.png"
-        file_path = images_dir / filename
+    # Fallback: if callback wasn't invoked (e.g. mocked _sync_generate),
+    # save images the old way
+    if not generated:
+        for idx, (pil_image, img_seed) in enumerate(image_results):
+            image_id = str(uuid.uuid4())[:8]
+            file_path = images_dir / f"{image_id}.png"
 
-        await asyncio.to_thread(pil_image.save, str(file_path))
+            await asyncio.to_thread(pil_image.save, str(file_path))
 
-        img = GeneratedImage(
-            id=image_id,
-            file_path=str(file_path.relative_to(project_root)),
-            seed=img_seed,
-            index=idx,
-        )
-        generated.append(img)
+            img = GeneratedImage(
+                id=image_id,
+                file_path=str(file_path.relative_to(project_root)),
+                seed=img_seed,
+                index=idx,
+            )
+            generated.append(img)
 
-        if on_image_complete is not None:
-            on_image_complete(img)
+            if on_image_complete is not None:
+                on_image_complete(img)
 
     # Count existing rounds to determine round number
     round_number = 1  # Default for first round

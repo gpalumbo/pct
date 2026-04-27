@@ -15,6 +15,7 @@ export interface GenerateRequest {
   width?: number;
   height?: number;
   model_id?: string;
+  draft?: boolean;
 }
 
 export interface ResolutionOption {
@@ -56,6 +57,7 @@ export interface ImagegenModel {
   name: string;
   architecture?: string;
   download_status?: string;
+  native_resolution?: number;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -68,10 +70,13 @@ export const imagegenApi = {
   generate: (data: GenerateRequest) =>
     client.post<{ job_id: string }>('/api/imagegen/generate', data).then((r) => r.data),
 
-  getResolutions: (architecture?: string) =>
+  getResolutions: (architecture?: string, nativeResolution?: number) =>
     client
       .get<{ resolutions: ResolutionOption[] }>('/api/imagegen/resolutions', {
-        params: architecture ? { architecture } : undefined,
+        params: {
+          ...(architecture ? { architecture } : {}),
+          ...(nativeResolution ? { native_resolution: nativeResolution } : {}),
+        },
       })
       .then((r) => r.data.resolutions),
 
