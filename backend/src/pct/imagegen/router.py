@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from pct.auth.dependencies import get_current_user, get_settings
 from pct.config import Settings
+from pct.imagegen.chat_log import append_imagegen_message
 from pct.imagegen.job_manager import get_job_manager
 from pct.imagegen.models import (
     ARCHITECTURE_RESOLUTIONS,
@@ -29,7 +30,9 @@ from pct.imagegen.service import (
     get_session,
     select_image,
 )
+from pct.models.enums import AgentType
 from pct.sse import sse_event
+from pct.storage.project_io import load_project_config
 from pct.storage.registry_io import load_model_registry
 
 router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
@@ -42,35 +45,47 @@ async def list_imagegen_models(
     settings: Settings = Depends(get_settings),
     _user: str = Depends(get_current_user),
 ):
-    """List diffusion models from the registry (those with model_index.json)."""
+    """List diffusion models from the registry (those with model_index.json).
+
+    Prefers `architecture` and `native_resolution` from the persisted
+    registry (populated by `rescan_imagegen_metadata` at startup) and
+    falls back to live detection if either is missing — this keeps the
+    endpoint robust for newly-downloaded models that haven't been
+    rescanned yet.
+    """
     models = load_model_registry(settings.global_config_dir)
     results: list[dict] = []
     for m in models:
-        if m.file_path and Path(m.file_path).is_dir():
-            if (Path(m.file_path) / "model_index.json").exists():
-                # Detect architecture from model_index.json pipeline class
-                arch: str | None = None
-                try:
-                    import json
+        if not (m.file_path and Path(m.file_path).is_dir()):
+            continue
+        if not (Path(m.file_path) / "model_index.json").exists():
+            continue
 
-                    idx = json.loads(
-                        (Path(m.file_path) / "model_index.json").read_text()
-                    )
-                    cls_name = idx.get("_class_name", "")
-                    arch = detect_architecture(cls_name)
-                except Exception:
-                    pass
+        arch = m.architecture
+        if arch is None:
+            try:
+                import json
 
-                native_res = detect_native_resolution(m.file_path)
-                results.append(
-                    ImagegenModelInfo(
-                        id=m.id,
-                        name=m.name,
-                        architecture=arch,
-                        download_status=m.download_status,
-                        native_resolution=native_res,
-                    ).model_dump(mode="json")
+                idx = json.loads(
+                    (Path(m.file_path) / "model_index.json").read_text()
                 )
+                arch = detect_architecture(idx.get("_class_name", ""))
+            except Exception:
+                arch = None
+
+        native_res = m.native_resolution
+        if native_res is None:
+            native_res = detect_native_resolution(m.file_path)
+
+        results.append(
+            ImagegenModelInfo(
+                id=m.id,
+                name=m.name,
+                architecture=arch,
+                download_status=m.download_status,
+                native_resolution=native_res,
+            ).model_dump(mode="json")
+        )
     return {"models": results}
 
 
@@ -99,8 +114,61 @@ async def generate_images(
 ):
     """Submit an image generation job.
 
-    The job runs asynchronously. Poll /jobs/{job_id} for status.
+    Resolves defaults from the project's image_gen agent config, then
+    runs the job asynchronously. Poll /jobs/{job_id} for status.
     """
+    # Resolve agent-level defaults for image gen params
+    num_inference_steps = 30
+    max_sequence_length: int | None = None
+    true_cfg_scale: float | None = None
+
+    try:
+        project = load_project_config(settings.project_root)
+        # Match the image_gen agent by model_id if provided, else first match
+        image_gen_agents = [
+            a for a in project.agents if a.agent_type == AgentType.image_gen
+        ]
+        agent = None
+        if req.model_id:
+            agent = next(
+                (a for a in image_gen_agents if a.model_id == req.model_id),
+                None,
+            )
+        if agent is None and image_gen_agents:
+            agent = image_gen_agents[0]
+        if agent is not None:
+            if agent.num_inference_steps is not None:
+                num_inference_steps = agent.num_inference_steps
+            if agent.max_sequence_length is not None:
+                max_sequence_length = agent.max_sequence_length
+            if agent.true_cfg_scale is not None:
+                true_cfg_scale = agent.true_cfg_scale
+    except Exception:
+        pass  # Use defaults if project config is unavailable
+
+    # Persist the prompt(s) to the task's chat history before launching the job.
+    # Failures here are logged but do not block generation.
+    resolved_agent_id = agent.id if agent is not None else None
+    append_imagegen_message(
+        settings.project_root,
+        req.feature_id,
+        req.task_id,
+        role="imagegen_positive",
+        content=req.prompt,
+        agent_id=resolved_agent_id,
+        model_id=req.model_id,
+    )
+    if req.negative_prompt:
+        append_imagegen_message(
+            settings.project_root,
+            req.feature_id,
+            req.task_id,
+            role="imagegen_negative",
+            content=req.negative_prompt,
+            agent_id=resolved_agent_id,
+            model_id=req.model_id,
+        )
+
     manager = get_job_manager()
     job_id = manager.create_job(
         feature_id=req.feature_id,
@@ -115,6 +183,9 @@ async def generate_images(
         height=req.height,
         model_id=req.model_id,
         draft=req.draft,
+        num_inference_steps=num_inference_steps,
+        max_sequence_length=max_sequence_length,
+        true_cfg_scale=true_cfg_scale,
     )
 
     # Run the job in the background and register the task for cancellation

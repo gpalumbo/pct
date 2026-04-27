@@ -37,6 +37,9 @@ const ROLE_COLORS: Record<string, string> = {
   system: 'orange',
   tool_call: 'purple',
   tool_result: 'cyan',
+  imagegen_positive: 'magenta',
+  imagegen_negative: 'volcano',
+  imagegen_result: 'gold',
 };
 
 const ANNOTATION_CATEGORIES: AnnotationCategory[] = [

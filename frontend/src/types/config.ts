@@ -22,6 +22,16 @@ export interface Agent {
   cli_command?: string | null;
   linked_user_id?: string | null;
   notify_on_waiting: boolean;
+
+  // Image-gen parameters (only when agent_type === 'image_gen')
+  num_inference_steps?: number | null;
+  guidance_scale?: number | null;
+  negative_prompt?: string | null;
+  num_images?: number | null;
+  default_draft?: boolean | null;
+  // Flux-specific
+  max_sequence_length?: number | null;
+  true_cfg_scale?: number | null;
 }
 
 export interface ModelRegistryEntry {

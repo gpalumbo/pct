@@ -55,6 +55,7 @@ _ARCH_PATTERNS: dict[str, str] = {
     "StableDiffusion3": "sd3",
     "StableDiffusion": "sd15",  # must come after XL/3
     "Flux": "flux",
+    "QwenImage": "qwen",
     "Kandinsky": "kandinsky",
     "PixArt": "pixart",
     "Wuerstchen": "wuerstchen",
@@ -363,6 +364,8 @@ def _sync_generate(
     cancel_event: threading.Event | None = None,
     per_image_callback: Callable[[Any, int, int], None] | None = None,
     midpoint_callback: Callable[[Any, int], None] | None = None,
+    max_sequence_length: int | None = None,
+    true_cfg_scale: float | None = None,
 ) -> list[tuple[Any, int]]:
     """Synchronous generation call. Returns list of (PIL.Image, seed) tuples.
 
@@ -403,6 +406,11 @@ def _sync_generate(
         if source_image is not None:
             kwargs["image"] = source_image
             kwargs["strength"] = strength
+
+        if max_sequence_length is not None:
+            kwargs["max_sequence_length"] = max_sequence_length
+        if true_cfg_scale is not None:
+            kwargs["true_cfg_scale"] = true_cfg_scale
 
         # Midpoint preview callback
         if midpoint_callback is not None:
@@ -452,6 +460,8 @@ async def generate(
     model_id: str | None = None,
     model_path: str | None = None,
     num_inference_steps: int = 30,
+    max_sequence_length: int | None = None,
+    true_cfg_scale: float | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ImageRound | None:
     """Generate images for a task.
@@ -561,6 +571,8 @@ async def generate(
         cancel_event,
         _per_image,
         _midpoint,
+        max_sequence_length,
+        true_cfg_scale,
     )
 
     # Fallback: if callback wasn't invoked (e.g. mocked _sync_generate),

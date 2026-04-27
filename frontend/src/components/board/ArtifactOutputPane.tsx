@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Image, Input, Modal, Select, Slider, Spin, Typography, message } from 'antd';
 import {
   EditOutlined,
@@ -15,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import { useArtifact, useSaveArtifact } from '../../hooks/useBoardQueries';
+import { useProject } from '../../hooks/useConfigQueries';
 import { useGenerate, useJobStatus, useActiveJob, useTaskImages, useDeleteImage, useCancelJob, useResolutions, useImagegenModels } from '../../hooks/useImageGenQueries';
 import { getImageUrl, imagegenApi } from '../../api/imagegenApi';
 import type { RefineTarget } from '../chat/ChatInput';
@@ -164,6 +166,10 @@ function ImageSection({
   onPromptConsumed,
   onRefine,
 }: ImageSectionProps) {
+  // Load agent defaults from project config
+  const { data: project } = useProject();
+  const imageGenAgents = project?.agents?.filter((a) => a.agent_type === 'image_gen') ?? [];
+
   const [collapsed, setCollapsed] = useState(false);
   const [negativePrompt, setNegativePrompt] = useState('');
   const [guidanceScale, setGuidanceScale] = useState(7.5);
@@ -175,6 +181,31 @@ function ImageSection({
   const [resolution, setResolution] = useState({ width: 1024, height: 1024 });
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState(false);
+
+  // Match agent by selected model, fallback to first image_gen agent
+  const imageGenAgent =
+    imageGenAgents.find((a) => a.model_id === selectedModelId) ?? imageGenAgents[0] ?? null;
+
+  // Apply agent defaults on initial load
+  const appliedInitRef = useRef(false);
+  useEffect(() => {
+    if (imageGenAgents.length > 0 && !appliedInitRef.current) {
+      appliedInitRef.current = true;
+      const first = imageGenAgents[0];
+      if (first.model_id) setSelectedModelId(first.model_id);
+    }
+  }, [imageGenAgents.length]);
+
+  // Re-apply agent defaults when the matched agent changes
+  const prevAgentIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!imageGenAgent || imageGenAgent.id === prevAgentIdRef.current) return;
+    prevAgentIdRef.current = imageGenAgent.id;
+    setGuidanceScale(imageGenAgent.guidance_scale ?? 7.5);
+    setNumImages(imageGenAgent.num_images ?? 4);
+    setNegativePrompt(imageGenAgent.negative_prompt ?? '');
+    setDraft(imageGenAgent.default_draft ?? false);
+  }, [imageGenAgent?.id]);
 
   const generateMutation = useGenerate();
   const { data: models } = useImagegenModels();
@@ -231,10 +262,14 @@ function ImageSection({
     );
   }, [pendingImagePrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Refresh historical images when job completes
+  // Refresh historical images and chat history when job completes
+  const queryClient = useQueryClient();
   useEffect(() => {
     if (jobStatus?.status === 'completed') {
       refetchTaskImages();
+      // Backend appends an imagegen_result message to the task-stage chat;
+      // invalidate so it appears in the chat panel.
+      queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
     }
   }, [jobStatus?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 

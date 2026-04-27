@@ -173,7 +173,21 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
 
   useEffect(() => {
     if (fetchedMessages && !isStreamingRef.current) {
-      setMessages(fetchedMessages);
+      // Preserve any optimistic imagegen_positive messages that haven't
+      // been persisted yet — drop ones whose content is now in fetchedMessages.
+      setMessages((prev) => {
+        const fetchedContents = new Set(
+          fetchedMessages
+            .filter((m) => m.role === 'imagegen_positive')
+            .map((m) => m.content),
+        );
+        const optimistic = prev.filter(
+          (m) =>
+            m.id.startsWith('optimistic-imagegen-') &&
+            !fetchedContents.has(m.content),
+        );
+        return [...fetchedMessages, ...optimistic];
+      });
     }
   }, [fetchedMessages]);
 
@@ -215,23 +229,28 @@ export default function usePlanningChat(options: UsePlanningChatOptions): UsePla
     (content: string, agentId: string | null, sourceImageId?: string) => {
       if (!activeSessionId) return;
 
-      // Route imagegen prompts to image generation instead of chat
+      // Route imagegen prompts to image generation instead of chat.
+      // The backend persists imagegen_positive/negative/result messages
+      // to the task-stage chat history; we show an optimistic local copy
+      // immediately and rely on refetch to dedupe + replace.
       const agentCfg = agentId ? agents.find((a) => a.id === agentId) : null;
       if (agentCfg?.agent_type === 'image_gen' && onImageGenerate) {
-        console.log('[usePlanningChat] Routing to imagegen:', content);
-        // Show the user's prompt in chat so it's not silent
-        const imageMsg: ChatMessage = {
-          id: crypto.randomUUID().slice(0, 12),
-          role: 'user',
-          content: `[Image Gen] ${content}`,
+        const optimisticMsg: ChatMessage = {
+          id: `optimistic-imagegen-${crypto.randomUUID().slice(0, 8)}`,
+          role: 'imagegen_positive',
+          content,
           created_at: new Date().toISOString(),
           tokens: null,
           included: true,
           agent_id: agentId,
           model_id: null,
         };
-        setMessages((prev) => [...prev, imageMsg]);
+        setMessages((prev) => [...prev, optimisticMsg]);
         onImageGenerate(content, sourceImageId);
+        // Invalidate after a short delay so the backend has time to write
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['chat-messages', activeSessionId] });
+        }, 300);
         return;
       }
 

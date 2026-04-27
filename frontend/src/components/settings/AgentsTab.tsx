@@ -12,10 +12,13 @@ import {
   Select,
   Switch,
   Popconfirm,
+  Tabs,
+  Checkbox,
   message,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useProject, useUpdateProject, useModels, useLoras } from '../../hooks/useConfigQueries';
+import { useImagegenModels } from '../../hooks/useImageGenQueries';
 import type { Agent, Project } from '../../types/config';
 import type { AgentType } from '../../types/enums';
 import { toSlug } from '../../utils/slug';
@@ -48,13 +51,190 @@ interface AgentFormValues {
   cli_command?: string;
   linked_user_id?: string;
   notify_on_waiting: boolean;
+  // Image-gen
+  num_inference_steps?: number;
+  guidance_scale?: number;
+  negative_prompt?: string;
+  num_images?: number;
+  default_draft?: boolean;
+  max_sequence_length?: number;
+  true_cfg_scale?: number;
 }
+
+// ── Shared image-gen form fields ──────────────────────────────────
+
+function CommonImageGenFields() {
+  return (
+    <>
+      <Form.Item
+        name="num_inference_steps"
+        label="Inference Steps"
+        tooltip="Number of denoising steps. SD1.5: ~25, SDXL: ~30, Flux-dev: ~28, Flux-schnell: ~4"
+      >
+        <InputNumber placeholder="Model default" style={{ width: '100%' }} />
+      </Form.Item>
+
+      <Form.Item
+        name="guidance_scale"
+        label="Guidance Scale"
+        tooltip="CFG scale. SD1.5/SDXL: 5–15 (default 7.5). Flux: 1–5 (default 3.5, acts as embedded guidance)"
+      >
+        <InputNumber step={0.5} placeholder="Model default" style={{ width: '100%' }} />
+      </Form.Item>
+
+      <Form.Item
+        name="negative_prompt"
+        label="Default Negative Prompt"
+        tooltip="Applied to every generation unless overridden. Common: 'blurry, low quality, watermark, deformed'"
+      >
+        <Input.TextArea rows={2} placeholder="e.g. blurry, low quality, watermark" />
+      </Form.Item>
+
+      <Form.Item
+        name="num_images"
+        label="Images per Round"
+        tooltip="How many images to generate per request. Typical: 1–6 (default 4)"
+      >
+        <InputNumber placeholder="4" style={{ width: '100%' }} />
+      </Form.Item>
+
+      <Form.Item name="default_draft" valuePropName="checked">
+        <Checkbox>Default to draft mode (half resolution, fewer steps)</Checkbox>
+      </Form.Item>
+    </>
+  );
+}
+
+function FluxFields() {
+  return (
+    <>
+      <Form.Item
+        name="max_sequence_length"
+        label="Max Sequence Length"
+        tooltip="T5 text encoder max tokens. 512 for complex prompts, 256 for speed/VRAM savings"
+      >
+        <InputNumber placeholder="512" style={{ width: '100%' }} />
+      </Form.Item>
+
+      <Form.Item
+        name="true_cfg_scale"
+        label="True CFG Scale"
+        tooltip="Enables real classifier-free guidance on top of Flux's embedded guidance. 1.0 = off, 2–4 typical. Doubles inference time."
+      >
+        <InputNumber step={0.5} placeholder="Off" style={{ width: '100%' }} />
+      </Form.Item>
+    </>
+  );
+}
+
+type ImagegenModelInfo = { id: string; architecture?: string };
+
+const ARCH_LABELS: Record<string, string> = {
+  sdxl: 'SDXL',
+  sd15: 'SD 1.5',
+  sd3: 'SD 3',
+  flux: 'Flux',
+  qwen: 'Qwen-Image',
+  pixart: 'PixArt',
+  kandinsky: 'Kandinsky',
+  wuerstchen: 'Würstchen',
+};
+
+const ARCH_TAG_COLORS: Record<string, string> = {
+  sdxl: 'blue',
+  sd15: 'cyan',
+  sd3: 'geekblue',
+  flux: 'purple',
+  qwen: 'gold',
+  pixart: 'magenta',
+  kandinsky: 'volcano',
+  wuerstchen: 'orange',
+};
+
+function ImageGenFields({
+  modelId,
+  imagegenModels,
+  modelDownloadStatus,
+}: {
+  modelId?: string;
+  imagegenModels?: ImagegenModelInfo[];
+  modelDownloadStatus?: string | null;
+}) {
+  const inImagegenList = !!imagegenModels?.some((m) => m.id === modelId);
+  const arch = imagegenModels?.find((m) => m.id === modelId)?.architecture;
+  const isFlux = arch === 'flux';
+  const isSdFamily = arch === 'sdxl' || arch === 'sd15' || arch === 'sd3' || arch === 'qwen';
+  const archKnown = isFlux || isSdFamily;
+
+  // Status badge: detected | pending download | unknown
+  let statusBadge: { color: string; text: string };
+  if (arch && ARCH_LABELS[arch]) {
+    statusBadge = {
+      color: ARCH_TAG_COLORS[arch] ?? 'green',
+      text: `Detected: ${ARCH_LABELS[arch]}`,
+    };
+  } else if (!inImagegenList || modelDownloadStatus !== 'ready') {
+    statusBadge = {
+      color: 'orange',
+      text: 'Architecture pending — download model to detect',
+    };
+  } else {
+    statusBadge = {
+      color: 'red',
+      text: 'Unknown architecture',
+    };
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--sidebar-border, #d9d9d9)', borderRadius: 6, padding: '12px 12px 0', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Typography.Text type="secondary" strong>
+          Image Generation
+        </Typography.Text>
+        <Tag color={statusBadge.color} style={{ margin: 0 }}>
+          {statusBadge.text}
+        </Tag>
+      </div>
+
+      {archKnown ? (
+        <>
+          <CommonImageGenFields />
+          {isFlux && <FluxFields />}
+        </>
+      ) : (
+        <Tabs
+          size="small"
+          items={[
+            {
+              key: 'sdxl',
+              label: 'SD / SDXL',
+              children: <CommonImageGenFields />,
+            },
+            {
+              key: 'flux',
+              label: 'Flux',
+              children: (
+                <>
+                  <CommonImageGenFields />
+                  <FluxFields />
+                </>
+              ),
+            },
+          ]}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────
 
 export default function AgentsTab() {
   const { data: project } = useProject();
   const updateProject = useUpdateProject();
   const { data: modelsList } = useModels();
   const { data: lorasList } = useLoras();
+  const { data: imagegenModels } = useImagegenModels();
   const agents: Agent[] = project?.agents ?? [];
   const users = useMemo(() => project?.users ?? [], [project?.users]);
 
@@ -101,6 +281,13 @@ export default function AgentsTab() {
       cli_command: agent.cli_command ?? undefined,
       linked_user_id: agent.linked_user_id ?? undefined,
       notify_on_waiting: agent.notify_on_waiting,
+      num_inference_steps: agent.num_inference_steps ?? undefined,
+      guidance_scale: agent.guidance_scale ?? undefined,
+      negative_prompt: agent.negative_prompt ?? undefined,
+      num_images: agent.num_images ?? undefined,
+      default_draft: agent.default_draft ?? undefined,
+      max_sequence_length: agent.max_sequence_length ?? undefined,
+      true_cfg_scale: agent.true_cfg_scale ?? undefined,
     });
     setModalOpen(true);
   };
@@ -127,6 +314,7 @@ export default function AgentsTab() {
       const agentId = editingAgent
         ? editingAgent.id
         : (values.id?.trim() || toSlug(values.name));
+      const isImageGen = values.agent_type === 'image_gen';
       const agentData: Agent = {
         id: agentId,
         name: values.name,
@@ -139,6 +327,13 @@ export default function AgentsTab() {
         cli_command: values.agent_type === 'tool' ? (values.cli_command || null) : null,
         linked_user_id: values.linked_user_id || null,
         notify_on_waiting: values.notify_on_waiting ?? false,
+        num_inference_steps: isImageGen ? (values.num_inference_steps ?? null) : null,
+        guidance_scale: isImageGen ? (values.guidance_scale ?? null) : null,
+        negative_prompt: isImageGen ? (values.negative_prompt || null) : null,
+        num_images: isImageGen ? (values.num_images ?? null) : null,
+        default_draft: isImageGen ? (values.default_draft ?? null) : null,
+        max_sequence_length: isImageGen ? (values.max_sequence_length ?? null) : null,
+        true_cfg_scale: isImageGen ? (values.true_cfg_scale ?? null) : null,
       };
 
       let updatedAgents: Agent[];
@@ -372,6 +567,22 @@ export default function AgentsTab() {
           {selectedAgentType === 'tool' && (
             <Form.Item name="cli_command" label="CLI Command">
               <Input placeholder="Command to execute for this tool agent" />
+            </Form.Item>
+          )}
+
+          {selectedAgentType === 'image_gen' && (
+            <Form.Item noStyle dependencies={['model_id']}>
+              {() => {
+                const mid = form.getFieldValue('model_id');
+                const modelEntry = (modelsList ?? []).find((m) => m.id === mid);
+                return (
+                  <ImageGenFields
+                    modelId={mid}
+                    imagegenModels={imagegenModels}
+                    modelDownloadStatus={modelEntry?.download_status}
+                  />
+                );
+              }}
             </Form.Item>
           )}
 

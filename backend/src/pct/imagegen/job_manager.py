@@ -16,6 +16,7 @@ from pathlib import Path
 from loguru import logger
 
 from pct.agent.model_downloader import ensure_model_ready
+from pct.imagegen.chat_log import append_imagegen_message
 from pct.imagegen.models import JobStatus
 from pct.imagegen.service import GenerationCancelled, ensure_pipeline, generate
 from pct.models.agents import ModelRegistryEntry
@@ -39,6 +40,8 @@ class JobRecord:
     height: int = 1024
     model_id: str | None = None
     num_inference_steps: int = 30
+    max_sequence_length: int | None = None
+    true_cfg_scale: float | None = None
     status: JobStatus = JobStatus.pending
     status_message: str | None = None
     images: list[dict] = field(default_factory=list)
@@ -116,13 +119,15 @@ class JobManager:
         height: int = 1024,
         model_id: str | None = None,
         draft: bool = False,
+        num_inference_steps: int = 30,
+        max_sequence_length: int | None = None,
+        true_cfg_scale: float | None = None,
     ) -> str:
         """Create a new pending job. Returns the job_id.
 
         When *draft* is True, resolution is halved (rounded to nearest
         multiple of 8) and inference steps are reduced to 10.
         """
-        num_inference_steps = 30
         if draft:
             num_inference_steps = 10
             width = max(8, round(width / 2 / 8) * 8)
@@ -143,6 +148,8 @@ class JobManager:
             height=height,
             model_id=model_id,
             num_inference_steps=num_inference_steps,
+            max_sequence_length=max_sequence_length,
+            true_cfg_scale=true_cfg_scale,
         )
         logger.info("Created image gen job {} for {}/{}", job_id, feature_id, task_id)
         return job_id
@@ -348,6 +355,8 @@ class JobManager:
                 model_id=resolved_id,
                 model_path=model_path,
                 num_inference_steps=job.num_inference_steps,
+                max_sequence_length=job.max_sequence_length,
+                true_cfg_scale=job.true_cfg_scale,
                 cancel_event=job.cancel_event,
             )
 
@@ -361,6 +370,19 @@ class JobManager:
 
             images = [img.model_dump(mode="json") for img in result.images]
             self.set_completed(job_id, images)
+
+            # Persist the round summary to chat history
+            lines = [f"Model: {resolved_id or 'unknown'}", "Images:"]
+            for img in result.images:
+                lines.append(f"  - {img.id} (seed {img.seed})")
+            append_imagegen_message(
+                project_root,
+                job.feature_id,
+                job.task_id,
+                role="imagegen_result",
+                content="\n".join(lines),
+                model_id=resolved_id,
+            )
 
         except (asyncio.CancelledError, GenerationCancelled):
             # Job was cancelled — status already set by cancel_job()

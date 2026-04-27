@@ -8,11 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from pct.agent.model_downloader import sync_hf_download_status
 from pct.auth.dependencies import get_settings
 from pct.auth.router import router as auth_router
 from pct.auth.service import init_user_store
 from pct.board.router import router as board_router
 from pct.chat.router import router as chat_router
+from pct.imagegen.registry_scan import rescan_imagegen_metadata
 from pct.imagegen.router import router as imagegen_router
 from pct.notifications.router import router as notifications_router
 from pct.settings.router import router as settings_router
@@ -55,6 +57,23 @@ async def lifespan(app: FastAPI):
             "require a token. Set PCT_HF_TOKEN in .env or your environment."
         )
     init_user_store(settings.global_config_dir)
+
+    # Sync model registry with disk: file presence (download_status) and
+    # imagegen metadata (architecture, native_resolution). Both are cheap
+    # — they only rewrite the YAML when something actually changes.
+    try:
+        sync_hf_download_status(settings.global_config_dir)
+    except Exception as e:
+        logger.warning("Failed to sync HF download status: {}", e)
+    try:
+        changed = rescan_imagegen_metadata(settings.global_config_dir)
+        if changed:
+            logger.info(
+                "Rescanned imagegen registry: {} entries updated", changed,
+            )
+    except Exception as e:
+        logger.warning("Failed to rescan imagegen registry: {}", e)
+
     yield
     # Shutdown
 
