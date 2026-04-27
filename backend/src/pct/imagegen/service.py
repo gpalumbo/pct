@@ -324,6 +324,29 @@ class GenerationCancelled(Exception):
     """Raised when image generation is cancelled between images."""
 
 
+def _decode_latents(pipeline: Any, latents: Any) -> Any:
+    """Decode latent tensor to a PIL Image via the pipeline's VAE."""
+    import torch
+    from PIL import Image as PILImage
+
+    with torch.no_grad():
+        # Scale latents (standard VAE scaling factor)
+        scaling_factor = getattr(pipeline, "vae_scale_factor", None)
+        vae = getattr(pipeline, "vae", None)
+        if vae is None:
+            return None
+
+        # Most pipelines store the scaling factor on the scheduler config or vae config
+        vae_scaling = getattr(vae.config, "scaling_factor", 0.18215)
+        decoded = vae.decode(latents / vae_scaling, return_dict=False)[0]
+
+        # Convert to PIL: clamp to [0,1], permute to HWC, scale to 255
+        decoded = (decoded / 2 + 0.5).clamp(0, 1)
+        decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
+        image_array = (decoded[0] * 255).round().astype("uint8")
+        return PILImage.fromarray(image_array)
+
+
 def _sync_generate(
     pipeline: Any,
     prompt: str,
@@ -339,11 +362,15 @@ def _sync_generate(
     num_inference_steps: int = 30,
     cancel_event: threading.Event | None = None,
     per_image_callback: Callable[[Any, int, int], None] | None = None,
+    midpoint_callback: Callable[[Any, int], None] | None = None,
 ) -> list[tuple[Any, int]]:
     """Synchronous generation call. Returns list of (PIL.Image, seed) tuples.
 
     When *per_image_callback* is provided it is called after each image
     with ``(pil_image, seed, index)`` — still on the generation thread.
+
+    When *midpoint_callback* is provided it is called at the halfway step
+    with ``(pil_image, image_index)`` — a decoded preview of the in-progress image.
     """
     import torch
 
@@ -351,6 +378,7 @@ def _sync_generate(
     active_pipeline = img2img_pipeline if source_image is not None else pipeline
 
     results: list[tuple[Any, int]] = []
+    midpoint_step = num_inference_steps // 2
 
     for i in range(num_images):
         # Check for cancellation between images
@@ -375,6 +403,21 @@ def _sync_generate(
         if source_image is not None:
             kwargs["image"] = source_image
             kwargs["strength"] = strength
+
+        # Midpoint preview callback
+        if midpoint_callback is not None:
+            current_image_index = i
+
+            def _step_callback(pipe, step_index, timestep, callback_kwargs):
+                if step_index == midpoint_step:
+                    latents = callback_kwargs.get("latents")
+                    if latents is not None:
+                        preview = _decode_latents(pipe, latents)
+                        if preview is not None:
+                            midpoint_callback(preview, current_image_index)
+                return callback_kwargs
+
+            kwargs["callback_on_step_end"] = _step_callback
 
         output = active_pipeline(**kwargs)
         image = output.images[0]
@@ -401,6 +444,7 @@ async def generate(
     num_images: int = 4,
     seed: int | None = None,
     on_image_complete: Callable[[GeneratedImage], None] | None = None,
+    on_midpoint: Callable[[str, int], None] | None = None,
     source_image_id: str | None = None,
     divergence: float | None = None,
     width: int = 1024,
@@ -472,6 +516,13 @@ async def generate(
         file_path = images_dir / f"{image_id}.png"
         pil_image.save(str(file_path))
 
+        # Clean up any midpoint preview for this index
+        for preview_file in images_dir.glob("*_preview.jpg"):
+            try:
+                preview_file.unlink()
+            except OSError:
+                pass
+
         img = GeneratedImage(
             id=image_id,
             file_path=str(file_path.relative_to(project_root)),
@@ -482,6 +533,15 @@ async def generate(
 
         if on_image_complete is not None:
             loop.call_soon_threadsafe(on_image_complete, img)
+
+    # Midpoint preview callback: save a JPEG preview and notify
+    def _midpoint(pil_image: Any, idx: int) -> None:
+        preview_id = str(uuid.uuid4())[:8]
+        preview_path = images_dir / f"{preview_id}_preview.jpg"
+        pil_image.save(str(preview_path), format="JPEG", quality=70)
+
+        if on_midpoint is not None:
+            loop.call_soon_threadsafe(on_midpoint, preview_id, idx)
 
     # Run generation in a thread
     image_results = await asyncio.to_thread(
@@ -500,6 +560,7 @@ async def generate(
         num_inference_steps,
         cancel_event,
         _per_image,
+        _midpoint,
     )
 
     # Fallback: if callback wasn't invoked (e.g. mocked _sync_generate),

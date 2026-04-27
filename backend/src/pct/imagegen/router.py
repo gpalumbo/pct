@@ -262,7 +262,7 @@ async def serve_image(
     image_id: str,
     settings: Settings = Depends(get_settings),
 ):
-    """Serve a generated image PNG.
+    """Serve a generated image PNG (or preview JPEG if image_id ends with _preview).
 
     No auth — images are local and <img> tags cannot send Bearer headers.
     """
@@ -270,7 +270,16 @@ async def serve_image(
     _validate_path_part(task_id, "task_id")
     _validate_path_part(image_id, "image_id")
 
-    path = settings.project_root / "work" / feature_id / task_id / "images" / f"{image_id}.png"
+    images_dir = settings.project_root / "work" / feature_id / task_id / "images"
+
+    # Check for preview JPEG first (midpoint previews use {id}_preview.jpg)
+    if image_id.endswith("_preview"):
+        path = images_dir / f"{image_id}.jpg"
+        if path.is_file():
+            return FileResponse(path, media_type="image/jpeg")
+        raise HTTPException(status_code=404, detail="Preview not found")
+
+    path = images_dir / f"{image_id}.png"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(path, media_type="image/png")

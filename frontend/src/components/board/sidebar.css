@@ -200,6 +200,11 @@
   box-shadow: 0 0 0 1px var(--toolbar-btn-active-border);
 }
 
+.imagegen-grid-item--preview {
+  border-color: red;
+  cursor: default;
+}
+
 .imagegen-grid-item img {
   width: 100%;
   height: auto;

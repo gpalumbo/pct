@@ -98,11 +98,11 @@ export function useJobStatus(jobId: string | null) {
       jobId,
       (event) => {
         if ('image' in event) {
-          // Progressive image — append to current status
+          // Progressive image — append to current status, clear preview
           setStatus((prev) => {
             if (!prev) return prev;
             const img = event.image as { id?: string; image_id?: string };
-            return { ...prev, images: [...prev.images, img] };
+            return { ...prev, images: [...prev.images, img], preview: undefined };
           });
         } else if ('done' in event) {
           // Job completed
@@ -121,6 +121,13 @@ export function useJobStatus(jobId: string | null) {
             error: event.error as string,
             images: prev?.images || [],
           }));
+        } else if ('preview' in event) {
+          // Midpoint preview — update preview field
+          setStatus((prev) => {
+            if (!prev) return prev;
+            const p = event.preview as { preview_id: string; index: number };
+            return { ...prev, preview: p };
+          });
         } else if ('status' in event) {
           // Status transition (loading/running) or initial state
           setStatus((prev) => ({

@@ -220,6 +220,12 @@ class JobManager:
             job.images.append(image_dict)
             self._push_event(job_id, {"image": image_dict})
 
+    def add_preview(self, job_id: str, preview_data: dict) -> None:
+        """Push a midpoint preview event for a running job."""
+        job = self._jobs.get(job_id)
+        if job and job.status == JobStatus.running:
+            self._push_event(job_id, {"preview": preview_data})
+
     def cancel_job(self, job_id: str) -> bool:
         """Cancel a pending/loading/running job. Returns True if cancelled.
 
@@ -322,6 +328,9 @@ class JobManager:
             def on_image_complete(img):
                 self.add_image(job_id, img.model_dump(mode="json"))
 
+            def on_midpoint(preview_id: str, index: int):
+                self.add_preview(job_id, {"preview_id": preview_id, "index": index})
+
             result = await generate(
                 project_root=project_root,
                 feature_id=job.feature_id,
@@ -331,6 +340,7 @@ class JobManager:
                 guidance_scale=job.guidance_scale,
                 num_images=job.num_images,
                 on_image_complete=on_image_complete,
+                on_midpoint=on_midpoint,
                 source_image_id=job.source_image_id,
                 divergence=job.divergence,
                 width=job.width,

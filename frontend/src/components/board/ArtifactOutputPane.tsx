@@ -288,14 +288,27 @@ function ImageSection({
     });
   };
 
+  // Midpoint preview from SSE
+  const preview = isJobRunning ? jobStatus.preview : undefined;
+
   // Merge: show progressive images while running, otherwise show historical
   const displayImages =
     progressiveImages.length > 0
       ? progressiveImages.map((img: { id?: string; image_id?: string }, idx: number) => ({
           id: img.id || img.image_id || `prog-${idx}`,
           isProgressive: true,
+          isPreview: false,
         }))
-      : (taskImages || []).map((img) => ({ id: img.id, isProgressive: false }));
+      : (taskImages || []).map((img) => ({ id: img.id, isProgressive: false, isPreview: false }));
+
+  // Append midpoint preview as a placeholder if we have one and job is running
+  if (preview && isJobRunning) {
+    displayImages.push({
+      id: `${preview.preview_id}_preview`,
+      isProgressive: true,
+      isPreview: true,
+    });
+  }
 
   return (
     <div className="artifact-output-image-section">
@@ -445,7 +458,7 @@ function ImageSection({
           {/* Image grid */}
           {displayImages.length > 0 && (
             <Image.PreviewGroup
-              items={displayImages.map(({ id: imgId }) => getImageUrl(featureId, taskId, imgId))}
+              items={displayImages.filter(i => !i.isPreview).map(({ id: imgId }) => getImageUrl(featureId, taskId, imgId))}
               preview={{
                 visible: previewOpen,
                 current: previewCurrent,
@@ -454,21 +467,21 @@ function ImageSection({
               }}
             >
               <div className="imagegen-grid">
-                {displayImages.map(({ id: imageId }, idx) => (
+                {displayImages.map(({ id: imageId, isPreview: isPreviewItem }, idx) => (
                   <div
                     key={imageId}
-                    className={`imagegen-grid-item${selectedImageId === imageId ? ' selected' : ''}`}
-                    onClick={() => handleSelect(imageId)}
+                    className={`imagegen-grid-item${selectedImageId === imageId ? ' selected' : ''}${isPreviewItem ? ' imagegen-grid-item--preview' : ''}`}
+                    onClick={() => !isPreviewItem && handleSelect(imageId)}
                   >
                     <Image
                       src={getImageUrl(featureId, taskId, imageId)}
                       alt={imageId}
                       preview={{ visible: false, mask: false }}
                     />
-                    {selectedImageId === imageId && (
+                    {!isPreviewItem && selectedImageId === imageId && (
                       <CheckCircleOutlined className="imagegen-selected-badge" />
                     )}
-                    <div className="imagegen-grid-overlay">
+                    {!isPreviewItem && <div className="imagegen-grid-overlay">
                       <Button
                         size="small"
                         icon={<ExpandOutlined />}
@@ -498,7 +511,7 @@ function ImageSection({
                           handleDelete(imageId);
                         }}
                       />
-                    </div>
+                    </div>}
                   </div>
                 ))}
               </div>

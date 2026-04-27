@@ -50,6 +50,7 @@ export interface JobStatusResponse {
   images: Array<{ id?: string; image_id?: string }>;
   error?: string;
   model_id?: string;
+  preview?: { preview_id: string; index: number };
 }
 
 export interface ImagegenModel {
